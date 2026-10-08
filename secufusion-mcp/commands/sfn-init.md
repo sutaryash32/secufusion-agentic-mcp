@@ -86,6 +86,15 @@ The user can interrupt if they disagree.
 
 ## PHASE 1 — Scan the repository (runs on fresh install OR merge)
 
+**First, preserve the "before" state.** The scan tools below **rewrite `.secufusion-migrations.json`**. If you scan first, the previous migration state is gone and the release notes cannot show what moved. So, *before calling any scan tool*, copy both files you will later compare against:
+
+```
+cp .secufusion-project-spec.json  .secufusion-project-spec.json.backup-{timestamp}
+cp .secufusion-migrations.json    .secufusion-migrations.json.backup-{timestamp}
+```
+
+(The server also keeps a `.secufusion-migrations.json.backup-<timestamp>` whenever a scan changes that file, but your own copy taken now is the authoritative baseline.) Do not skip this for a "quick" re-init.
+
 Run all 4 tools **concurrently in a single message**:
 
 1. `scan_repository_stack(workspace_root: <workspace_root>)`
@@ -217,6 +226,7 @@ WORKSPACE-OWNED sections (preserved from scan, updated with new scan results):
      version:            "{new_version}",
      previous_version:   "{old npm version}",
      previous_spec_path: ".secufusion-project-spec.json.backup-{timestamp}",   # the backup made in step 1
+     previous_migrations_path: ".secufusion-migrations.json.backup-{timestamp}", # the copy taken BEFORE the scan (Phase 1)
      why:                "{one or two sentences: why this version exists, from the _changelog entry or the work that prompted it}",
      fixed:              ["{defects, false positives or wrong mappings corrected, if you know of any}"],
      removed:            ["{removed or deprecated behaviour the diff cannot show}"],
@@ -229,6 +239,7 @@ WORKSPACE-OWNED sections (preserved from scan, updated with new scan results):
    Fixed, Removed / Deprecated, Risks, Repository Intelligence Updates, Rule Changes) and puts the Detailed Snapshot last.
 
    Rules for you:
+   - **Pass `previous_migrations_path`.** Without it the tool cannot compare migrations and will say "Not compared: migrations" rather than guess. Never tell the user "no changes" about something it reported as not compared.
    - **Supply `why`** (and only things you actually know for `fixed` / `removed` / `discoveries`). Never pad them; an omitted `why` is shown as "not stated", which is better than a guess.
    - **Do not write boilerplate** such as "No new Kafka topics discovered": the tool states "None." or "No significant changes" itself when that is true.
    - **Do not paste inventories** (service lists, topic lists) into the notes; the delta is the story and the snapshot is reference.

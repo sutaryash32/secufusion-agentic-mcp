@@ -25,6 +25,19 @@ function flatten(v, prefix, set, depth = 0) {
     }
     set.scalars[prefix] = String(v);
 }
+/** [41,42,43,47] -> "41-43, 47" */
+export function compressRanges(nums) {
+    const n = [...new Set(nums.map(Number))].filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < n.length; i++) {
+        let j = i;
+        while (j + 1 < n.length && n[j + 1] === n[j] + 1)
+            j++;
+        out.push(j > i ? `${n[i]}-${n[j]}` : `${n[i]}`);
+        i = j;
+    }
+    return out.join(", ");
+}
 const asList = (v) => (Array.isArray(v) ? v.map(String) : v && typeof v === "object" ? Object.keys(v) : typeof v === "string" && v ? [v] : []);
 export function extractSnapshot(version, spec, migrations, dna) {
     const snap = {
@@ -76,10 +89,17 @@ export function extractSnapshot(version, spec, migrations, dna) {
     for (const [k, v] of Object.entries(oset.lists).slice(0, MAX_OTHER))
         snap.other[k] = v.join(", ");
     snap.flags = asList(spec.manual_review_flags).map((f) => (typeof f === "string" ? f : JSON.stringify(f)).slice(0, 300));
-    for (const [svc, raw] of Object.entries(migrations?.services ?? {})) {
-        const latest = raw?.current_state?.latest_version ?? raw?.current_state?.next_suggested ?? raw?.current_state?.latest ?? null;
+    // `microservices` is what generateMigrationSpec writes; `services` is the older hand-written shape.
+    const migServices = migrations?.microservices ?? migrations?.services ?? {};
+    for (const [svc, raw] of Object.entries(migServices)) {
+        const latest = raw?.current_state?.latest_version ?? raw?.current_state?.latest ?? null;
+        const total = raw?.organization?.total_scripts ?? null;
         const gaps = raw?.organization?.version_gaps;
-        const parts = [latest ? `latest ${latest}` : "", Array.isArray(gaps) && gaps.length ? `gaps ${gaps.join(",")}` : ""].filter(Boolean);
+        const parts = [
+            latest !== null && latest !== undefined ? `latest V${latest}` : "",
+            total !== null && total !== undefined ? `${total} script(s)` : "",
+            Array.isArray(gaps) && gaps.length ? `gaps ${compressRanges(gaps)}` : "",
+        ].filter(Boolean);
         if (parts.length)
             snap.migrations[svc] = parts.join("; ");
     }
@@ -133,7 +153,7 @@ export function computeDelta(prev, cur) {
         rules: { added: [], removed: [], modified: [], unchanged: [] }, terminology: { added: [], removed: [], modified: [] },
         other: { added: [], removed: [], modified: [] }, migrations: { added: [], removed: [], modified: [] },
         relationships: { added: [], removed: [] }, tables: { added: [], removed: [] }, dna: null,
-        risks: { introduced: [], resolved: [], persisting: 0 }, resolved_ambiguities: [], total: 0,
+        risks: { introduced: [], resolved: [], persisting: 0 }, resolved_ambiguities: [], not_compared: [], total: 0,
     };
     if (!prev) {
         empty.dna = cur.dna;
@@ -196,8 +216,16 @@ export function computeDelta(prev, cur) {
     d.terminology = { added: tm.added, removed: tm.removed, modified: tm.modified };
     const ot = diffMap(prev.other, cur.other);
     d.other = { added: ot.added, removed: ot.removed, modified: ot.modified };
-    const mg = diffMap(prev.migrations, cur.migrations);
-    d.migrations = { added: mg.added, removed: mg.removed, modified: mg.modified };
+    const prevMig = Object.keys(prev.migrations).length > 0, curMig = Object.keys(cur.migrations).length > 0;
+    if (prevMig && curMig) {
+        const mg = diffMap(prev.migrations, cur.migrations);
+        d.migrations = { added: mg.added, removed: mg.removed, modified: mg.modified };
+    }
+    else if (prevMig !== curMig) {
+        d.not_compared.push(prevMig ? "migrations (no migration data in the current state)" : "migrations (the earlier release recorded no migration data)");
+    }
+    if (!!prev.dna !== !!cur.dna)
+        d.not_compared.push(prev.dna ? "knowledge graph (not available now)" : "knowledge graph (the earlier release recorded none)");
     if (prev.dna && cur.dna) {
         const by = {};
         for (const t of new Set([...Object.keys(prev.dna.by_type), ...Object.keys(cur.dna.by_type)])) {
@@ -256,7 +284,10 @@ export function renderReleaseNotes(i) {
         parts.push(`**First recorded release.** There is no earlier snapshot, so no delta can be computed. This note establishes the baseline (${Object.keys(cur.services).length} services, ${Object.keys(cur.topics).length} topics, ${Object.keys(cur.rules).length} rules); future releases will be compared against it.`);
     }
     else if (d.total === 0 && !(nar.added?.length || nar.changed?.length || nar.fixed?.length || nar.removed?.length || nar.discoveries?.length || nar.risks?.length)) {
-        parts.push(`**No significant changes since ${prev}.** No service, topic, rule, terminology, mapping, migration or risk changed. The detailed snapshot below is unchanged and is included for reference.`);
+        const compared = d.not_compared.length === 0
+            ? "No service, topic, rule, terminology, mapping, migration or risk changed."
+            : "No service, topic, rule, terminology, mapping or risk changed.";
+        parts.push(`**No significant changes since ${prev}.** ${compared} The detailed snapshot below is unchanged and is included for reference.`);
     }
     else {
         const bits = (pairs) => pairs.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}`).join(", ");
@@ -270,6 +301,9 @@ export function renderReleaseNotes(i) {
             `${d.resolved_ambiguities.length + d.risks.resolved.length} resolved, ${d.risks.introduced.length} new risk(s)`,
         ];
         parts.push(`**${d.total} detected change(s) since ${prev}** (${q.join("; ")}). Rules: ${d.rules.added.length} added, ${d.rules.modified.length} modified, ${d.rules.removed.length} removed, ${d.rules.unchanged.length} unchanged.`);
+    }
+    if (!d.baseline && d.not_compared.length) {
+        parts.push(`**Not compared:** ${d.not_compared.join("; ")}. Changes there are not reported in this release; they are not claimed to be absent.`);
     }
     // ── Added
     const added = [];
@@ -387,10 +421,11 @@ export function renderReleaseNotes(i) {
     // ── snapshot (last, compact)
     let snapshot = "";
     if (i.include_snapshot !== false) {
-        const svcRows = Object.entries(cur.services).slice(0, 40).map(([n, s]) => `| ${n} | ${s.scalars["language"] ?? s.scalars["framework"] ?? "-"} | ${s.scalars["port"] ? trunc(s.scalars["port"], 24) : "-"} | ${s.tables.length} | ${s.produces.length}/${s.consumes.length} |`).join("\n");
+        const hasLang = Object.values(cur.services).some((s) => s.scalars["language"] || s.scalars["framework"]);
+        const svcRows = Object.entries(cur.services).slice(0, 40).map(([n, s]) => `| ${n} |${hasLang ? ` ${s.scalars["language"] ?? s.scalars["framework"] ?? "-"} |` : ""} ${s.scalars["port"] ? trunc(s.scalars["port"], 24) : "-"} | ${s.tables.length} | ${s.produces.length}/${s.consumes.length} |`).join("\n");
         snapshot = `## Detailed Snapshot\n_Current state, for auditing. Not a list of changes._\n\n| Services | Topics | Rules | Terminology entries | Open risks | Manual-review flags |\n|---|---|---|---|---|---|\n| ${Object.keys(cur.services).length} | ${Object.keys(cur.topics).length} | ${Object.keys(cur.rules).length} | ${Object.keys(cur.terminology).length} | ${computeRisks(cur).length} | ${cur.flags.length} |\n` +
             (cur.dna ? `\nKnowledge graph: ${cur.dna.nodes} nodes, ${cur.dna.edges} edges.\n` : "") +
-            (svcRows ? `\n| Service | Lang | Port | Tables | Topics out/in |\n|---|---|---|---|---|\n${svcRows}\n` : "") +
+            (svcRows ? (hasLang ? `\n| Service | Lang | Port | Tables | Topics out/in |\n|---|---|---|---|---|\n${svcRows}\n` : `\n| Service | Port | Tables | Topics out/in |\n|---|---|---|---|\n${svcRows}\n`) : "") +
             (Object.keys(cur.services).length > 40 ? `\n…and ${Object.keys(cur.services).length - 40} more services.\n` : "");
     }
     const none = d.baseline ? NO_BASE : "None.";

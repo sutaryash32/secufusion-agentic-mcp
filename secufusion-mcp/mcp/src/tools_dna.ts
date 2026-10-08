@@ -62,10 +62,29 @@ server.tool(
       const ecosystemRoot = getEcosystemRoot(workspace_root);
       ensureDnaFile(ecosystemRoot);
       const files = fs.readdirSync(ecosystemRoot);
-      let stack = [];
-      if (files.includes("package.json")) stack.push("Node.js");
-      if (files.includes("pom.xml") || files.includes("build.gradle")) stack.push("Java/Spring");
-      if (files.includes("docker-compose.yml")) stack.push("Docker");
+      // Markers are looked for at the root AND one level down: a poly-repo workspace keeps its services in subfolders.
+      const MARKERS: Array<[string, string[]]> = [
+        ["Java/Spring", ["pom.xml", "build.gradle", "build.gradle.kts"]],
+        ["Node.js", ["package.json"]],
+        ["Go", ["go.mod"]],
+        ["Python", ["requirements.txt", "pyproject.toml"]],
+        ["Rust", ["Cargo.toml"]],
+        ["Docker", ["docker-compose.yml", "docker-compose.yaml", "Dockerfile"]],
+      ];
+      const found: Record<string, string[]> = {};
+      const note = (label: string, where: string) => { (found[label] ??= []).includes(where) || found[label].push(where); };
+      for (const [label, names] of MARKERS) if (names.some((n) => files.includes(n))) note(label, "(root)");
+      for (const f of files) {
+        const full = path.join(ecosystemRoot, f);
+        if (f.startsWith(".") || f === "node_modules") continue;
+        let kids: string[] = [];
+        try { if (!fs.statSync(full).isDirectory()) continue; kids = fs.readdirSync(full); } catch { continue; }
+        for (const [label, names] of MARKERS) if (names.some((n) => kids.includes(n))) note(label, f);
+      }
+      const stack = Object.entries(found).map(([label, where]) => {
+        const sub = where.filter((w) => w !== "(root)");
+        return sub.length ? `${label} (${sub.length} project${sub.length === 1 ? "" : "s"}: ${sub.slice(0, 8).join(", ")}${sub.length > 8 ? ", …" : ""}${where.includes("(root)") ? ", root" : ""})` : label;
+      });
       
       let warningMsg = "";
       

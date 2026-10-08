@@ -117,6 +117,7 @@ check("/sfn-spec consults project knowledge before investigating", /get_project_
 check("/sfn-review and the reviewer persona check recorded exceptions before flagging", /get_project_knowledge/.test(cmds["sfn-review.md"]) && /get_project_knowledge/.test(read("agents/reviewer.md")) && /known exception|intentional/i.test(read("agents/reviewer.md")));
 check("project-specific terminology no longer lives in AGENTS.md (it points to .mcp/)", !/Naming inconsistency ≠ bug/.test(read("agents/AGENTS.md")) && !/\| \*\*Device\*\* \| A \*\*browser installation\*\*/.test(read("agents/AGENTS.md")) && /\.mcp\/architecture\/terminology-device-vs-machine\.md/.test(read("agents/AGENTS.md")));
 const init = cmds["sfn-init.md"];
+check("/sfn-init backs up the spec AND the migrations file BEFORE scanning, and passes the migrations baseline to the release notes", /preserve the "before" state/.test(init) && /\.secufusion-migrations\.json\.backup/.test(init) && init.indexOf("preserve the \"before\" state") < init.indexOf("scan_repository_stack(workspace_root") && /previous_migrations_path/.test(init));
 check("/sfn-init builds release notes with generate_release_notes (change-driven), not by free-writing", tools.has("generate_release_notes") && /generate_release_notes\(/.test(init) && /changelog, not a repository scan/.test(init) && /previous_spec_path/.test(init) && /Do not paste inventories/.test(init));
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);

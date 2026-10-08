@@ -37,6 +37,7 @@ export function registerReleaseTools(server: any): void {
       version: z.string().describe("The version being released, e.g. 2.2.6"),
       previous_version: z.string().optional().describe("Previous release to compare against. Default: the newest stored snapshot older than `version`."),
       previous_spec_path: z.string().optional().describe("Path to the PREVIOUS spec (e.g. the .secufusion-project-spec.json.backup-<timestamp> made by the merge). Highest-fidelity baseline when no snapshot exists."),
+      previous_migrations_path: z.string().optional().describe("Path to the PREVIOUS .secufusion-migrations.json (a backup taken BEFORE any scan: extract_* tools rewrite that file). Without it, migration changes cannot be compared and the notes say so."),
       date: z.string().optional().describe("Release date (YYYY-MM-DD). Default: today."),
       why: z.string().optional().describe("Why this version exists, in one or two sentences, from the _changelog entry / the work that prompted it. Omit if unknown; it is then marked as not stated."),
       summary: z.string().optional().describe("Optional concise explanation of the release's purpose and impact."),
@@ -68,7 +69,11 @@ export function registerReleaseTools(server: any): void {
         if (a.previous_spec_path) {
           const prevSpec = readJsonFile(path.resolve(root, a.previous_spec_path));
           if (!prevSpec) notes.push(`previous_spec_path ${a.previous_spec_path} could not be read; falling back.`);
-          else previous = extractSnapshot((a.previous_version ?? "previous").replace(/^v/, ""), prevSpec, null, null);
+          else {
+            const prevMig = a.previous_migrations_path ? readJsonFile(path.resolve(root, a.previous_migrations_path)) : null;
+            if (a.previous_migrations_path && !prevMig) notes.push(`previous_migrations_path ${a.previous_migrations_path} could not be read; migrations will not be compared.`);
+            previous = extractSnapshot((a.previous_version ?? "previous").replace(/^v/, ""), prevSpec, prevMig, null);
+          }
         }
         if (!previous && a.previous_version) {
           previous = loadSnapshot(root, a.previous_version);
@@ -91,7 +96,7 @@ export function registerReleaseTools(server: any): void {
           fs.mkdirSync(path.dirname(out), { recursive: true });
           fs.writeFileSync(out, md, "utf-8");
           saveSnapshot(root, current);
-          written = `📄 Written: ${out}\n🗂  Snapshot saved for the next release to compare against.\n`;
+          written = `📄 Written: ${out.split(path.sep).join("/")}\n🗂  Snapshot saved for the next release to compare against.\n`;
         }
         const header = `${written}Compared against: ${previous ? `v${previous.version}` : "nothing (baseline)"} · detected changes: ${delta.total}\n` +
           (notes.length ? notes.map((n) => `⚠️ ${n}`).join("\n") + "\n" : "") +

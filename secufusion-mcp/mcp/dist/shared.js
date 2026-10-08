@@ -516,7 +516,23 @@ export function generateMigrationSpec(ecosystemRoot) {
             }
         }
         const outPath = path.join(ecosystemRoot, '.secufusion-migrations.json');
-        fs.writeFileSync(outPath, JSON.stringify(migrationsSpec, null, 2), 'utf-8');
+        const next = JSON.stringify(migrationsSpec, null, 2);
+        if (fs.existsSync(outPath)) {
+            // A scan rewrites this file. Keep the previous state when it actually changes, so a release can still
+            // compare "before" with "after" (and so a rescan never silently destroys recorded history).
+            const prevRaw = fs.readFileSync(outPath, 'utf-8');
+            const normalise = (t) => t.replace(/^﻿/, '').replace(/\r\n/g, '\n').trimEnd();
+            if (normalise(prevRaw) !== normalise(next)) {
+                const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+                fs.writeFileSync(outPath + '.backup-' + stamp, prevRaw, 'utf-8');
+            }
+            // Keep the file's existing line endings: a rescan must not turn into a whole-file diff.
+            const eol = prevRaw.includes('\r\n') ? '\r\n' : '\n';
+            fs.writeFileSync(outPath, next.replace(/\n/g, eol) + (prevRaw.endsWith('\n') ? eol : ''), 'utf-8');
+        }
+        else {
+            fs.writeFileSync(outPath, next, 'utf-8');
+        }
     }
     catch (e) {
         console.error("Failed to generate migration spec", e);

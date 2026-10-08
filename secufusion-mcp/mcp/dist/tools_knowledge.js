@@ -33,7 +33,7 @@ export function registerKnowledgeTools(server) {
             const m = loadKnowledge(root);
             const agents = inspectAgentsMd(root);
             if (!m.exists) {
-                return text(`📚 No Project Intelligence Layer found at ${path.join(root, KNOWLEDGE_DIR)}.\n` +
+                return text(`📚 No Project Intelligence Layer found at ${path.join(root, KNOWLEDGE_DIR).split(path.sep).join("/")}.\n` +
                     `Project knowledge currently lives only in agent files and people's heads. Run load_project_knowledge with scaffold=true to create it, ` +
                     `then record what the project already knows with record_project_knowledge.\n` +
                     (agents.warning ? `\n⚠️ ${agents.warning}\n` : ""));

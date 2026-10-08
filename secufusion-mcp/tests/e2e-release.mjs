@@ -91,6 +91,77 @@ const rel = (dir, v) => path.join(dir, ".secufusion", "releases", `v${v}.md`);
     fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// ── migrations: compared when the baseline exists, disclosed when it does not ──
+{
+    const migs = (events, tenants) => JSON.stringify({
+        mcp_guardrails: {},
+        microservices: {
+            "sfn-events-api": { has_migrations: true, current_state: { latest_version: events }, organization: { version_gaps: [], total_scripts: events } },
+            "sfn-tenants-api": { has_migrations: true, current_state: { latest_version: tenants }, organization: { version_gaps: [5, 6, 7], total_scripts: tenants - 3 } },
+        },
+    });
+    const dir = mk();
+    writeSpec(dir, spec());
+    fs.writeFileSync(path.join(dir, ".secufusion-project-spec.json.backup-1"), JSON.stringify(spec()));
+    fs.writeFileSync(path.join(dir, ".secufusion-migrations.json.backup-1"), migs(41, 65));
+    fs.writeFileSync(path.join(dir, ".secufusion-migrations.json"), migs(42, 67));
+    const c = await connect(dir);
+
+    let r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.0.0", previous_version: "3.3.1", previous_spec_path: ".secufusion-project-spec.json.backup-1", previous_migrations_path: ".secufusion-migrations.json.backup-1", dry_run: true, why: "Spec merge" });
+    check("with the earlier migrations file, V41→V42 and V65→V67 are reported (a real run said 'no changes')", r.text.includes("latest V41; 41 script(s) → latest V42; 42 script(s)") && r.text.includes("latest V65") && r.text.includes("→ latest V67") && !r.text.includes("No significant changes"), r.text.slice(0, 900));
+
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.0.0", previous_version: "3.3.1", previous_spec_path: ".secufusion-project-spec.json.backup-1", dry_run: true, why: "Spec merge" });
+    check("without the earlier migrations file it says 'Not compared: migrations', not 'no changes'", r.text.includes("**Not compared:** migrations") && r.text.includes("No significant changes") && !r.text.includes("mapping, migration or risk changed"), r.text.slice(0, 900));
+
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.0.0", previous_version: "3.3.1", previous_spec_path: ".secufusion-project-spec.json.backup-1", previous_migrations_path: "nope.json", dry_run: true });
+    check("an unreadable migrations baseline is flagged, not ignored", r.text.includes("previous_migrations_path nope.json could not be read"), r.text.slice(0, 400));
+    await c.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// ── a rescan must not destroy the previous migration state, or rewrite its line endings ──
+{
+    const dir = mk();
+    fs.mkdirSync(path.join(dir, "svc-a", "src", "main", "resources", "db", "migration"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "svc-a", "pom.xml"), "<project/>");
+    fs.writeFileSync(path.join(dir, "svc-a", "src", "main", "resources", "db", "migration", "V1__init.sql"), "select 1;");
+    const c = await connect(dir);
+    const migFile = path.join(dir, ".secufusion-migrations.json");
+    const CRLF = String.fromCharCode(13, 10);
+
+    await call(c, "refresh_repository_knowledge", { workspace_root: dir });
+    check("the first scan creates the migrations file", fs.existsSync(migFile) && JSON.parse(fs.readFileSync(migFile, "utf8")).microservices["svc-a"].current_state.latest_version === 1);
+    check("...and nothing to back up yet", fs.readdirSync(dir).filter((f) => f.startsWith(".secufusion-migrations.json.backup")).length === 0);
+
+    fs.writeFileSync(migFile, fs.readFileSync(migFile, "utf8").split(String.fromCharCode(10)).join(CRLF) + CRLF); // a Windows checkout
+    await call(c, "refresh_repository_knowledge", { workspace_root: dir });
+    check("an unchanged rescan creates no backup and keeps CRLF", fs.readdirSync(dir).filter((f) => f.startsWith(".secufusion-migrations.json.backup")).length === 0 && fs.readFileSync(migFile, "utf8").includes(CRLF));
+
+    fs.writeFileSync(path.join(dir, "svc-a", "src", "main", "resources", "db", "migration", "V2__more.sql"), "select 2;");
+    await call(c, "refresh_repository_knowledge", { workspace_root: dir });
+    const backups = fs.readdirSync(dir).filter((f) => f.startsWith(".secufusion-migrations.json.backup"));
+    check("when a scan changes it, the previous state is kept as a timestamped backup", backups.length === 1 && JSON.parse(fs.readFileSync(path.join(dir, backups[0]), "utf8")).microservices["svc-a"].current_state.latest_version === 1, backups.join());
+    check("the live file has the new state", JSON.parse(fs.readFileSync(migFile, "utf8")).microservices["svc-a"].current_state.latest_version === 2);
+    const live = fs.readFileSync(migFile, "utf8");
+    check("the rewrite preserves the file's CRLF line endings (no whole-file diff)", live.includes(CRLF) && !/[^\r]\n/.test(live), JSON.stringify(live.slice(0, 40)));
+    await c.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// ── stack detection looks inside the service folders ───────────────────────
+{
+    const dir = mk();
+    for (const s of ["sfn-a-api", "sfn-b-api"]) { fs.mkdirSync(path.join(dir, s)); fs.writeFileSync(path.join(dir, s, "pom.xml"), "<project/>"); }
+    fs.mkdirSync(path.join(dir, "web")); fs.writeFileSync(path.join(dir, "web", "package.json"), "{}");
+    fs.mkdirSync(path.join(dir, "svc-docker")); fs.writeFileSync(path.join(dir, "svc-docker", "Dockerfile"), "FROM x");
+    fs.writeFileSync(path.join(dir, ".secufusion-project-spec.json"), JSON.stringify(spec()));
+    const c = await connect(dir);
+    const r = await call(c, "scan_repository_stack", { workspace_root: dir });
+    check("a poly-repo reports Java/Spring (with the project names), Node.js and Docker, not just the root", r.text.includes("Java/Spring (2 projects: sfn-a-api, sfn-b-api") && r.text.includes("Node.js (1 project: web") && r.text.includes("Docker"), r.text.slice(0, 400));
+    await c.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // ── failure modes are loud ─────────────────────────────────────────────────
 {
     const dir = mk();

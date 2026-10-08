@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
-    extractSnapshot, computeDelta, computeRisks, renderReleaseNotes, saveSnapshot, findPreviousSnapshot, compareVersions,
+    extractSnapshot, computeDelta, computeRisks, renderReleaseNotes, saveSnapshot, findPreviousSnapshot, compareVersions, compressRanges,
     ReleaseSnapshot,
 } from "./release_notes.js";
 
@@ -169,6 +169,51 @@ const idx = (md: string, h: string) => md.indexOf(h);
     for (let i = 0; i < 100; i++) many.microservices[`svc-${i}`] = { language: "Java", owns_tables: [`t${i}`] };
     const md = render(null, snap("1.0.0", many));
     check("a 100-service snapshot is capped, not dumped", (md.match(/\| svc-/g) ?? []).length === 40 && md.includes("…and 60 more services."));
+}
+
+// ── migrations: the format this MCP itself writes, and honesty about what could not be compared ──
+{
+    // The shape generateMigrationSpec writes (`microservices`), with real numbers from a production run.
+    const migrations = (events: number, tenants: number, eventsTotal = events, tenantsTotal = tenants - 11) => ({
+        mcp_guardrails: { no_gap_reuse_allowed: true },
+        microservices: {
+            "sfn-events-api": { has_migrations: true, current_state: { latest_version: events, next_suggested: `V${events + 1}__x.sql` }, organization: { version_gaps: [], total_scripts: eventsTotal } },
+            "sfn-iam-api": { has_migrations: true, current_state: { latest_version: 57, next_suggested: "V58__x.sql" }, organization: { version_gaps: [41, 42, 43, 44, 45, 46, 47, 52], total_scripts: 49 } },
+            "sfn-tenants-api": { has_migrations: true, current_state: { latest_version: tenants, next_suggested: `V${tenants + 1}__x.sql` }, organization: { version_gaps: [5, 6, 7, 8, 9, 10], total_scripts: tenantsTotal } },
+        },
+    });
+    const spec = baseSpec();
+    const before = snap("3.3.1", spec, migrations(41, 65, 41, 54));
+    const after = snap("4.0.0", spec, migrations(42, 67, 42, 57));
+
+    check("the migrations format written by generateMigrationSpec (`microservices`) is read: all 3 services", Object.keys(after.migrations).length === 3, JSON.stringify(after.migrations));
+    check("it records latest version, script count and gaps (compressed to ranges)", after.migrations["sfn-iam-api"] === "latest V57; 49 script(s); gaps 41-47, 52", after.migrations["sfn-iam-api"]);
+    check("the older `services` key still works", Object.keys(snap("x", spec, { services: migrations(42, 67).microservices }).migrations).length === 3);
+    check("compressRanges", compressRanges([41, 42, 43, 47]) === "41-43, 47" && compressRanges([]) === "" && compressRanges([5, 5, 6]) === "5-6");
+
+    const d = computeDelta(before, after);
+    check("V41→V42 and V65→V67 are detected (this run reported 'no changes')", d.migrations.modified.length === 2 && d.total >= 2, JSON.stringify(d.migrations.modified));
+    const md = render(before, after, { why: "Spec merge" });
+    check("they are reported under Changed → Migrations, with before and after", md.includes("**Migrations (2)**") && md.includes("`sfn-events-api`: latest V41; 41 script(s) → latest V42; 42 script(s)") && md.includes("`sfn-tenants-api`: latest V65; 54 script(s); gaps 5-10 → latest V67; 57 script(s); gaps 5-10"), md.slice(idx(md, "## Changed"), idx(md, "## Fixed")));
+    check("...and the release no longer says 'No significant changes'", !md.includes("No significant changes"));
+
+    // The "before" side has no migration data (it was destroyed by the scan before it could be saved).
+    const noPrev = snap("3.3.1", spec);
+    const dn = computeDelta(noPrev, after);
+    check("no earlier migration data: reported as NOT COMPARED, not as 'all added' or 'unchanged'", dn.not_compared.some((x) => x.startsWith("migrations")) && dn.migrations.added.length === 0 && dn.migrations.modified.length === 0, JSON.stringify(dn.not_compared));
+    const mdn = render(noPrev, after, { why: "Spec merge" });
+    check("an otherwise-unchanged release names what it could not compare", mdn.includes("**Not compared:** migrations") && /No significant changes since v3\.3\.1\.\*\* No service, topic, rule, terminology, mapping or risk changed\./.test(mdn), mdn.slice(idx(mdn, "## Executive Summary"), idx(mdn, "## Added")));
+    check("...and does NOT claim migrations were unchanged", !/mapping, migration or risk changed/.test(mdn));
+    const bothNone = render(snap("1", spec), snap("2", spec));
+    check("when neither side has migration data there is nothing to disclaim", !bothNone.includes("Not compared") && bothNone.includes("mapping, migration or risk changed"));
+    check("the same data on both sides compares cleanly and says unchanged", (() => { const x = render(snap("1", spec, migrations(42, 67)), snap("2", spec, migrations(42, 67))); return x.includes("No significant changes") && !x.includes("Not compared") && x.includes("migration or risk changed"); })());
+
+    const g = { graph: { nodes: [{ type: "CLASS" }], edges: [] } };
+    check("a knowledge graph present on only one side is also reported as not compared", computeDelta(snap("1", spec), snap("2", spec, undefined, g)).not_compared.some((x) => x.startsWith("knowledge graph")));
+    const noLangSpec: any = baseSpec(); for (const v of Object.values<any>(noLangSpec.microservices)) delete v.language;
+    const mdNoLang = render(snap("1", noLangSpec), snap("2", noLangSpec));
+    check("the snapshot table drops the language column when no service has a language (like the real project)", !mdNoLang.includes("| Lang |") && mdNoLang.includes("| Service | Port | Tables | Topics out/in |"), mdNoLang.slice(idx(mdNoLang, "## Detailed Snapshot")));
+    check("it keeps the column when services do have one", render(snap("1", spec), snap("2", spec)).includes("| Service | Lang | Port |"));
 }
 
 // ── snapshots on disk ──────────────────────────────────────────────────────
