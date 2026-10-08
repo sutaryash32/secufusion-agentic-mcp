@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { discoverEntities, computeCoverage, buildHealth, renderHealth, renderSuggestions, findTribalCandidates, findRepeated, recordLookup, readLookups, significantTerms, COVERAGE_DEFINITION, } from "./knowledge_health.js";
-import { createEntry, loadKnowledge, scaffoldKnowledge, autoScaffoldEnabled, parseFrontmatter, CATEGORIES } from "./project_knowledge.js";
+import { createEntry, loadKnowledge, scaffoldKnowledge, autoScaffoldEnabled, parseFrontmatter, CATEGORIES, inspectAgentsMd, AGENTS_MD_SOFT_LIMIT } from "./project_knowledge.js";
 /** Coverage is documented vs discovered entities, per dimension. Never an arbitrary percentage. */
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -149,6 +149,31 @@ const dim = (cov, d) => cov.find((c) => c.dimension === d);
     check("a section that already points at .mcp/ is not flagged", !t.some((c) => c.heading === "Already moved"));
     check("headings inside code fences are ignored", !t.some((c) => /not a heading/.test(c.heading)));
     check("each candidate says where it is and why", t.every((c) => c.file === ".agents/AGENTS.md" && c.line > 0 && c.reason.length > 0));
+}
+// ── every agent-facing file is scanned, with a stricter bar for behavior sections ──
+{
+    const root = tmp();
+    const svc = "sfn-iam-api sfn-events-api sfn-policy-api";
+    put(root, "CLAUDE.md", [
+        "# Project memory", "",
+        "## Working agreement (coding-agent contract)", "Investigate before coding. For example in sfn-iam-api and sfn-events-api always check the tenant first.", "",
+        "## Stack, per service", `${svc} are Spring Boot services behind the gateway; events flow over user-deleted and policy-events.`, "",
+    ].join("\n"));
+    put(root, ".agents/skills/sfn-review/references/AGENTS.md", [
+        "# Copy", "", "## Service architecture", `${svc} and the user-deleted topic form the core; policy-events is produced by sfn-policy-api.`, "",
+        "## Stack, per service", `${svc} are Spring Boot services behind the gateway; events flow over user-deleted and policy-events.`, "",
+    ].join("\n"));
+    const d = discoverEntities(spec());
+    const names = [...d.services, ...d.topics].map((e) => e.name);
+    const t = findTribalCandidates(root, names);
+    check("CLAUDE.md and the skills copy of AGENTS.md are both scanned", t.some((c) => c.file === "CLAUDE.md") && t.some((c) => c.file === ".agents/skills/sfn-review/references/AGENTS.md"), JSON.stringify(t.map((c) => c.file + ":" + c.heading)));
+    check("a behavior section that merely names two services as examples is NOT flagged", !t.some((c) => /Working agreement/.test(c.heading)), JSON.stringify(t.map((c) => c.heading)));
+    check("a section naming three or more entities IS flagged", t.some((c) => c.heading === "Service architecture"));
+    check("the same section copied into two files is reported once", t.filter((c) => c.heading === "Stack, per service").length === 1);
+    const a = inspectAgentsMd(root);
+    check("all agent files are listed, and CLAUDE.md is the primary", a.files.length === 2 && a.file === "CLAUDE.md", JSON.stringify(a.files));
+    put(root, ".agents/skills/sfn-review/references/AGENTS.md", "line\n".repeat(AGENTS_MD_SOFT_LIMIT + 40));
+    check("a size warning comes from ANY agent file over the limit, and names it", (inspectAgentsMd(root).warning ?? "").startsWith(".agents/skills/sfn-review/references/AGENTS.md is "), inspectAgentsMd(root).warning ?? "none");
 }
 // ── repeated investigation ─────────────────────────────────────────────────
 {

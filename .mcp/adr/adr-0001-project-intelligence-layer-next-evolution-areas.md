@@ -39,4 +39,6 @@ The layer works (validated end to end), but a fresh `.mcp/` is empty, so the pri
 - Semantic options in order of cost: explicit `aliases` in frontmatter (deterministic); query expansion by the client model when sampling is available (cached); embeddings (adds a dependency and non-determinism).
 
 ## Current status (2026-10-08, checked against the code)
-Partial: 1, 3, 5, 6. Not started: 2, 4. Structure in place: 7. Details are in the README section "Roadmap: Next Evolution of the Project Intelligence Layer".
+Done in 4.1.0: 1 (auto-scaffold with templates, opt-in auto-create), 2 (suggestion engine, first form), 3 (health report: coverage as documented vs discovered entities, anomalies kept out of the headline as unconfirmed candidates). Partial: 5, 6. Not started: 4. Structure in place: 7. Details are in the README section "Roadmap: Next Evolution of the Project Intelligence Layer".
+
+Coverage was defined as documented vs discovered entities (services, topics, golden rules, domain concepts, platform decisions) from the curated project spec, not from the knowledge graph (which holds duplicate and code-constant names). Anomalies are reported separately as known-exception candidates.

@@ -434,19 +434,34 @@ export function setStatus(workspaceRoot: string, id: string, status: Status): st
 
 export const AGENTS_MD_SOFT_LIMIT = 250;
 
-export function inspectAgentsMd(workspaceRoot: string): { file: string | null; lines: number; warning: string | null } {
-    for (const rel of [".mcp/agents.md", ".mcp/AGENTS.md", ".agents/AGENTS.md", "agents/AGENTS.md", "AGENTS.md"]) {
-        const abs = path.join(workspaceRoot, rel);
-        if (!fs.existsSync(abs)) continue;
-        const lines = fs.readFileSync(abs, "utf-8").split(/\r?\n/).length;
-        return {
-            file: rel, lines,
-            warning: lines > AGENTS_MD_SOFT_LIMIT
-                ? `${rel} is ${lines} lines (soft limit ${AGENTS_MD_SOFT_LIMIT}). It should hold workflow rules and engineering philosophy; move project-specific history, terminology and exceptions into .mcp/ (use record_project_knowledge).`
-                : null,
-        };
+/** Every agent-facing instruction file the project has, in priority order. Project knowledge can hide in any of them. */
+export function listAgentFiles(workspaceRoot: string): string[] {
+    const fixed = [".mcp/agents.md", ".mcp/AGENTS.md", "AGENTS.md", "CLAUDE.md", ".agents/AGENTS.md", ".agents/claude.md", "agents/AGENTS.md"];
+    const found: string[] = fixed.filter((rel) => fs.existsSync(path.join(workspaceRoot, rel)));
+    // skill bundles carry their own copy: .agents/skills/<skill>/references/AGENTS.md
+    const skills = path.join(workspaceRoot, ".agents", "skills");
+    if (fs.existsSync(skills)) {
+        for (const d of fs.readdirSync(skills, { withFileTypes: true })) {
+            if (!d.isDirectory()) continue;
+            const rel = `.agents/skills/${d.name}/references/AGENTS.md`;
+            if (fs.existsSync(path.join(workspaceRoot, rel))) found.push(rel);
+        }
     }
-    return { file: null, lines: 0, warning: null };
+    return found;
+}
+
+export function inspectAgentsMd(workspaceRoot: string): { file: string | null; lines: number; warning: string | null; files: Array<{ file: string; lines: number }> } {
+    const files = listAgentFiles(workspaceRoot).map((rel) => ({ file: rel, lines: fs.readFileSync(path.join(workspaceRoot, rel), "utf-8").split(/\r?\n/).length }));
+    if (!files.length) return { file: null, lines: 0, warning: null, files };
+    const primary = files[0];
+    const over = files.filter((f) => f.lines > AGENTS_MD_SOFT_LIMIT).sort((x, y) => y.lines - x.lines);
+    const w = over[0];
+    return {
+        file: primary.file, lines: primary.lines, files,
+        warning: w
+            ? `${w.file} is ${w.lines} lines (soft limit ${AGENTS_MD_SOFT_LIMIT}). It should hold workflow rules and engineering philosophy; move project-specific history, terminology and exceptions into .mcp/ (use record_project_knowledge).`
+            : null,
+    };
 }
 
 const README_TEXT = `# Project Intelligence Layer

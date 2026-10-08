@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { KnowledgeEntry, KnowledgeModel, Category, CATEGORIES, queryKnowledge, inspectAgentsMd } from "./project_knowledge.js";
+import { KnowledgeEntry, KnowledgeModel, Category, CATEGORIES, queryKnowledge, listAgentFiles } from "./project_knowledge.js";
 import { extractSnapshot, computeRisks } from "./release_notes.js";
 
 /**
@@ -146,9 +146,11 @@ function guessCategory(heading: string, body: string): Category {
 }
 
 export function findTribalCandidates(workspaceRoot: string, entityNames: string[]): TribalCandidate[] {
-    const agents = inspectAgentsMd(workspaceRoot);
-    if (!agents.file) return [];
-    const text = fs.readFileSync(path.join(workspaceRoot, agents.file), "utf-8").replace(/\r\n/g, "\n");
+    const ents = [...new Set(entityNames.map(norm))].filter((n) => n.length >= 4);
+    const out: TribalCandidate[] = [];
+    const seen = new Set<string>();
+    for (const file of listAgentFiles(workspaceRoot)) {
+    const text = fs.readFileSync(path.join(workspaceRoot, file), "utf-8").replace(/\r\n/g, "\n");
     const lines = text.split("\n");
     const sections: Array<{ heading: string; line: number; body: string }> = [];
     let inFence = false;
@@ -157,20 +159,25 @@ export function findTribalCandidates(workspaceRoot: string, entityNames: string[
         if (!inFence && /^#{2,3} /.test(l)) sections.push({ heading: l.replace(/^#+\s*/, ""), line: i + 1, body: "" });
         else if (sections.length) sections[sections.length - 1].body += l + "\n";
     });
-    const ents = [...new Set(entityNames.map(norm))].filter((n) => n.length >= 4);
-    const out: TribalCandidate[] = [];
     for (const s of sections) {
+        const dedupe = norm(s.heading) + "|" + s.body.length; // the same section copied into several files is reported once
+        if (seen.has(dedupe)) continue;
         if (/\.mcp\//.test(s.body)) continue; // already a pointer to the knowledge layer
         const h = norm(s.body);
         const found = ents.filter((n) => new RegExp(`(^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`).test(h));
         const flagged = /critical|terminology|history|legacy|incident|known (issue|exception)|lessons?/i.test(s.heading);
-        if (found.length >= 2 || (flagged && s.body.trim().length > 200)) {
+        // Workflow and contract sections are what the agent file is FOR; they may name a service as an example without being project knowledge.
+        const behavior = /workflow|agreement|contract|philosoph|principle|process|conduct|execution|order of|git\b|pull request|\bpr\b|commands?|how to|rules? for|never|always/i.test(s.heading);
+        const strongEntityEvidence = found.length >= 6 || (found.length >= 3 && !behavior);
+        if (strongEntityEvidence || (flagged && s.body.trim().length > 200)) {
+            seen.add(dedupe);
             out.push({
-                file: agents.file, heading: s.heading, line: s.line, entities: found.slice(0, 6),
+                file, heading: s.heading, line: s.line, entities: found.slice(0, 6),
                 suggested_category: guessCategory(s.heading, s.body),
-                reason: found.length >= 2 ? `names ${found.length} project entities (${found.slice(0, 4).join(", ")})` : "heading marks it as project history or terminology",
+                reason: strongEntityEvidence ? `names ${found.length} project entities (${found.slice(0, 4).join(", ")})` : "heading marks it as project history or terminology",
             });
         }
+    }
     }
     return out.slice(0, 12);
 }
