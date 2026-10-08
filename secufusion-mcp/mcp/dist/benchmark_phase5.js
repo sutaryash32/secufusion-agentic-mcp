@@ -5,7 +5,7 @@ import { generateTestObligations, aggregateValidation } from "./validation_engin
 import { executeTests, ingestTestResults, loadTestResults, correlateTestFailure } from "./test_engine.js";
 import { saveRequirement } from "./requirement_manager.js";
 import { saveTraceability } from "./traceability_engine.js";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 const ecosystemRoot = "c:\\Users\\Yash\\Desktop\\mcp";
 function setupRequirement(id, title, status, decisions = []) {
     const req = {

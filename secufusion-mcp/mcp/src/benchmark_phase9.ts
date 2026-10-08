@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { inspectWorkspaceRepositories, getEvidenceCompleteness } from "./workspace_intelligence.js";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 
 function reset(ecosystemRoot: string) {
     if (fs.existsSync(ecosystemRoot)) {

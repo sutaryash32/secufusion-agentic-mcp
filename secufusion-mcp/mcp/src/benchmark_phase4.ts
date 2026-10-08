@@ -3,7 +3,7 @@ import { generateTestObligations, aggregateValidation } from "./validation_engin
 import { recordExperience, loadExperience } from "./experience_manager.js";
 import { Requirement, saveRequirement } from "./requirement_manager.js";
 import { addTraceabilityLink, findTraceabilityGaps, loadTraceability, saveTraceability } from "./traceability_engine.js";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 import fs from 'fs';
 import path from 'path';
 

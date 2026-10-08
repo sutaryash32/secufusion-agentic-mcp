@@ -1,0 +1,655 @@
+// @ts-nocheck
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import fs from "fs";
+import path from "path";
+import { execSync, execFileSync } from "child_process";
+import { fileURLToPath } from "url";
+import { Requirement, loadRequirement, saveRequirement, validateStateTransition, generateConfirmedSpecification } from "./requirement_manager.js";
+import { discoverTests, executeTests, ingestTestResults, loadTestResults, correlateTestFailure } from "./test_engine.js";
+import { loadPlan, savePlan, validatePlan, ImplementationPlan } from "./implementation_plan.js";
+import { generateTestObligations, aggregateValidation } from "./validation_engine.js";
+import { recordExperience, loadExperience, getEngineeringExperience, validateExperience, getExperienceContext, findExperienceConflicts, findRepeatedOutcomes, markExperienceStale, retireExperience, linkExperience, getLearningFeedback } from "./experience_manager.js";
+import { loadRequirement } from "./requirement_manager.js";
+import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
+import { investigateEntity, investigateRelationship } from "./investigation_engine.js";
+import { loadSnapshot, saveSnapshot, getRegressionContext, recordRegressionObservation, compareRepositorySnapshots, detectArchitectureDrift, detectRequirementDrift, detectTraceabilityDrift, getChangeHistoryContext, findRegressionTests, analyzeRegressionRisk } from "./regression_engine.js";
+import { discoverUIPatterns, generateStaticUIReference, getDesignContext } from "./ui_intelligence.js";
+import { buildGraph } from "./graph_builder.js";
+import { parseDomainModels, DomainModel } from "./parsers/domain.js";
+import { parseApiEndpoints, ApiEndpoint } from "./parsers/api.js";
+import { parseEventTopics, EventTopic } from "./parsers/events.js";
+import { inferPatterns } from "./parsers/patterns.js";
+import { parseFrontend, FrontendComponent } from "./parsers/frontend.js";
+import { inspectWorkspaceRepositories, getWorkspaceConfig, getEvidenceCompleteness } from "./workspace_intelligence.js";
+import { parseExtension, ExtensionComponent } from "./parsers/extension.js";
+import { parseNodeApis, NodeApi } from "./parsers/backend-node.js";
+import { parseInfra, InfraResource } from "./parsers/infra.js";
+import { parseDatabase, DatabaseEntity } from "./parsers/database.js";
+import { parseSecurity, SecurityContext } from "./parsers/security.js";
+import { parseConfig, parseExternalEnv, ConfigurationFile } from "./parsers/config.js";
+import chokidar from "chokidar";
+import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
+import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
+import {
+  PhilosophyVerdict, PhilosophyHint, PhilosophyRubric,
+  ClassificationVerdict, ClassificationHint, ClassificationRubric,
+  RequirementVerdict, RequirementHint, RequirementRubric,
+  PlanVerdict, PlanHint, PlanRubric,
+  ReviewVerdict, ReviewHint, ReviewRubric,
+} from "./verdicts.js";
+import { STATE_FILE, REJECTED_FILE, TOKEN_FILE, argv, rootFlag, ROOT, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, getCurrentBranch, loadMigrationSpec, getMigrationContextForService, getNextMigrationVersion, getMigrationGaps, findFilesRecursive, compressCode, appendTelemetry, specEvidence, textResult, INTENTS_DIR, TASKS_DIR, CLASSIFICATIONS_DIR, REGISTRY_FILE, slugify, nextIntentNumber, parseIntentFrontmatter, resolveTaskFolder, generateNewTaskFolder, readRegistry, writeRegistry, upsertRegistry, STOP_WORDS, extractSymptomWords, levenshteinClose, buildScopeText, getEcosystemRoot, getDnaPath, ensureDnaFile, readDna, writeDna, VALID_EXTENSIONS, getAllSourceFiles, getPolyRepoSourceFiles, generateMigrationSpec, performFullExtraction } from "./shared.js";
+
+export function registerSpecTools(server: any): void {
+
+
+
+server.tool(
+  "manage_requirement",
+  "Manages the structured lifecycle of a requirement, including clarification state and confirmation.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    id: z.string().describe("Stable requirement identifier (e.g. '2847' or 'req-123')."),
+    action: z.enum(["create", "update", "read", "add_clarification", "resolve_clarification", "confirm", "generate_spec", "assess"]).describe("Action to perform on the requirement. 'assess' asks the LLM whether the requirement is READY; status=CONFIRMED is only accepted after a fresh READY assessment."),
+    raw_request: z.string().optional(),
+    title: z.string().optional(),
+    status: z.enum(["RAW", "UNDERSTOOD", "INVESTIGATING", "CLARIFICATION_REQUIRED", "CONFIRMED", "BLOCKED", "SUPERSEDED"]).optional(),
+    // Clarification specifics
+    clarification_id: z.string().optional(),
+    topic: z.string().optional(),
+    issue: z.string().optional(),
+    severity: z.enum(["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+    blocking: z.boolean().optional(),
+    question: z.string().optional(),
+    answer: z.string().optional(),
+    decision: z.string().optional(),
+    // Arrays and updates
+    facts: z.array(z.string()).optional(),
+    unknowns: z.array(z.string()).optional(),
+    blockers: z.array(z.string()).optional(),
+    scope: z.string().optional(),
+    actors: z.array(z.string()).optional(),
+    tenancy: z.string().optional(),
+    authorization: z.string().optional(),
+    business_rules: z.array(z.string()).optional(),
+    data_lifecycle: z.string().optional(),
+    acceptance_criteria: z.array(z.string()).optional(),
+    constraints: z.array(z.string()).optional(),
+    decisions: z.array(z.string()).optional(),
+    judgment: judgmentParam
+  },
+  async (args) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(args.workspace_root);
+        const wsRoot = getWorkspaceRoot();
+        let req = loadRequirement(ecosystemRoot, args.id);
+        // Everything an assessment depends on; if it changes, the assessment is stale.
+        const reqFingerprint = (r: any) => hashOf({
+            raw_request: r.raw_request, scope: r.scope, actors: r.actors, tenancy: r.tenancy,
+            authorization: r.authorization, business_rules: r.business_rules, data_lifecycle: r.data_lifecycle,
+            acceptance_criteria: r.acceptance_criteria, constraints: r.constraints, facts: r.facts,
+            unknowns: r.unknowns, decisions: r.decisions, blockers: r.blockers,
+            clarifications: (r.clarification_questions || []).map((c: any) => [c.id, c.state, c.answer]),
+        });
+        
+        if (args.action === "create") {
+            if (req) return { content: [{ type: "text", text: `Requirement ${args.id} already exists.` }] };
+            req = {
+                id: args.id,
+                title: args.title || "Untitled",
+                raw_request: args.raw_request,
+                status: args.status || "RAW",
+                clarification_questions: []
+            };
+            saveRequirement(ecosystemRoot, req);
+            return { content: [{ type: "text", text: `Requirement ${args.id} created successfully.` }] };
+        }
+        
+        if (!req) return { content: [{ type: "text", text: `Requirement ${args.id} not found.` }], isError: true };
+
+        if (args.action === "read") {
+            return { content: [{ type: "text", text: JSON.stringify(req, null, 2) }] };
+        }
+
+        if (args.action === "assess") {
+            const outcome = await judge(server, wsRoot, {
+                kind: "requirement",
+                subject: args.id,
+                role: "Requirement Analyst (decides whether a requirement is specified well enough to plan against)",
+                rubric: RequirementRubric,
+                evidence: { requirement: req, project: specEvidence(wsRoot) },
+                schema: RequirementVerdict,
+                schemaHint: RequirementHint,
+                supplied: args.judgment,
+                reinvoke: "manage_requirement (action=assess)",
+            });
+            if (outcome.status !== "ok") return { ...(outcome.status === "invalid" ? { isError: true } : {}), content: [{ type: "text", text: outcome.text }] };
+            const rv = outcome.verdict;
+            for (const m of rv.missing) {
+                const cid = `Q-${hashOf([m.topic, m.question]).slice(0, 6)}`;
+                if (!req.clarification_questions.some((c) => c.id === cid)) {
+                    req.clarification_questions.push({
+                        id: cid, topic: m.topic, issue: m.issue, state: "OPEN", evidence: [],
+                        severity: m.severity as any, blocking: m.blocking, question: m.question, created_at: new Date().toISOString(),
+                    });
+                }
+            }
+            if (rv.verdict !== "READY" && req.status === "INVESTIGATING") req.status = "CLARIFICATION_REQUIRED";
+            saveRequirement(ecosystemRoot, req);
+            // Bind the verdict to the exact content it judged (after clarifications were added),
+            // so any later edit makes it stale and forces a re-assessment.
+            const stored = loadJudgment<any>(wsRoot, args.id, "requirement");
+            if (stored) {
+                stored.evidence_hash = reqFingerprint(req);
+                fs.writeFileSync(path.join(wsRoot, ".secufusion", "judgments", args.id.replace(/[^a-zA-Z0-9._-]/g, "_"), "requirement.json"), JSON.stringify(stored, null, 2));
+            }
+            if (rv.verdict !== "READY") recordGate(wsRoot, args.id, "requirement", false, outcome.source, rv.summary);
+            return { content: [{ type: "text", text:
+                `${rv.verdict === "READY" ? "✅" : "❓"} Requirement ${args.id}: ${rv.verdict} (judged by ${outcome.source})\n${rv.summary}\n` +
+                (rv.missing.length ? `\nOpen questions (added as clarifications):\n${rv.missing.map((m) => `- [${m.severity}${m.blocking ? ", blocking" : ""}] ${m.question}`).join("\n")}\n` : "") +
+                (rv.verdict === "READY"
+                    ? `\nNext: manage_requirement action=update status=CONFIRMED (requirement must be INVESTIGATING first).`
+                    : `\nAnswer these with action=resolve_clarification, then assess again.`) }] };
+        }
+
+        if (args.action === "update") {
+            if (args.title) req.title = args.title;
+            if (args.facts) req.facts = args.facts;
+            if (args.unknowns) req.unknowns = args.unknowns;
+            if (args.blockers) req.blockers = args.blockers;
+            if (args.scope) req.scope = args.scope;
+            if (args.actors) req.actors = args.actors;
+            if (args.tenancy) req.tenancy = args.tenancy;
+            if (args.authorization) req.authorization = args.authorization;
+            if (args.business_rules) req.business_rules = args.business_rules;
+            if (args.data_lifecycle) req.data_lifecycle = args.data_lifecycle;
+            if (args.acceptance_criteria) req.acceptance_criteria = args.acceptance_criteria;
+            if (args.constraints) req.constraints = args.constraints;
+            if (args.decisions) req.decisions = args.decisions;
+
+            if (args.status) {
+                validateStateTransition(req.status, args.status as any, req);
+                if (args.status === "CONFIRMED") {
+                    const assessed = loadJudgment<any>(wsRoot, args.id, "requirement");
+                    if (!assessed || assessed.verdict.verdict !== "READY") {
+                        return { isError: true, content: [{ type: "text", text: `⛔ SPEC GATE: ${args.id} cannot be CONFIRMED without a READY assessment. Run manage_requirement action=assess first.` }] };
+                    }
+                    if (assessed.evidence_hash !== reqFingerprint(req)) {
+                        return { isError: true, content: [{ type: "text", text: `⛔ SPEC GATE: ${args.id} changed after it was assessed. Run manage_requirement action=assess again.` }] };
+                    }
+                    recordGate(wsRoot, args.id, "requirement", true, assessed.source, assessed.verdict.summary);
+                } else {
+                    recordGate(wsRoot, args.id, "requirement", false, "status", `status is ${args.status}`);
+                }
+                req.status = args.status as any;
+            }
+            
+            saveRequirement(ecosystemRoot, req);
+            return { content: [{ type: "text", text: `Requirement ${args.id} updated.` }] };
+        }
+
+        if (args.action === "add_clarification") {
+            if (!args.clarification_id || !args.topic || !args.issue || !args.question) {
+                return { content: [{ type: "text", text: "Missing clarification fields." }], isError: true };
+            }
+            req.clarification_questions.push({
+                id: args.clarification_id,
+                topic: args.topic,
+                issue: args.issue,
+                state: "OPEN",
+                evidence: [],
+                severity: (args.severity as any) || "MEDIUM",
+                blocking: args.blocking || false,
+                question: args.question,
+                created_at: new Date().toISOString()
+            });
+            saveRequirement(ecosystemRoot, req);
+            return { content: [{ type: "text", text: `Clarification ${args.clarification_id} added.` }] };
+        }
+
+        if (args.action === "resolve_clarification") {
+            const c = req.clarification_questions.find(q => q.id === args.clarification_id);
+            if (!c) return { content: [{ type: "text", text: `Clarification not found.` }], isError: true };
+            c.state = "RESOLVED";
+            c.answer = args.answer;
+            c.decision = args.decision;
+            c.resolved_at = new Date().toISOString();
+            if (args.decision) {
+                if (!req.decisions) req.decisions = [];
+                req.decisions.push(args.decision);
+            }
+            saveRequirement(ecosystemRoot, req);
+            return { content: [{ type: "text", text: `Clarification ${args.clarification_id} resolved.` }] };
+        }
+
+        if (args.action === "generate_spec") {
+            const spec = generateConfirmedSpecification(req);
+            return { content: [{ type: "text", text: spec }] };
+        }
+
+        return { content: [{ type: "text", text: `Unknown action ${args.action}` }], isError: true };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+
+server.tool(
+  "create_traceability_link",
+  "Explicitly creates a traceability link between two nodes in the graph.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    source: z.string().describe("Source node ID (e.g. 'REQUIREMENT:BM-RET-1')"),
+    target: z.string().describe("Target node ID (e.g. 'CLASS:RetentionPolicy')"),
+    type: z.string().describe("Relationship type (e.g. 'IMPLEMENTED_BY', 'AFFECTS')"),
+    provenance: z.enum(["DIRECT", "INFERRED", "USER_CONFIRMED", "HISTORICAL", "UNKNOWN"]),
+    confidence: z.enum(["CONFIRMED", "SUPPORTED", "INFERRED", "CONFLICT", "UNKNOWN", "STALE"])
+  },
+  async ({ workspace_root, source, target, type, provenance, confidence }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const link = addTraceabilityLink(ecosystemRoot, source, target, type, provenance, confidence);
+        return { content: [{ type: "text", text: `Traceability link created: ${JSON.stringify(link)}` }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  "trace_requirement",
+  "Traces a requirement forward or an implementation backward to find linked artifacts.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    node_id: z.string().describe("The node ID to start tracing from (e.g. 'REQUIREMENT:BM-RET-1' or 'CLASS:EventEntity')"),
+    direction: z.enum(["FORWARD", "REVERSE"]).describe("Direction to trace"),
+    depth: z.number().optional().describe("Maximum traversal depth")
+  },
+  async ({ workspace_root, node_id, direction, depth }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const dnaPath = getDnaPath(ecosystemRoot);
+        if (!fs.existsSync(dnaPath)) return { content: [{ type: "text", text: "No DNA graph found." }] };
+        const dna = JSON.parse(fs.readFileSync(dnaPath, "utf-8"));
+        if (!dna.graph) return { content: [{ type: "text", text: "No graph in DNA." }] };
+        
+        const edges = loadTraceability(ecosystemRoot);
+        const res = direction === "FORWARD" 
+            ? traceForward(dna.graph, edges, node_id, depth || 3)
+            : traceReverse(dna.graph, edges, node_id, depth || 3);
+            
+        return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  "find_traceability_gaps",
+  "Finds gaps in traceability mapping (e.g. requirements without implementation).",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace")
+  },
+  async ({ workspace_root }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const dnaPath = getDnaPath(ecosystemRoot);
+        if (!fs.existsSync(dnaPath)) return { content: [{ type: "text", text: "No DNA graph found." }] };
+        const dna = JSON.parse(fs.readFileSync(dnaPath, "utf-8"));
+        
+        const edges = loadTraceability(ecosystemRoot);
+        const gaps = findTraceabilityGaps(ecosystemRoot, dna.graph || { nodes: [], edges: [] }, edges);
+        
+        return { content: [{ type: "text", text: JSON.stringify(gaps, null, 2) }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+
+server.tool(
+  "manage_implementation_plan",
+  "Creates, retrieves, or updates an implementation plan.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    id: z.string().describe("Plan ID"),
+    requirement_id: z.string().optional().describe("Associated requirement ID"),
+    action: z.enum(["create", "get", "update"]),
+    status: z.enum(["DRAFT", "VALIDATED", "IMPLEMENTING", "VALIDATING", "REVIEWED", "COMPLETED", "BLOCKED"]).optional(),
+    summary: z.string().optional(),
+    affected_services: z.array(z.string()).optional(),
+    affected_files: z.array(z.string()).optional(),
+    api_changes: z.array(z.string()).optional(),
+    database_changes: z.array(z.string()).optional(),
+    event_changes: z.array(z.string()).optional(),
+    frontend_changes: z.array(z.string()).optional(),
+    extension_changes: z.array(z.string()).optional(),
+    security_implications: z.array(z.string()).optional(),
+    implementation_steps: z.array(z.string()).optional(),
+    test_obligations: z.array(z.string()).optional(),
+    validation_requirements: z.array(z.string()).optional(),
+    traceability_requirements: z.array(z.string()).optional(),
+    risks: z.array(z.string()).optional(),
+    assumptions: z.array(z.string()).optional(),
+    unknowns: z.array(z.string()).optional(),
+    blockers: z.array(z.string()).optional()
+  },
+  async (args) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(args.workspace_root);
+        let plan = loadPlan(ecosystemRoot, args.id);
+        
+        if (args.action === "get") {
+            if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+            return { content: [{ type: "text", text: JSON.stringify(plan, null, 2) }] };
+        }
+        
+        if (args.action === "create") {
+            if (plan) return { content: [{ type: "text", text: "Plan already exists." }], isError: true };
+            if (!args.requirement_id) return { content: [{ type: "text", text: "⛔ A plan must reference the requirement_id it implements." }], isError: true };
+            const planGate = requireGates(getWorkspaceRoot(), args.requirement_id, ["philosophy", "intent", "classification", "requirement"], "create a plan");
+            if (planGate) return { content: [{ type: "text", text: planGate }], isError: true };
+            plan = {
+                id: args.id,
+                requirement_id: args.requirement_id || "",
+                status: args.status || "DRAFT",
+                summary: args.summary || "",
+                affected_services: args.affected_services || [],
+                affected_files: args.affected_files || [],
+                api_changes: args.api_changes || [],
+                database_changes: args.database_changes || [],
+                event_changes: args.event_changes || [],
+                frontend_changes: args.frontend_changes || [],
+                extension_changes: args.extension_changes || [],
+                security_implications: args.security_implications || [],
+                implementation_steps: args.implementation_steps || [],
+                test_obligations: args.test_obligations || [],
+                validation_requirements: args.validation_requirements || [],
+                traceability_requirements: args.traceability_requirements || [],
+                risks: args.risks || [],
+                assumptions: args.assumptions || [],
+                unknowns: args.unknowns || [],
+                blockers: args.blockers || [],
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                snapshot_id: "LATEST"
+            };
+            savePlan(ecosystemRoot, plan);
+            return { content: [{ type: "text", text: "Plan created." }] };
+        }
+        
+        if (args.action === "update") {
+            if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+            if (args.status) plan.status = args.status as any;
+            if (args.summary) plan.summary = args.summary;
+            if (args.affected_services) plan.affected_services = args.affected_services;
+            if (args.affected_files) plan.affected_files = args.affected_files;
+            if (args.api_changes) plan.api_changes = args.api_changes;
+            if (args.database_changes) plan.database_changes = args.database_changes;
+            if (args.event_changes) plan.event_changes = args.event_changes;
+            if (args.frontend_changes) plan.frontend_changes = args.frontend_changes;
+            if (args.extension_changes) plan.extension_changes = args.extension_changes;
+            if (args.security_implications) plan.security_implications = args.security_implications;
+            if (args.implementation_steps) plan.implementation_steps = args.implementation_steps;
+            if (args.test_obligations) plan.test_obligations = args.test_obligations;
+            if (args.validation_requirements) plan.validation_requirements = args.validation_requirements;
+            if (args.traceability_requirements) plan.traceability_requirements = args.traceability_requirements;
+            if (args.risks) plan.risks = args.risks;
+            if (args.assumptions) plan.assumptions = args.assumptions;
+            if (args.unknowns) plan.unknowns = args.unknowns;
+            if (args.blockers) plan.blockers = args.blockers;
+            
+            savePlan(ecosystemRoot, plan);
+            return { content: [{ type: "text", text: "Plan updated." }] };
+        }
+        
+        return { content: [{ type: "text", text: "Unknown action." }], isError: true };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  "validate_implementation_plan",
+  "Validates a plan before execution: deterministic checks (requirement CONFIRMED, staleness, test obligations, blockers) plus an LLM judgment that every acceptance criterion is covered by a step and a test, with no scope creep or unconfirmed destructive operations. Passing records the 'plan' gate.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    plan_id: z.string().describe("Plan ID"),
+    judgment: judgmentParam
+  },
+  async ({ workspace_root, plan_id, judgment }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const plan = loadPlan(ecosystemRoot, plan_id);
+        if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+        
+        const errors = validatePlan(ecosystemRoot, plan);
+        
+        // Aggregate Validation
+        let reqStatus = "UNKNOWN";
+        const req = loadRequirement(ecosystemRoot, plan.requirement_id);
+        if (req) reqStatus = req.status;
+
+        const dnaPath = getDnaPath(ecosystemRoot);
+        let graph = { nodes: [], edges: [] };
+        if (fs.existsSync(dnaPath)) {
+            graph = JSON.parse(fs.readFileSync(dnaPath, "utf-8")).graph || graph;
+        }
+
+        const edges = loadTraceability(ecosystemRoot);
+        const gaps = findTraceabilityGaps(ecosystemRoot, graph as any, edges);
+        
+        const hasTests = plan.test_obligations.length > 0;
+        const hasSecurityUnknowns = plan.unknowns.some(u => u.toLowerCase().includes("security") || u.toLowerCase().includes("auth"));
+
+        const testResults = loadTestResults(ecosystemRoot);
+        const validation = aggregateValidation(reqStatus, errors, plan.test_obligations, testResults, gaps, hasSecurityUnknowns);
+
+        const wsRoot = getWorkspaceRoot();
+        const outcome = await judge(server, wsRoot, {
+            kind: "plan",
+            subject: plan.requirement_id || plan_id,
+            role: "Plan Reviewer (checks an implementation plan against the confirmed requirement before any code is written)",
+            rubric: PlanRubric,
+            evidence: {
+                requirement: req,
+                plan,
+                deterministic_errors: errors,
+                traceability_gaps: gaps,
+                project: specEvidence(wsRoot),
+            },
+            schema: PlanVerdict,
+            schemaHint: PlanHint,
+            supplied: judgment,
+            reinvoke: "validate_implementation_plan",
+        });
+        if (outcome.status !== "ok") return { ...(outcome.status === "invalid" ? { isError: true } : {}), content: [{ type: "text", text: outcome.text }] };
+
+        const pv = outcome.verdict;
+        const passed = pv.verdict === "APPROVED" && errors.length === 0;
+        if (plan.requirement_id) {
+            recordGate(wsRoot, plan.requirement_id, "plan", passed, outcome.source,
+                passed ? pv.summary : `${pv.verdict}${errors.length ? `; ${errors.join(", ")}` : ""}`);
+        }
+        if (passed && plan.status === "DRAFT") { plan.status = "VALIDATED"; savePlan(ecosystemRoot, plan); }
+
+        return { content: [{ type: "text", text: JSON.stringify({ ...validation, llm_review: { judged_by: outcome.source, ...pv }, plan_gate: passed ? "PASSED" : "FAILED" }, null, 2) }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  "verify_against_spec",
+  "Adversarial final review. Judges the implemented change against the task's acceptance criteria, the validated plan, recorded test results and the golden rules. " +
+  "Every criterion must be MET with concrete evidence (file:line or test name) for the 'review' gate to pass; manage_task action=complete requires it.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    work_item_id: z.string().describe("Work item / requirement id the change implements."),
+    diff_summary: z.string().optional().describe("Optional: summary or excerpt of the diff, in addition to the git diff stat the server collects."),
+    judgment: judgmentParam
+  },
+  async ({ workspace_root, work_item_id, diff_summary, judgment }) => {
+    try {
+        const wsRoot = getWorkspaceRoot();
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const gateError = requireGates(wsRoot, work_item_id, ["philosophy", "intent", "classification", "requirement", "plan"], "verify the change");
+        if (gateError) return textResult(gateError, true);
+
+        const taskDir = resolveTaskFolder(work_item_id, resolve(TASKS_DIR));
+        const taskSpec = taskDir ? readJson(path.join(taskDir, "spec.json")) : null;
+        const filesTouched = taskDir ? readJson(path.join(taskDir, "files-touched.json")) : null;
+        const req = loadRequirement(ecosystemRoot, work_item_id);
+
+        let plan: any = null;
+        const plansDir = path.join(ecosystemRoot, ".secufusion", "plans");
+        if (fs.existsSync(plansDir)) {
+            for (const f of fs.readdirSync(plansDir).filter((n: string) => n.endsWith(".json"))) {
+                const p = loadPlan(ecosystemRoot, f.replace(/\.json$/, ""));
+                if (p && p.requirement_id === work_item_id) { plan = p; break; }
+            }
+        }
+
+        let gitStat = "";
+        try { gitStat = execSync("git diff --stat HEAD", { cwd: wsRoot, stdio: "pipe" }).toString().slice(0, 4000); } catch { /* not a repo */ }
+
+        const criteria = [
+            ...(req?.acceptance_criteria ?? []),
+            ...(((taskSpec as any)?.acceptance_criteria as string[]) ?? []),
+        ].filter((c, i, a) => a.indexOf(c) === i);
+        if (criteria.length === 0) {
+            return textResult(`⛔ No acceptance criteria found for ${work_item_id} (requirement or task spec). A change cannot be verified against an empty spec.`, true);
+        }
+
+        const outcome = await judge(server, wsRoot, {
+            kind: "review",
+            subject: work_item_id,
+            role: "Adversarial Spec Verifier (tries to prove the change does NOT meet its spec)",
+            rubric: ReviewRubric,
+            evidence: {
+                acceptance_criteria: criteria,
+                plan,
+                files_touched: filesTouched,
+                git_diff_stat: gitStat,
+                diff_summary: diff_summary ?? null,
+                test_results: loadTestResults(ecosystemRoot),
+                project: specEvidence(wsRoot),
+                instruction: "Read the touched files yourself before judging; the evidence above lists where to look, not proof.",
+            },
+            schema: ReviewVerdict,
+            schemaHint: ReviewHint,
+            supplied: judgment,
+            reinvoke: "verify_against_spec",
+        });
+        if (outcome.status !== "ok") return { ...(outcome.status === "invalid" ? { isError: true } : {}), content: [{ type: "text", text: outcome.text }] };
+
+        const rv = outcome.verdict;
+        // The judgment must cover every criterion the spec has, not a convenient subset.
+        const judged = new Set(rv.criteria.map((c) => c.criterion.trim().toLowerCase()));
+        const unjudged = criteria.filter((c) => !judged.has(c.trim().toLowerCase()));
+        const passed = rv.verdict === "APPROVED" && unjudged.length === 0;
+        recordGate(wsRoot, work_item_id, "review", passed, outcome.source,
+            passed ? rv.summary : unjudged.length ? `${unjudged.length} criteria not judged` : rv.summary);
+
+        return textResult(
+            `${passed ? "✅" : "⛔"} Review ${passed ? "APPROVED" : "CHANGES REQUIRED"} — ${work_item_id} (judged by ${outcome.source})\n${rv.summary}\n\n` +
+            rv.criteria.map((c) => `- [${c.status}] ${c.criterion}${c.evidence.length ? `\n    evidence: ${c.evidence.join("; ")}` : ""}`).join("\n") +
+            (unjudged.length ? `\n\n⚠️ Criteria missing from the judgment (copy them verbatim):\n${unjudged.map((c) => `- ${c}`).join("\n")}` : "") +
+            (rv.out_of_scope_changes.length ? `\n\nOut-of-scope changes:\n${rv.out_of_scope_changes.map((c) => `- ${c}`).join("\n")}` : "") +
+            (rv.guardrail_violations.length ? `\n\nGuardrail violations:\n${rv.guardrail_violations.map((c) => `- ${c}`).join("\n")}` : "") +
+            (passed ? `\n\nNext: manage_task action=complete.` : `\n\nFix the gaps, then run verify_against_spec again.`)
+        );
+    } catch (e: any) {
+        return textResult(`Error: ${e.message}`, true);
+    }
+  }
+);
+
+
+server.tool(
+  "spec_status",
+  "Shows the spec-driven lifecycle ledger for a work item: which gates (philosophy → intent → classification → requirement → plan → review) have passed, who judged each, " +
+  "and exactly which tool to call next. Call this whenever unsure what the next step is, and at session start when resuming.",
+  { work_item_id: z.string().describe("Work item / requirement id.") },
+  async ({ work_item_id }) => {
+    const wsRoot = getWorkspaceRoot();
+    const ledger = readLedger(wsRoot, work_item_id);
+    const rows = PHASES.map((p) => {
+      const g = ledger.phases[p];
+      return g ? `${g.status === "PASSED" ? "✅" : "⛔"} ${p.padEnd(15)} ${g.source.padEnd(10)} ${g.summary}` : `⬜ ${p.padEnd(15)} not done`;
+    });
+    const next = nextPhase(wsRoot, work_item_id);
+    return textResult(
+        `## Spec status — ${work_item_id}\n\n${rows.join("\n")}\n\n` +
+        (next ? `**Next:** ${nextStepHint(next)}` : `**All gates passed.** manage_task action=complete is allowed.`)
+    );
+  }
+);
+
+
+server.tool(
+  "get_change_context",
+  "Retrieves the consolidated deterministic change context for the host LLM before it writes code.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    plan_id: z.string().describe("Plan ID")
+  },
+  async ({ workspace_root, plan_id }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const plan = loadPlan(ecosystemRoot, plan_id);
+        if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+        
+        const req = loadRequirement(ecosystemRoot, plan.requirement_id);
+        
+        const context = {
+            requirement: req ? { id: req.id, status: req.status, decisions: req.decisions } : null,
+            plan_summary: plan.summary,
+            affected_services: plan.affected_services,
+            affected_files: plan.affected_files,
+            blockers: plan.blockers,
+            unknowns: plan.unknowns,
+            test_obligations: plan.test_obligations
+        };
+        
+        return { content: [{ type: "text", text: JSON.stringify(context, null, 2) }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+
+
+server.tool(
+  "generate_test_obligations",
+  "Generates test obligations based on the plan changes.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    plan_id: z.string().describe("Plan ID")
+  },
+  async ({ workspace_root, plan_id }) => {
+    try {
+        const ecosystemRoot = getEcosystemRoot(workspace_root);
+        const plan = loadPlan(ecosystemRoot, plan_id);
+        if (!plan) return { content: [{ type: "text", text: "Plan not found." }], isError: true };
+        
+        const obligations = generateTestObligations(plan);
+        return { content: [{ type: "text", text: JSON.stringify(obligations, null, 2) }] };
+    } catch (e) {
+        return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  }
+);
+}

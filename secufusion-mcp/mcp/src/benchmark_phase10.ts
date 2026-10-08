@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 import { investigateEntity } from "./investigation_engine.js";
 
 function runBenchmark() {

@@ -5,7 +5,7 @@ import { generateTestObligations, aggregateValidation } from "./validation_engin
 import { discoverTests, executeTests, ingestTestResults, loadTestResults, correlateTestFailure, TestResult, saveTestResults } from "./test_engine.js";
 import { Requirement, saveRequirement } from "./requirement_manager.js";
 import { addTraceabilityLink, loadTraceability, saveTraceability, findTraceabilityGaps } from "./traceability_engine.js";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 
 const ecosystemRoot = "c:\\Users\\Yash\\Desktop\\mcp";
 

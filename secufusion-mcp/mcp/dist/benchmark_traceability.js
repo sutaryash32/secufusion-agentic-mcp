@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 import { addTraceabilityLink, traceForward, findTraceabilityGaps, loadTraceability, saveTraceability } from "./traceability_engine.js";
 import { saveRequirement } from "./requirement_manager.js";
 const ecosystemRoot = "c:\\Users\\Yash\\Desktop\\mcp";

@@ -3,7 +3,7 @@ import { generateTestObligations, aggregateValidation } from "./validation_engin
 import { recordExperience, loadExperience } from "./experience_manager.js";
 import { saveRequirement } from "./requirement_manager.js";
 import { saveTraceability } from "./traceability_engine.js";
-import { performFullExtraction } from "./server.js";
+import { performFullExtraction } from "./shared.js";
 import fs from 'fs';
 import path from 'path';
 const ecosystemRoot = "c:\\Users\\Yash\\Desktop\\mcp";
