@@ -29,7 +29,7 @@ export const THRESHOLDS = {
     MINOR_NOISE: 10,
     /** Token delta below this share means "same code, different layout". */
     FORMAT_TOKEN_DELTA: 0.05,
-    /** Below this share of non-identical lines, a large diff is just the same lines moved around. */
+    /** A diff is a pure reordering when the lines that exist on only one side are at most this share of the changed lines. */
     REORDER_LINE_DELTA: 0.05,
 };
 
@@ -383,18 +383,22 @@ function tokenDelta(a: string, b: string): number {
     return total === 0 ? 0 : delta / total;
 }
 
-/** Share of lines (ignoring surrounding whitespace) that are not matched one-for-one between old and new. */
-function lineDelta(a: string, b: string): number {
-    const count = (s: string) => {
+/**
+ * The lines that exist on only one side (multiset difference, ignoring surrounding whitespace).
+ * Everything the two versions share, in any order, is excluded, so the result describes the
+ * lines that genuinely differ and does not depend on how large the rest of the file is.
+ */
+function unmatchedLines(a: string, b: string): { removed: string[]; added: string[] } {
+    const count = (text: string) => {
         const m = new Map<string, number>();
-        for (const l of s.split(/\r?\n/)) { const t = l.trim(); if (t) m.set(t, (m.get(t) ?? 0) + 1); }
+        for (const l of text.split(/\r?\n/)) { const t = l.trim(); if (t) m.set(t, (m.get(t) ?? 0) + 1); }
         return m;
     };
     const ca = count(a), cb = count(b);
-    let delta = 0, total = 0;
-    for (const [t, n] of ca) { delta += Math.abs(n - (cb.get(t) ?? 0)); total += n; }
-    for (const [t, n] of cb) { if (!ca.has(t)) delta += n; total += n; }
-    return total === 0 ? 0 : delta / total;
+    const removed: string[] = [], added: string[] = [];
+    for (const [t, n] of ca) for (let i = 0; i < n - (cb.get(t) ?? 0); i++) removed.push(t);
+    for (const [t, n] of cb) for (let i = 0; i < n - (ca.get(t) ?? 0); i++) added.push(t);
+    return { removed, added };
 }
 
 function bomOf(buf: Buffer): "utf8" | "utf16le" | "utf16be" | null {
@@ -618,14 +622,16 @@ export function analyzeDiffQuality(workspaceRoot: string, opts: AnalyzeOptions =
                 });
             } else if (!cause && baseBuf && churn.semantic >= THRESHOLDS.MIN_CHURN && baseBuf.length <= THRESHOLDS.MAX_BYTES) {
                 const oldText = baseBuf.toString("utf-8"), newText = buf.toString("utf-8");
-                const lineMove = lineDelta(oldText, newText);
-                const delta = tokenDelta(oldText, newText);
-                if (lineMove <= THRESHOLDS.REORDER_LINE_DELTA) {
+                const { removed, added } = unmatchedLines(oldText, newText);
+                const unmatched = removed.length + added.length;
+                // Token comparison is limited to the lines that differ: pure additions/deletions have an empty side and never qualify.
+                const delta = removed.length > 0 && added.length > 0 ? tokenDelta(removed.join("\n"), added.join("\n")) : 1;
+                if (unmatched <= THRESHOLDS.REORDER_LINE_DELTA * churn.semantic) {
                     // The same lines, in a different order: moved code, not changed code.
                     fr.classifications.push("REORDERING");
                     fileFindings.push({
                         file: rel, category: "FORMATTING", finding: "REORDERING", classification: "REORDERING", severity: configChanged ? "INFO" : "MEDIUM",
-                        evidence: `${rel}: ${churn.semantic} lines differ in the diff, but ${((1 - lineMove) * 100).toFixed(1)}% of lines are identical to the original, just in a different order`,
+                        evidence: `${rel}: ${churn.semantic} lines differ in the diff, but all but ${unmatched} of them exist unchanged elsewhere in the file (same lines, different order)`,
                         expected: "existing order preserved unless re-ordering is the purpose of the change", actual: "lines reordered",
                         recommendation: "Unless sorting/reordering is the stated purpose, restore the original order and reapply only the intended changes.",
                     });
@@ -633,7 +639,7 @@ export function analyzeDiffQuality(workspaceRoot: string, opts: AnalyzeOptions =
                     fr.classifications.push("FORMAT_REWRITE");
                     fileFindings.push({
                         file: rel, category: "FORMATTING", finding: "FORMAT_REWRITE", classification: "FORMAT_REWRITE", severity: configChanged ? "INFO" : "HIGH",
-                        evidence: `${rel}: ${churn.semantic} lines changed but only ${(delta * 100).toFixed(1)}% of tokens differ (code re-wrapped/re-laid-out, not changed)`,
+                        evidence: `${rel}: ${churn.semantic} lines changed, but the removed and added lines contain the same code (only ${(delta * 100).toFixed(1)}% of tokens differ): re-wrapped/re-laid-out, not changed`,
                         expected: "only the intended change", actual: "formatter-style rewrite of existing code",
                         recommendation: configChanged ? "Looks tied to a formatting-config change; keep it in a separate commit." : restore,
                     });

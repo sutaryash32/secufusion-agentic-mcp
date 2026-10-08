@@ -314,6 +314,33 @@ const names = (r) => r.findings.map((f) => f.finding).join(",") || "none";
     commit(d3);
     put(d3, "a.ts", [L[5], ...L.filter((_, i) => i !== 5)].join("\n") + "\n");
     check("moving a single line is below the churn floor: no finding", !find(run(d3), "REORDERING"), names(run(d3)));
+    // Regression: ordinary additions to a large file are NOT reordering or a formatting rewrite.
+    // (Found by running the check on its own diff: share-of-whole-file made 60 new lines in a 750-line file look "95% identical".)
+    const big = Array.from({ length: 750 }, (_, i) => `export function handler${i}(request) { return process${i}(request); }`);
+    const d5 = repo();
+    put(d5, "big.ts", big.join("\n") + "\n");
+    commit(d5);
+    const addition = Array.from({ length: 70 }, (_, i) => `export const added${i} = compute(${i}, "new behaviour");`);
+    put(d5, "big.ts", [...big.slice(0, 400), ...addition, ...big.slice(400)].join("\n") + "\n");
+    const r5 = run(d5);
+    check("70 new lines added to a 750-line file: no REORDERING, no FORMAT_REWRITE, no findings", r5.findings.length === 0, names(r5) + JSON.stringify(r5.files[0].churn));
+    check("...and it is classified as a plain CODE_CHANGE", r5.files[0].classifications.includes("CODE_CHANGE") && !r5.files[0].classifications.includes("REORDERING"));
+    const d6 = repo();
+    put(d6, "big.ts", big.join("\n") + "\n");
+    commit(d6);
+    put(d6, "big.ts", [...big.slice(0, 300), ...big.slice(370)].join("\n") + "\n");
+    check("70 lines deleted from a 750-line file: no REORDERING, no FORMAT_REWRITE", run(d6).findings.length === 0, names(run(d6)));
+    const d7 = repo();
+    put(d7, "big.ts", big.join("\n") + "\n");
+    commit(d7);
+    put(d7, "big.ts", [...big.slice(0, 300), ...addition, ...big.slice(370)].join("\n") + "\n");
+    check("70 lines replaced by 70 different lines: a real change, not a rewrite", run(d7).findings.length === 0, names(run(d7)));
+    const d8 = repo();
+    put(d8, "big.ts", big.join("\n") + "\n");
+    commit(d8);
+    const moved = [...big.slice(0, 100), ...big.slice(300, 400), ...big.slice(100, 300), ...big.slice(400)];
+    put(d8, "big.ts", moved.join("\n") + "\n");
+    check("a 200-line block moved within a large file is still caught as REORDERING", !!find(run(d8), "REORDERING"), names(run(d8)));
     // scope
     const d4 = repo();
     put(d4, "src/Service.java", "a\n");
