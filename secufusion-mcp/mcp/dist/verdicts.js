@@ -83,6 +83,9 @@ export const PlanRubric = [
     "Check security_implications against tenant isolation and authorization rules in the project spec.",
     "APPROVED requires: all criteria covered, no unconfirmed destructive operation, no scope_creep, no open unknowns.",
     "deterministic_errors are hard failures already found by the server; do not APPROVE while any remain.",
+    "exploration.user_decisions are the user's answers: the plan must implement them exactly. A plan that contradicts or silently reinterprets one is REVISE.",
+    "If exploration.ui_reference is CONFIRMED, the plan needs a frontend step for each affected component and a test for the resulting behaviour. The reference is design intent, not a pixel spec.",
+    "If exploration.ui_impact is YES but ui_reference is not CONFIRMED or NOT_REQUIRED, REJECT: exploration is not finished.",
 ];
 // ── verify against spec (review) ───────────────────────────────────────────
 export const ReviewVerdict = z.object({
@@ -116,4 +119,7 @@ export const ReviewRubric = [
     "Check golden_rules (tenant isolation, no hardcoded URLs, migrations for entity changes, no blocking calls in Kafka listeners) against the changed files.",
     "test_results are recorded results; a criterion whose only evidence is a failing or missing test is not MET.",
     "APPROVED only when every criterion is MET and there are no violations.",
+    "exploration.user_decisions must be reflected in the implementation; an implementation that contradicts a recorded user decision is a guardrail violation.",
+    "If exploration.ui_reference is CONFIRMED, check the production UI follows its intent (terminology, structure, states). Do not require pixel-perfect matching; report divergence from the approved intent.",
+    "A UI reference is NOT_IMPLEMENTED until production code and a test exist; never count the static reference as evidence of implementation.",
 ];

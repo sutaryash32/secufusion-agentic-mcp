@@ -112,6 +112,15 @@ export function findTraceabilityGaps(ecosystemRoot: string, graph: GraphSnapshot
                     if (implementsEdges.length === 0) {
                         gaps.push({ type: "REQUIREMENT_WITHOUT_IMPLEMENTATION", id: reqIdStr });
                     }
+                    if (reqData.ui_impact?.status === "YES") {
+                        const ref = reqData.ui_reference;
+                        const linked = traceabilityEdges.some(e => e.source === reqIdStr && e.type === "HAS_UI_REFERENCE");
+                        if (!ref || (ref.status !== "CONFIRMED" && ref.status !== "NOT_REQUIRED")) {
+                            gaps.push({ type: "UI_REFERENCE_NOT_CONFIRMED", id: reqIdStr });
+                        } else if (ref.status === "CONFIRMED" && !linked) {
+                            gaps.push({ type: "UI_REFERENCE_NOT_LINKED", id: reqIdStr });
+                        }
+                    }
                 }
             } catch(e) {}
         }

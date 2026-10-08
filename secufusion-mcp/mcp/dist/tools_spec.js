@@ -6,11 +6,13 @@ import { loadRequirement, saveRequirement, validateStateTransition, generateConf
 import { loadTestResults } from "./test_engine.js";
 import { loadPlan, savePlan, validatePlan } from "./implementation_plan.js";
 import { generateTestObligations, aggregateValidation } from "./validation_engine.js";
+import { explorationSummary } from "./exploration.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
 import { RequirementVerdict, RequirementHint, RequirementRubric, PlanVerdict, PlanHint, PlanRubric, ReviewVerdict, ReviewHint, ReviewRubric, } from "./verdicts.js";
 import { getWorkspaceRoot, resolve, readJson, specEvidence, textResult, TASKS_DIR, resolveTaskFolder, getEcosystemRoot, getDnaPath } from "./shared.js";
+const PLAN_CREATED_HEADER = ["Plan created.", "", "Confirmed exploration this plan MUST honour (decisions are the user's, not yours to change):", ""].join(String.fromCharCode(10));
 export function registerSpecTools(server) {
     server.tool("manage_requirement", "Manages the structured lifecycle of a requirement, including clarification state and confirmation.", {
         workspace_root: z.string().describe("Root directory of the workspace"),
@@ -18,7 +20,7 @@ export function registerSpecTools(server) {
         action: z.enum(["create", "update", "read", "add_clarification", "resolve_clarification", "confirm", "generate_spec", "assess"]).describe("Action to perform on the requirement. 'assess' asks the LLM whether the requirement is READY; status=CONFIRMED is only accepted after a fresh READY assessment."),
         raw_request: z.string().optional(),
         title: z.string().optional(),
-        status: z.enum(["RAW", "UNDERSTOOD", "INVESTIGATING", "CLARIFICATION_REQUIRED", "CONFIRMED", "BLOCKED", "SUPERSEDED"]).optional(),
+        status: z.enum(["RAW", "UNDERSTOOD", "INVESTIGATING", "UI_DESIGN_REQUIRED", "USER_FEEDBACK_REQUIRED", "USER_DECISION_REQUIRED", "CLARIFICATION_REQUIRED", "CONFIRMED", "BLOCKED", "SUPERSEDED"]).optional(),
         // Clarification specifics
         clarification_id: z.string().optional(),
         topic: z.string().optional(),
@@ -54,6 +56,9 @@ export function registerSpecTools(server) {
                 acceptance_criteria: r.acceptance_criteria, constraints: r.constraints, facts: r.facts,
                 unknowns: r.unknowns, decisions: r.decisions, blockers: r.blockers,
                 clarifications: (r.clarification_questions || []).map((c) => [c.id, c.state, c.answer]),
+                user_decisions: (r.user_decisions || []).map((d) => [d.id, d.state, d.answer]),
+                ui_impact: r.ui_impact ? [r.ui_impact.status, r.ui_impact.affected_components] : null,
+                ui_reference: r.ui_reference ? [r.ui_reference.design_id, r.ui_reference.status, r.ui_reference.revision] : null,
             });
             if (args.action === "create") {
                 if (req)
@@ -330,7 +335,8 @@ export function registerSpecTools(server) {
                     snapshot_id: "LATEST"
                 };
                 savePlan(ecosystemRoot, plan);
-                return { content: [{ type: "text", text: "Plan created." }] };
+                const exploration = explorationSummary(ecosystemRoot, args.requirement_id);
+                return { content: [{ type: "text", text: PLAN_CREATED_HEADER + JSON.stringify(exploration, null, 2) }] };
             }
             if (args.action === "update") {
                 if (!plan)
@@ -415,6 +421,7 @@ export function registerSpecTools(server) {
                 rubric: PlanRubric,
                 evidence: {
                     requirement: req,
+                    exploration: explorationSummary(ecosystemRoot, plan.requirement_id),
                     plan,
                     deterministic_errors: errors,
                     traceability_gaps: gaps,
@@ -489,6 +496,7 @@ export function registerSpecTools(server) {
                 rubric: ReviewRubric,
                 evidence: {
                     acceptance_criteria: criteria,
+                    exploration: explorationSummary(ecosystemRoot, work_item_id),
                     plan,
                     files_touched: filesTouched,
                     git_diff_stat: gitStat,

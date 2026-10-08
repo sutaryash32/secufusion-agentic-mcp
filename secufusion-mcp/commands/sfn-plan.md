@@ -159,6 +159,11 @@ Wait for explicit approval.
 
 Read `.agents/planner.md` for Planner Persona instructions.
 
+0. **Already explored?** If `/sfn-explore` confirmed this requirement (`manage_exploration action=status` shows `CONFIRMED`),
+   do NOT redo steps 1-2: consume it. Read its `decisions`, `user_decisions` and `ui_reference` (the plan response shows them) and
+   implement exactly what the user decided. Never reinterpret a recorded decision; if one looks wrong, stop and tell the user.
+   A CONFIRMED UI reference needs a frontend step per affected component and a test for the behaviour; it is design intent, not a pixel spec.
+   If exploration is not CONFIRMED, send the user to `/sfn-explore` instead of exploring here.
 1. **Requirement.** `manage_requirement action=create` (id = the work item id), move it to `INVESTIGATING`, and fill
    `scope`, `actors`, `tenancy`, `authorization`, `business_rules`, `data_lifecycle`, `acceptance_criteria`
    (Given/When/Then, testable), `facts` and `decisions` from the DNA and the conversation.

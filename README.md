@@ -177,6 +177,31 @@ Every judgment is stored in `.secufusion/judgments/<id>/<kind>.json` (source, ve
 
 ---
 
+## Interactive `/sfn-explore` (Phase 12)
+
+`/sfn-explore <ticket>` investigates, shows evidence, builds a UI reference when the UI is affected, asks **you** for every decision only you can make, and only then confirms the requirement and hands off to `/sfn-plan`. It never edits production code.
+
+```
+RAW → UNDERSTOOD → INVESTIGATING → [UI_DESIGN_REQUIRED → USER_FEEDBACK_REQUIRED] → [CLARIFICATION_REQUIRED] → CONFIRMED
+                                    USER_DECISION_REQUIRED  (entered whenever a decision is open; exploration must stop)
+```
+
+| Tool | Role |
+|---|---|
+| `manage_exploration` | `detect_ui_impact`, `set_ui_impact`, `ask_user_decision`, `answer_user_decision`, `record_ui_feedback`, `status` |
+| `get_design_context`, `discover_ui_patterns` | evidence about existing UI (previously library-only, now exposed) |
+| `generate_static_ui_reference` | writes `.secufusion/designs/<id>/{index.html,metadata.json,revisions/}`: `REFERENCE_ONLY`, `NOT_IMPLEMENTED` |
+
+- **`CONFIRMED` is enforced by the server** (`explorationReadiness`): no open user decisions, no blockers, UI impact assessed, and for UI-impacting changes a reference the user approved (or explicitly waived).
+- **The user's words are required.** Answering a decision or approving a reference needs `user_statement`. This stops the happy path of the model answering for the user; it cannot prove the quote is genuine, so review the transcript for destructive decisions.
+- **References are inert.** Size-capped, no network/storage/external assets/iframes, served with a restrictive CSP and a visible banner. They can only be written under `.secufusion/designs/`.
+- **Traceability:** requirement → design (`HAS_UI_REFERENCE`) → components, and requirement → each user decision. `/sfn-plan` and `verify_against_spec` receive the decisions and design, and `find_traceability_gaps` flags unconfirmed or unlinked references.
+- The MCP stays deterministic here: it records, validates and refuses; the host LLM investigates and converses.
+
+Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP suites).
+
+---
+
 ## Installation
 
 [![Claude Marketplace](https://img.shields.io/badge/Download_from-Claude_Marketplace-blue?logo=anthropic)](https://claude.ai/marketplace/secufusion-mcp)

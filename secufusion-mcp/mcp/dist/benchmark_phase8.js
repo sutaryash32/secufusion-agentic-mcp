@@ -37,7 +37,7 @@ function runBenchmark() {
         console.log(`Discovered Tenant Patterns: ${tenantPatterns.length}`);
         tenantPatterns.forEach(p => console.log(` - ${p.name} (Source: ${p.evidence.location.filePath})`));
         const retentionHtml = `<html><body><h1>Retention Policy</h1><p>Set retention here</p></body></html>`;
-        const retentionPath = generateStaticUIReference(ecosystemRoot, "DESIGN-RETENTION", retentionHtml, { status: "DRAFT" });
+        const retentionPath = generateStaticUIReference(ecosystemRoot, "DESIGN-RETENTION", retentionHtml, { requirementId: "REQ-RETENTION" });
         console.log(`Generated HTML at: ${retentionPath}`);
         const retentionContent = fs.readFileSync(retentionPath, "utf-8");
         if (retentionContent.includes("REFERENCE_ONLY"))
@@ -51,17 +51,17 @@ function runBenchmark() {
         console.log(`Discovered Confirmation Patterns: ${deletePatterns.length}`);
         deletePatterns.forEach(p => console.log(` - ${p.name} (Source: ${p.evidence.location.filePath})`));
         const deletionHtml = `<html><body><h1>Delete User</h1></body></html>`;
-        const deletionPath = generateStaticUIReference(ecosystemRoot, "DESIGN-DELETE-USER", deletionHtml, { status: "USER_REVIEW_REQUIRED" });
+        const deletionPath = generateStaticUIReference(ecosystemRoot, "DESIGN-DELETE-USER", deletionHtml, { requirementId: "REQ-DELETE-USER" });
         console.log(`Generated HTML at: ${deletionPath}`);
         const deletionContent = fs.readFileSync(deletionPath, "utf-8");
         if (deletionContent.includes("REFERENCE_ONLY"))
             console.log("SUCCESS: Deletion HTML contains REFERENCE_ONLY marker.");
         // --- Benchmark 3: Validate Metadata ---
         console.log("\n--- 3. DESIGN METADATA VALIDATION ---");
-        const metaPath = path.join(ecosystemRoot, ".secufusion", "designs", "DESIGN-DELETE-USER", "design.json");
+        const metaPath = path.join(ecosystemRoot, ".secufusion", "designs", "DESIGN-DELETE-USER", "metadata.json");
         const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
         console.log(`Design Status: ${meta.status}`);
-        console.log(`Design ID: ${meta.design_id}`);
+        console.log(`Design ID: ${meta.designId}`);
         console.log("\n=== BENCHMARK COMPLETE (ALL PASS) ===");
     }
     catch (e) {

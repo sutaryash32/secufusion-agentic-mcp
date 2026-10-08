@@ -17,14 +17,72 @@ export function saveRequirement(ecosystemRoot, req) {
     const p = getRequirementPath(ecosystemRoot, req.id);
     fs.writeFileSync(p, JSON.stringify(req, null, 2));
 }
+const ACTIVE_STATES = ["INVESTIGATING", "UI_DESIGN_REQUIRED", "USER_FEEDBACK_REQUIRED", "USER_DECISION_REQUIRED", "CLARIFICATION_REQUIRED"];
+/**
+ * Deterministic answer to "may this requirement be CONFIRMED?". It never decides
+ * anything itself: it only reports which recorded facts are still missing.
+ */
+export function explorationReadiness(req) {
+    const blockers = [];
+    let next = "";
+    const note = (b, n) => { blockers.push(b); if (!next)
+        next = n; };
+    const open = (req.user_decisions || []).filter(d => d.state === "OPEN");
+    if (open.length > 0) {
+        note(`USER_DECISION_REQUIRED: ${open.length} unanswered (${open.map(d => d.id).join(", ")})`, "Ask the user the open decision(s) and STOP until they answer (manage_exploration answer_user_decision).");
+    }
+    if (req.blockers && req.blockers.length > 0) {
+        note(`Active blockers: ${req.blockers.join("; ")}`, "Resolve the blockers or ask the user.");
+    }
+    const openClar = (req.clarification_questions || []).filter(c => c.state === "OPEN" && c.blocking);
+    if (openClar.length > 0) {
+        note(`OPEN blocking clarification questions: ${openClar.map(c => c.id).join(", ")}`, "Ask the user and record the answers (resolve_clarification).");
+    }
+    const impact = req.ui_impact;
+    if (!impact || impact.status === "UNASSESSED") {
+        note("UI impact has not been assessed", "Assess UI impact (manage_exploration set_ui_impact, after detect_ui_impact).");
+    }
+    else if (impact.status === "YES") {
+        const ref = req.ui_reference;
+        if (!ref) {
+            note("UI-impacting change has no UI reference", "Inspect existing UI patterns, then generate_static_ui_reference.");
+        }
+        else if (ref.status === "AWAITING_FEEDBACK") {
+            note(`UI reference ${ref.design_id} r${ref.revision} has not been reviewed by the user`, "Show the reference to the user and STOP for feedback (record_ui_feedback).");
+        }
+        else if (ref.status === "REVISION_REQUESTED") {
+            note(`UI reference ${ref.design_id} needs revision`, "Regenerate the reference with the user's changes.");
+        }
+        // CONFIRMED and NOT_REQUIRED (explicit user statement) both satisfy the gate.
+    }
+    return { ready: blockers.length === 0, blockers, next_action: next || "Ready: run manage_requirement assess, then update status=CONFIRMED." };
+}
+/** The status an in-flight exploration should be in, given what is recorded. */
+export function deriveExplorationStatus(req) {
+    if ((req.user_decisions || []).some(d => d.state === "OPEN"))
+        return "USER_DECISION_REQUIRED";
+    if (req.ui_impact?.status === "YES") {
+        const ref = req.ui_reference;
+        if (!ref || ref.status === "REVISION_REQUESTED")
+            return "UI_DESIGN_REQUIRED";
+        if (ref.status === "AWAITING_FEEDBACK")
+            return "USER_FEEDBACK_REQUIRED";
+    }
+    if ((req.clarification_questions || []).some(c => c.state === "OPEN" && c.blocking))
+        return "CLARIFICATION_REQUIRED";
+    return "INVESTIGATING";
+}
 export function validateStateTransition(current, next, req) {
     if (next === "BLOCKED" || next === "SUPERSEDED")
         return true;
     const validFlows = {
         "RAW": ["UNDERSTOOD", "INVESTIGATING", "BLOCKED", "SUPERSEDED"],
         "UNDERSTOOD": ["INVESTIGATING", "BLOCKED", "SUPERSEDED"],
-        "INVESTIGATING": ["CONFIRMED", "CLARIFICATION_REQUIRED", "BLOCKED", "SUPERSEDED"],
-        "CLARIFICATION_REQUIRED": ["INVESTIGATING", "BLOCKED", "SUPERSEDED"],
+        "INVESTIGATING": [...ACTIVE_STATES, "CONFIRMED"],
+        "UI_DESIGN_REQUIRED": [...ACTIVE_STATES, "CONFIRMED"],
+        "USER_FEEDBACK_REQUIRED": [...ACTIVE_STATES, "CONFIRMED"],
+        "USER_DECISION_REQUIRED": [...ACTIVE_STATES, "CONFIRMED"],
+        "CLARIFICATION_REQUIRED": [...ACTIVE_STATES, "CONFIRMED"],
         "CONFIRMED": ["INVESTIGATING", "BLOCKED", "SUPERSEDED"],
         "BLOCKED": ["INVESTIGATING", "SUPERSEDED"],
         "SUPERSEDED": []
@@ -33,12 +91,9 @@ export function validateStateTransition(current, next, req) {
         throw new Error(`Invalid transition from ${current} to ${next}`);
     }
     if (next === "CONFIRMED") {
-        if (req.blockers && req.blockers.length > 0) {
-            throw new Error("Cannot transition to CONFIRMED with active blockers.");
-        }
-        const openClarifications = req.clarification_questions.filter(c => c.state === "OPEN" && c.blocking);
-        if (openClarifications.length > 0) {
-            throw new Error("Cannot transition to CONFIRMED with OPEN blocking clarification questions.");
+        const readiness = explorationReadiness(req);
+        if (!readiness.ready) {
+            throw new Error("Cannot transition to CONFIRMED:\n  - " + readiness.blockers.join("\n  - ") + "\nNext: " + readiness.next_action);
         }
     }
     return true;

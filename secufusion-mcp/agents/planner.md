@@ -354,6 +354,10 @@ STEP 5: call manage_task(action: "log_decision",
 
 
 ## Phase 0.78 — UX Interaction & UI Design (Phase 8)
+
+> **Ownership:** UI investigation, reference generation and user review happen in `/sfn-explore` (tools `get_design_context`, `discover_ui_patterns`,
+> `generate_static_ui_reference`, `manage_exploration`). The Planner consumes the result; it does not generate or approve designs. If a UI-impacting
+> requirement reaches planning without `ui_reference` CONFIRMED (or NOT_REQUIRED), send it back to `/sfn-explore`.
 (TRIGGER: When planning new frontend or full-stack features)
 
 1. **Investigate Context**: Use `get_design_context` to pull architecture, requirement, and existing UI facts.

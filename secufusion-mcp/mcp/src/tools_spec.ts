@@ -12,6 +12,7 @@ import { loadPlan, savePlan, validatePlan, ImplementationPlan } from "./implemen
 import { generateTestObligations, aggregateValidation } from "./validation_engine.js";
 import { recordExperience, loadExperience, getEngineeringExperience, validateExperience, getExperienceContext, findExperienceConflicts, findRepeatedOutcomes, markExperienceStale, retireExperience, linkExperience, getLearningFeedback } from "./experience_manager.js";
 import { loadRequirement } from "./requirement_manager.js";
+import { explorationSummary } from "./exploration.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { investigateEntity, investigateRelationship } from "./investigation_engine.js";
 import { loadSnapshot, saveSnapshot, getRegressionContext, recordRegressionObservation, compareRepositorySnapshots, detectArchitectureDrift, detectRequirementDrift, detectTraceabilityDrift, getChangeHistoryContext, findRegressionTests, analyzeRegressionRisk } from "./regression_engine.js";
@@ -41,6 +42,8 @@ import {
 } from "./verdicts.js";
 import { STATE_FILE, REJECTED_FILE, TOKEN_FILE, argv, rootFlag, ROOT, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, getCurrentBranch, loadMigrationSpec, getMigrationContextForService, getNextMigrationVersion, getMigrationGaps, findFilesRecursive, compressCode, appendTelemetry, specEvidence, textResult, INTENTS_DIR, TASKS_DIR, CLASSIFICATIONS_DIR, REGISTRY_FILE, slugify, nextIntentNumber, parseIntentFrontmatter, resolveTaskFolder, generateNewTaskFolder, readRegistry, writeRegistry, upsertRegistry, STOP_WORDS, extractSymptomWords, levenshteinClose, buildScopeText, getEcosystemRoot, getDnaPath, ensureDnaFile, readDna, writeDna, VALID_EXTENSIONS, getAllSourceFiles, getPolyRepoSourceFiles, generateMigrationSpec, performFullExtraction } from "./shared.js";
 
+const PLAN_CREATED_HEADER = ["Plan created.", "", "Confirmed exploration this plan MUST honour (decisions are the user's, not yours to change):", ""].join(String.fromCharCode(10));
+
 export function registerSpecTools(server: any): void {
 
 
@@ -54,7 +57,7 @@ server.tool(
     action: z.enum(["create", "update", "read", "add_clarification", "resolve_clarification", "confirm", "generate_spec", "assess"]).describe("Action to perform on the requirement. 'assess' asks the LLM whether the requirement is READY; status=CONFIRMED is only accepted after a fresh READY assessment."),
     raw_request: z.string().optional(),
     title: z.string().optional(),
-    status: z.enum(["RAW", "UNDERSTOOD", "INVESTIGATING", "CLARIFICATION_REQUIRED", "CONFIRMED", "BLOCKED", "SUPERSEDED"]).optional(),
+    status: z.enum(["RAW", "UNDERSTOOD", "INVESTIGATING", "UI_DESIGN_REQUIRED", "USER_FEEDBACK_REQUIRED", "USER_DECISION_REQUIRED", "CLARIFICATION_REQUIRED", "CONFIRMED", "BLOCKED", "SUPERSEDED"]).optional(),
     // Clarification specifics
     clarification_id: z.string().optional(),
     topic: z.string().optional(),
@@ -91,6 +94,9 @@ server.tool(
             acceptance_criteria: r.acceptance_criteria, constraints: r.constraints, facts: r.facts,
             unknowns: r.unknowns, decisions: r.decisions, blockers: r.blockers,
             clarifications: (r.clarification_questions || []).map((c: any) => [c.id, c.state, c.answer]),
+            user_decisions: (r.user_decisions || []).map((d: any) => [d.id, d.state, d.answer]),
+            ui_impact: r.ui_impact ? [r.ui_impact.status, r.ui_impact.affected_components] : null,
+            ui_reference: r.ui_reference ? [r.ui_reference.design_id, r.ui_reference.status, r.ui_reference.revision] : null,
         });
         
         if (args.action === "create") {
@@ -383,7 +389,8 @@ server.tool(
                 snapshot_id: "LATEST"
             };
             savePlan(ecosystemRoot, plan);
-            return { content: [{ type: "text", text: "Plan created." }] };
+            const exploration = explorationSummary(ecosystemRoot, args.requirement_id);
+            return { content: [{ type: "text", text: PLAN_CREATED_HEADER + JSON.stringify(exploration, null, 2) }] };
         }
         
         if (args.action === "update") {
@@ -463,6 +470,7 @@ server.tool(
             rubric: PlanRubric,
             evidence: {
                 requirement: req,
+                exploration: explorationSummary(ecosystemRoot, plan.requirement_id),
                 plan,
                 deterministic_errors: errors,
                 traceability_gaps: gaps,
@@ -540,6 +548,7 @@ server.tool(
             rubric: ReviewRubric,
             evidence: {
                 acceptance_criteria: criteria,
+                exploration: explorationSummary(ecosystemRoot, work_item_id),
                 plan,
                 files_touched: filesTouched,
                 git_diff_stat: gitStat,
