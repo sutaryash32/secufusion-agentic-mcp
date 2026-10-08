@@ -71,6 +71,11 @@ for (const rel of docs) {
     check("README explains the .mcp folders, proposed vs accepted, and delta-first release notes",
         ["architecture/", "adr/", "patterns/", "known-exceptions/", "lessons-learned/", "operational/", "release-history/", "agents.md"].every((x) => readme.includes(x)) &&
         /proposed/.test(readme) && /accepted/.test(readme) && /Delta first\. Snapshot second/.test(readme) && /A correct implementation with a noisy diff is not a fully reviewed change/.test(readme));
+    const pkgVersion = JSON.parse(read("package.json")).version;
+    const pluginVersion = JSON.parse(read(".claude-plugin/plugin.json")).version;
+    check("package.json and the plugin manifest carry the same version", pkgVersion === pluginVersion, `${pkgVersion} vs ${pluginVersion}`);
+    check("README states the current version and has matching release notes", readme.includes(`**Version ${pkgVersion}**`) && readme.includes(`## What's New in ${pkgVersion}`) && readme.includes("## Upgrading from"), pkgVersion);
+    check("README's '71 tools' style counts match the server", (() => { const m = /\*\*Version [\d.]+\*\*[^\n]*?(\d+) tools/.exec(readme); return !!m && Number(m[1]) === tools.size; })(), `server has ${tools.size}`);
     check("README ends with the closing line", readme.trimEnd().endsWith("The intelligence of the project should travel with the project itself."));
     check("README states the retired commands are gone and mentions no removed tool", /no longer exist/.test(readme) && !/manage_branch_state|@2[.]2[.]5/.test(readme));
 }

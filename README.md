@@ -6,6 +6,8 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
+> **Version 4.0.0** · Node ≥ 18 · a breaking release: `/sfn-explore` and `/sfn-plan` are now `/sfn-spec`, project knowledge moves into the repository (`.mcp/`), and review gains diff-quality checks. 71 tools (15 new). See [What's New in 4.0.0](#whats-new-in-400) and [Upgrading from 3.x](#upgrading-from-3x).
+
 ## Contents
 
 1. [Core Philosophy](#core-philosophy)
@@ -20,15 +22,17 @@ It does not just answer questions about your code. It runs a **workflow** (under
 10. [Lessons Learned](#lessons-learned)
 11. [Architectural Decisions](#architectural-decisions)
 12. [Work-Item Identity](#work-item-identity)
-13. [Getting Started](#getting-started)
-14. [New Contributor Guide](#new-contributor-guide)
-15. [Contributing Knowledge](#contributing-knowledge)
-16. [Release Notes Philosophy](#release-notes-philosophy)
-17. [Tool Reference](#tool-reference)
-18. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-19. [Development](#development)
-20. [Status and Known Limitations](#status-and-known-limitations)
-21. [Long-Term Vision](#long-term-vision)
+13. [What's New in 4.0.0](#whats-new-in-400)
+14. [Upgrading from 3.x](#upgrading-from-3x)
+15. [Getting Started](#getting-started)
+16. [New Contributor Guide](#new-contributor-guide)
+17. [Contributing Knowledge](#contributing-knowledge)
+18. [Release Notes Philosophy](#release-notes-philosophy)
+19. [Tool Reference](#tool-reference)
+20. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+21. [Development](#development)
+22. [Status and Known Limitations](#status-and-known-limitations)
+23. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -332,6 +336,56 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 
 ---
 
+## What's New in 4.0.0
+
+4.0.0 is a breaking release. The changes since 3.3.1:
+
+**Workflow**
+- `/sfn-explore` and `/sfn-plan` are replaced by one command, **`/sfn-spec`**. The workflow is `init → spec → code → review`. The architecture map now comes from `/sfn-init`; blast radius is part of `/sfn-spec` (`calculate_blast_radius`).
+- `/sfn-spec` ends in a generated **Implementation Specification** (`generate_spec_document`); `/sfn-code` refuses to start without it.
+- **Hard gates** (`philosophy → intent → classification → requirement → plan → review`) are enforced by the server. Judgment calls are recorded as validated verdicts, and decisions only a person can make stop the work until they answer.
+
+**Project Intelligence Layer**
+- Project knowledge lives in the repository under `.mcp/` (`load_project_knowledge`, `get_project_knowledge`, `record_project_knowledge`, `set_knowledge_status`), with `proposed` vs `accepted` trust and a mandatory source. *Device vs Machine* is the first entry migrated out of `AGENTS.md`.
+- Release notes are **change-driven** (`generate_release_notes`): delta first, snapshot second, written to `.mcp/release-history/`.
+
+**Review**
+- `/sfn-review` PASS 10 (`check_diff_quality`): line-ending conversions, mixed endings, whitespace and formatting rewrites, reordering, encoding changes, files outside the specification. A HIGH finding blocks approval. `normalize_line_endings` restores a file to its own style.
+
+**Correctness and hygiene**
+- **Ticket identity is preserved** (`BUG-1230` stays `BUG-1230`) in folders, intent files and the names the agent uses; `resolve_work_item_ref` provides them.
+- Interactive exploration with static, clearly-marked UI references (`manage_exploration`, `get_design_context`, `discover_ui_patterns`, `generate_static_ui_reference`).
+- The package no longer ships `scripts/.secufusion-*.json` or developer benchmark scripts.
+
+**New tools (15, none removed):** `check_diff_quality`, `discover_ui_patterns`, `generate_release_notes`, `generate_spec_document`, `generate_static_ui_reference`, `get_design_context`, `get_project_knowledge`, `load_project_knowledge`, `manage_exploration`, `normalize_line_endings`, `record_project_knowledge`, `resolve_work_item_ref`, `set_knowledge_status`, `spec_status`, `verify_against_spec`.
+
+---
+
+## Upgrading from 3.x
+
+**What breaks**
+- `/sfn-explore` and `/sfn-plan` no longer exist. Use `/sfn-spec`.
+- Tools now refuse out-of-order calls (`⛔ SPEC GATE`). Requirements, plans and tasks created under 3.x have **no gate ledger**, so they must pass the gates again (`spec_status <ref>` shows what is missing) before they can be planned, verified or completed.
+- `manage_requirement` will not set `CONFIRMED` without a UI-impact assessment and a fresh READY assessment.
+- `philosophy_check`, `classify_task` and the other judged tools answer `🧠 JUDGMENT REQUIRED` in clients without MCP sampling; call the tool again with your `judgment`.
+- Task folders and intent files use the ticket's exact reference (`BUG-1230-…`, `0001-BUG-1230-…`). Folders and intents written by 3.x (`Task-1230-…`, `0001-WI-…`) are still found.
+- `verify_against_spec` will not return `APPROVED` while a HIGH diff-quality finding is unaccepted.
+
+**How to upgrade**
+
+```bash
+npm install -g secufusion-mcp@latest          # the package (the plugin's server)
+claude plugin marketplace update <marketplace> # refresh the marketplace entry
+claude plugin update secufusion-mcp@<marketplace>
+# then restart Claude Code
+```
+
+If your plugin is installed from a local marketplace that points at the global npm install, update the global package first (the marketplace then tracks it). A running session keeps the old server until it is restarted.
+
+To adopt the new knowledge model in an existing project, run `/sfn-init`; it offers to scaffold `.mcp/`, and warns if your `agents.md` has grown into a knowledge dump.
+
+---
+
 ## Getting Started
 
 **Requirements:** Node.js ≥ 18, and an MCP-capable client (Claude Code / Claude Desktop, Cursor, Cline, …).
@@ -362,7 +416,7 @@ Then register the server with your MCP client:
 }
 ```
 
-A published package (`npx -y secufusion-mcp`) is also supported where it is available to your registry.
+A published package is also available: `npx -y secufusion-mcp` or `npm install -g secufusion-mcp` (current version **4.0.0**; see [Upgrading from 3.x](#upgrading-from-3x) if you are on an older release).
 
 ### First run
 
