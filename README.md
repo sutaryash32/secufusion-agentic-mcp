@@ -1,1185 +1,554 @@
-# SecuFusion MCP Server
+# SecuFusion MCP
 
-> **Project-level spec driven AI workflow tooling for the SecuFusion platform** — loads full project DNA at session start, enforces zero-trust architecture standards, tracks task specs, and gates PRs with automated guardrail checks.
+A project-aware engineering assistant, delivered as a [Model Context Protocol](https://modelcontextprotocol.io) server and Claude plugin, built to behave like a disciplined senior engineer.
 
-[![npm version](https://img.shields.io/npm/v/secufusion-mcp)](https://www.npmjs.com/package/secufusion-mcp)
-[![license](https://img.shields.io/npm/l/secufusion-mcp)](./LICENSE)
-[![node](https://img.shields.io/node/v/secufusion-mcp)](https://nodejs.org)
+It does not just answer questions about your code. It runs a **workflow** (understand, specify, build, verify) with hard gates between the steps, keeps what the project has learned **inside the repository**, and refuses to let an assumption quietly become an architectural fact.
+
+> **Agent remembers project → OLD.  Project teaches the agent → NEW.**
+
+## Contents
+
+1. [Core philosophy](#core-philosophy)
+2. [Why this exists](#why-this-exists)
+3. [The revamp: from agent memory to project-owned intelligence](#the-revamp-from-agent-memory-to-project-owned-intelligence)
+4. [The Project Intelligence Layer (`.mcp/`)](#the-project-intelligence-layer-mcp)
+5. [The workflow](#the-workflow)
+6. [Commands](#commands)
+7. [How the MCP thinks](#how-the-mcp-thinks)
+8. [Review philosophy](#review-philosophy)
+9. [Knowledge management](#knowledge-management)
+10. [Lessons learned](#lessons-learned)
+11. [Architectural decisions (ADRs)](#architectural-decisions-adrs)
+12. [Work-item identity](#work-item-identity)
+13. [Release notes philosophy](#release-notes-philosophy)
+14. [Getting started](#getting-started)
+15. [New contributor guide](#new-contributor-guide)
+16. [Contributing knowledge](#contributing-knowledge)
+17. [Tool reference](#tool-reference)
+18. [Repository layout and where state lives](#repository-layout-and-where-state-lives)
+19. [Development](#development)
+20. [Status and known limitations](#status-and-known-limitations)
 
 ---
 
-## What is this?
+## Core philosophy
 
-`secufusion-mcp` is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that plugs into AI coding assistants (Claude Desktop, Cursor, Cline, etc.) and gives them **ten powerful tools** to enforce SecuFusion's engineering standards throughout the development lifecycle:
+- **Understand before acting.** Load the project's context before touching anything.
+- **Investigate before designing.** Read the real code, tests and config. Cite `file:line`. Never fabricate evidence.
+- **Design before coding.** A complete, validated specification exists before the first line of production code.
+- **Preserve repository conventions.** The existing code is the reference. The MCP never imposes a preferred style.
+- **Minimize unnecessary change.** Build only what was specified. No drive-by refactors, reformatting or reordering.
+- **Validate implementation quality and diff quality.** A correct change with a noisy diff is not a reviewed change.
+- **Convert tribal knowledge into project-owned knowledge.** What the team learns lives in the repository, version-controlled, not in a prompt or a person.
 
-| Tool | Phase | What it does |
+---
+
+## Why this exists
+
+| Problem | What it costs | How the MCP addresses it |
 |---|---|---|
-| `manage_project_spec` | **Phase 00** — Session Start | Loads `.secufusion-project-spec.json` — full project DNA (ports, repos, domains, coding patterns, golden rules) |
-| `manage_task` | **Phase 0.7 / 1 / 2 / 4** — Task Lifecycle | Creates dynamically named `.secufusion/tasks/{id}-{slug}/` folder (the HOW layer: spec, progress, decisions, files-touched). |
-| `spec_create_intent` | **Phase 1** — Planning | **NEW in v2.1** — Creates the Markdown intent file (the WHY layer: business goal, PM, ACs, polyglot service map). |
-| `spec_read_intent` | **Phase 0 / 1** — Session Start | **NEW in v2.1** — Reads the Markdown intent file and ticks AC checkboxes. |
-| `spec_next_number` | **Phase 1** — Planning | **NEW in v2.1** — Generates the next sequential ID for intent files. |
-| `get_task_history` | **Phase 0 / 1** — Cross-Task Intelligence | Retrieves the full history of a past task before starting similar work |
-| `search_tasks` | **Phase 0 / 1** — Cross-Task Intelligence | Keyword search across all past task files — prevents re-solving solved problems |
-| `get_pattern_from_task` | **Phase 1** — Cross-Task Intelligence | Extracts reusable decisions, file patterns, and test scenarios from a completed task |
-| ~~`manage_branch_state`~~ | Removed | Superseded by `manage_task`; no longer registered by the server |
-| `log_rejected_pattern` | **Phase 3** — Course Correction | Records bad patterns to `.rejected-patterns.json` so they are never repeated |
-| `get_secufusion_rules` | **Setup** | Returns the `AGENTS.md` rules for AI clients that don't natively support MCP Resources |
-| `classify_task` | **Phase 0.5** — Task Classification | **NEW** — Deep multi-pass analysis engine. Classifies any task as `BACKEND_ONLY`, `FRONTEND_ONLY`, etc. based on root cause. |
-| `prime_session` | **Phase 0** — Session Start | **NEW** — Hyper-efficient session startup. Combines Phase 00 (spec) and Phase 0 (task) into one call using Thin Indexes to optimize context tokens. |
-| `skill_recommend` | **Phase 1** — Planning | **NEW** — Dynamically recommends and retrieves domain-specific coding skills from `skills-catalog.json`. |
+| **Tribal knowledge** | Critical facts live in one engineer's head and leave with them | Knowledge is recorded in `.mcp/` with a source, next to the code |
+| **Lost architectural context** | Nobody remembers why a service owns a table or a topic has two producers | Architecture notes and ADRs are loaded at `/sfn-init` and retrieved when relevant |
+| **Historical decisions disappearing** | A past, deliberate trade-off gets "fixed" as if it were a bug | Intentional exceptions are recorded; the reviewer is told not to flag them |
+| **Repeated investigation** | The same terminology trap or false positive is rediscovered every quarter | Lessons learned are searchable and surface by ticket terms and touched files |
+| **Onboarding difficulty** | New engineers need weeks of conversations to become safe | The repository explains itself: read `.mcp/`, run `/sfn-init` |
+| **AI assistants without project context** | Generic advice, invented facts, silent assumptions | The assistant works from recorded evidence, asks you for decisions only you can make, and is gated step by step |
 
 ---
 
-## 🚀 What's New: The SecuFusion MCP Complete Rewrite (Phases 1-8)
+## The revamp: from agent memory to project-owned intelligence
 
-The SecuFusion MCP has been completely rebuilt from the ground up as a deterministic engineering control plane. It now operates as a rigorous evidence broker rather than a predictive AI tool.
-
-1. **Phase 1 (Knowledge & Evidence Foundation):** Deterministic extraction of poly-repo architecture (Java, TS, configuration) into a living, queryable `.secufusion/dna.json` graph.
-2. **Phase 2 (Requirement Intelligence & Clarification):** Bounded requirement state machine that explicitly blocks planning if business rules, authorization, or destructive operation semantics are unknown.
-3. **Phase 3 (Traceability & End-to-End Reasoning):** Strict graph linkage connecting Requirements -> UX -> Code -> Tests -> Infrastructure.
-4. **Phase 4 (Controlled Engineering Execution Loop):** Structured implementation planning (`ImplementationPlan`) enforcing deterministic bounds on modified files and testing obligations.
-5. **Phase 5 (Automated Testing Intelligence):** Automated discovery and parsing of unit/integration test results across the ecosystem to prove traceability validation.
-6. **Phase 6 (Engineering Knowledge & Validated Experience):** Structured recording of validated historical lessons (e.g. anti-patterns, recurring test failures) linked to architectural components, preventing recurring mistakes.
-7. **Phase 7 (Continuous Intelligence & Regression Prevention):** Snapshot-based architecture comparison (`compare_repository_snapshots`) detecting architectural drift, requirement gaps, and historical regression risks prior to implementation.
-8. **Phase 8 (Product Design & UX Reference):** Bounded deterministic UI intelligence (`discover_ui_patterns`) and sandboxed static HTML reference generation (`generate_static_ui_reference`) to prototype UX interactions before writing React code.
-
----
-
-## ⚡ Legacy Features & Architecture Alignment
-
-## 🧬 Built-In DNA Discovery & Architecture Exploration
-
-`secufusion-mcp` includes native ecosystem-wide discovery tools:
-
-- **Dynamic Stack Analysis:** Identifies Java/Spring, Node, Docker, and other frameworks on the fly.
-- **Automated Dependency Mapping:** Generates cross-service dependency maps and evaluates the blast radius of potential changes.
-- **Interactive Commands:** Use `/sfn-init` to map your entire workspace (it renders the Mermaid architecture diagram) and launch the watcher; `/sfn-spec` runs blast-radius analysis (`calculate_blast_radius`) as part of investigating a ticket.
-
----
-
-## ⚡ The Shift: "WHY before HOW" Spec-Driven Workflow (v2.1)
-
-This is the biggest architectural upgrade to the SecuFusion MCP, fundamentally changing how the AI approaches a new task.
-
-### The Problem
-Previously, the AI acted as a blind code-generator. When given a task (e.g. "Add MFA"), it would immediately jump into writing code or initializing tracking infrastructure (`.secufusion/tasks/`), without understanding **why** the feature was being built, who requested it, or the business risk. Furthermore, its AST parsers were limited to Java/TypeScript, leaving Go, Python, or Rust services completely invisible.
-
-### The v2.1 Solution: The Two-Layer Architecture
-Every task now requires **two complementary files** that the AI reads together:
-
-```
-.secufusion/
-├── intents/                    ← WHY layer  (business truth, human-driven, Markdown)
-│   └── 0001-WI-2847-add-mfa-enforcement.md
-│       ├── Business Goal       ← why is this being built?
-│       ├── PM Owner            ← who owns it?
-│       ├── Acceptance Criteria ← tickable checkboxes
-│       ├── Service Map         ← polyglot bridge (Go, Python, Rust...)
-│       └── Risk Assessment     ← what breaks if we don't ship?
-│
-└── tasks/WI-2847/              ← HOW layer  (code truth, AST-driven, JSON)
-    ├── progress.json           ← pending/completed ACs
-    └── decisions.json          ← architectural decisions log
-```
-
-### The Polyglot Bridge
-The new `spec_create_intent` tool captures a `services_involved` array that is **language-agnostic**. You can list a Go microservice, a Python Lambda, or a COBOL batch job. The AI reads this declaration and knows those services are in scope without needing a custom AST parser.
-
-### The New `/sfn-spec` Flow
-When you type `/sfn-spec WI-2847 Add MFA`:
-1. **The Guard (Phase -1):** The AI silently runs a `philosophy_check` against your Project DNA. It evaluates the WHY, WHO, WHAT, and RISK of the task. (Note: Bugs and hotfixes still undergo this check, though with slightly relaxed sensing).
-2. **The Pushback (Phase 1):** If the Philosophy Engine fails the request (e.g. unclear business intent or high risk), the AI will **NOT** plan. It will stop and ask you for clarity: *"Why are we building this? Who confirmed it?"*
-3. **The WHY (Phase 1.5):** You answer, and the AI generates the Markdown intent file (`spec_create_intent`).
-4. **The HOW (Phase 2):** Only then does it initialize the code tracking infrastructure (`manage_task`).
-5. **Context & Classify (Phase 3/4):** The AI loads the AST (`prime_session`), flags architectural risks (`classify_task`), and yields for your approval.
-6. **The Plan (Phase 5):** The AI outputs the strict implementation plan.
-
----
-
-## ⚡ The Shift: Problem-Statement Driven → Project-Level Spec Driven
-
-### Before (problem-statement driven)
-The AI started every session **cold**. It had zero knowledge of the codebase and relied entirely on the developer feeding context through a work item description. Every session began with implicit questions:
-- *"Which port does sfn-iam-api run on?"*
-- *"How do you extract tenantId from the JWT?"*
-- *"What's the coding pattern for DTO mapping?"*
-
-The AI was **reactive** — it knew only what you told it about the current task.
-
-### After (project-level spec driven)
-The AI starts every session by reading `.secufusion-project-spec.json` — a single file containing the **entire project's DNA**:
-
-```
-✅ All microservice ports, repos, Eureka names, domains
-✅ Table ownership per service
-✅ Inter-service call graph
-✅ Kafka topics produced/consumed per service
-✅ Keycloak realm + client config per service
-✅ Coding patterns (DTO mapping, @Transactional style, tenant passing)
-✅ Golden rules (tenant isolation layers, authority rules, banned patterns)
-✅ Flyway migration state per service
-```
-
-The AI is now **proactively context-aware** — it knows your entire architecture before you say a single word about the task:
-
-| Before | After |
-|---|---|
-| You explain the service every session | AI already knows all services |
-| You describe the coding pattern | AI reads it from the spec |
-| AI asks which port to use | AI looks it up from the spec |
-| Context resets between sessions | Project knowledge is permanent |
-| Spec is task-scoped | Spec is project-scoped |
-
-> **One-time setup:** Generate `.secufusion-project-spec.json` once using the extraction prompt. From that point, every AI session starts fully informed.
-
----
-
-## 🤖 The Autonomous AI Reviewer Engine (v2.2.5)
-
-Version 2.2.0 removes the legacy, rigid TypeScript tools (`run_pre_pr_checks`) and replaces them with a fully standalone, AI-driven markdown execution contract (`/sfn:review`). 
-
-### Why is this significant?
-1. **Context-Aware, Not Regex-Bound**: The old tools blindly searched for regex patterns (like `@TenantScopeException`). The new AI reviewer genuinely reads the file, understands *how* the `tenantId` is flowing through the thread context, and makes intelligent architectural judgments.
-2. **Zero Dependencies**: You no longer need to rely on the MCP server executing heavy AST-parsing scripts under the hood. The AI handles the review completely independently.
-3. **10 Strict Passes**: The reviewer is contractually bound to execute 10 precise checks before it can output a verdict, including Kafka blocking detection, Acceptance Criteria coverage, Decision Drift (did you write code you didn't plan?), and Rejected Pattern enforcement.
-4. **Ruthless Persona**: We injected a specific persona into the reviewer. It is explicitly forbidden from saying "Looks good to me!" to be polite. It operates as a senior architect with a zero-tolerance policy for guardrail violations.
-
----
-
-## The workflow: init → spec → code → review
-
-```
-/sfn-init  →  /sfn-spec  →  /sfn-code  →  /sfn-review
- load context    think         build         verify
-```
-
-The point is clear separation of responsibilities, not many commands. Investigation and planning almost always run back to back and are one engineering thought process, so they are a single **`/sfn-spec`** command.
-
-| Command | Purpose | Mental model | Ends with |
-|---|---|---|---|
-| `/sfn-init` | Establish project intelligence: DNA, architecture, repository mappings, service relationships, standards, conventions | Context first | project memory loaded |
-| `/sfn-spec <ref>` | Understand the request, investigate the real repo, find the root cause, analyze impact, resolve decisions **with the user**, design the change | Understand → Analyze → Design | a validated **Implementation Specification** (`spec.md`) |
-| `/sfn-code <ref>` | Implement the approved specification; minimal change surface, repository conventions preserved, no unrelated refactoring | Build only what was specified | changes aligned to the spec |
-| `/sfn-review <ref>` | Verify correctness **and change quality**: requirement coverage, architecture, edge cases, plus diff cleanliness (line endings, formatting rewrites, whitespace, encoding, reordering, scope, conventions) | Trust but verify | `APPROVED` only for intentional, minimal, repository-consistent changes |
-
-**`/sfn-spec`** produces one document (`generate_spec_document`, assembled from recorded state, never free-written): requirement, current state, root cause, scope, impact and dependencies, decisions (incl. UI reference), implementation strategy, expected file changes, acceptance criteria, tests, risks, and assumptions / inferences / unknowns. Gates (`philosophy → intent → classification → requirement → plan`) are enforced by the server, and `/sfn-code` refuses to start without it.
-
-**`/sfn-review`** treats a noisy diff as a failed review even when the logic is right (a three-line change that lands as 1,100 lines because of a CRLF→LF conversion was the lesson). It checks functional, architectural and repository consistency, diff cleanliness, change traceability and convention preservation; see *Diff quality & line endings* below.
-
-The architecture map is produced by `/sfn-init` (safe to re-run any time); blast radius is part of `/sfn-spec`'s investigation and available directly as the `calculate_blast_radius` tool.
-
----
-
-## Spec-driven, LLM-judged lifecycle
-
-The server no longer makes judgment calls with keyword scoring. It gathers evidence, asks a model, validates the answer against a schema, records it, and then **enforces** it with hard gates.
-
-```
-philosophy_check → spec_create_intent → classify_task → manage_requirement (assess → CONFIRMED)
-   → manage_implementation_plan → validate_implementation_plan → code → verify_against_spec → manage_task complete
-```
-
-| Gate | Decided by | Passes when |
+| | Before | Now |
 |---|---|---|
-| `philosophy` | LLM | WHY / WHO / WHAT / RISK are clear (PASS or ADVISORY) |
-| `intent` | mechanical | business goal and ≥1 acceptance criterion exist |
-| `classification` | LLM | not FRONTEND_ONLY (regex score is passed to the model as a *prior*, not a decision) |
-| `requirement` | LLM | a READY assessment that still matches the requirement's current content (edit it and it goes stale) |
-| `plan` | LLM + deterministic | every AC covered by a step and a test, no scope creep, no unconfirmed destructive op, no server-side errors |
-| `review` | LLM (adversarial) | every AC `MET` with evidence, none skipped, no guardrail violations |
+| **Where project knowledge lives** | Inside prompts and a growing `AGENTS.md` | In the repository, under `.mcp/`, version-controlled |
+| **Who owns it** | A specific MCP instance, prompt or engineer | The project |
+| **New MCP instance / new engineer** | Needs history from conversations | Reads the repository |
+| **What `AGENTS.md` is** | A large store of project history and rules | A lightweight guide to *how to think*: workflow, investigation and review philosophy |
+| **Commands** | `explore → plan → code → review` | `init → spec → code → review` |
+| **Review** | Functional and architectural checks | Plus repository consistency and **diff quality** |
+| **Release notes** | A repository scan with boilerplate | A change-driven changelog computed from the previous version |
+| **Trust in recorded knowledge** | Implicit | Explicit: `proposed` vs `accepted`, with a source on every entry |
 
-A tool whose prerequisites have not passed returns `⛔ SPEC GATE` and says what to run. `spec_status` shows the ledger and the next step.
-
-**How the model is reached** (`mcp/src/judge.ts`):
-1. **MCP sampling**: if the client supports it, the server asks the client's model directly.
-2. **Caller judgment**: otherwise the tool replies `🧠 JUDGMENT REQUIRED` with rubric, evidence and a JSON shape; the calling LLM re-invokes the tool with `judgment`. Nothing is recorded until it validates.
-
-Every judgment is stored in `.secufusion/judgments/<id>/<kind>.json` (source, verdict, evidence hash) and gate state in `.secufusion/gates/<id>.json`. Commit both.
-
-> In caller mode the model that did the work also judges it. The schema forces evidence (`MET` needs a `file:line` or test name; every criterion must be judged), but for an independent review use a sampling-capable client or run `verify_against_spec` in a separate session.
+Knowledge belongs to the project, not to a specific engineer or MCP instance. The code explains **what** the system does. The Project Intelligence Layer explains **why**: which decisions are intentional, which patterns are preferred, which inconsistencies are legacy, which behaviours must not change, and which mistakes were already found.
 
 ---
 
-## Interactive exploration inside `/sfn-spec` (Phase 12)
-
-`/sfn-spec <ticket>` investigates, shows evidence, builds a UI reference when the UI is affected, asks **you** for every decision only you can make, and only then confirms the requirement and hands off to `/sfn-code`. It never edits production code.
-
-```
-RAW → UNDERSTOOD → INVESTIGATING → [UI_DESIGN_REQUIRED → USER_FEEDBACK_REQUIRED] → [CLARIFICATION_REQUIRED] → CONFIRMED
-                                    USER_DECISION_REQUIRED  (entered whenever a decision is open; exploration must stop)
-```
-
-| Tool | Role |
-|---|---|
-| `manage_exploration` | `detect_ui_impact`, `set_ui_impact`, `ask_user_decision`, `answer_user_decision`, `record_ui_feedback`, `status` |
-| `get_design_context`, `discover_ui_patterns` | evidence about existing UI (previously library-only, now exposed) |
-| `generate_static_ui_reference` | writes `.secufusion/designs/<id>/{index.html,metadata.json,revisions/}`: `REFERENCE_ONLY`, `NOT_IMPLEMENTED` |
-
-- **`CONFIRMED` is enforced by the server** (`explorationReadiness`): no open user decisions, no blockers, UI impact assessed, and for UI-impacting changes a reference the user approved (or explicitly waived).
-- **The user's words are required.** Answering a decision or approving a reference needs `user_statement`. This stops the happy path of the model answering for the user; it cannot prove the quote is genuine, so review the transcript for destructive decisions.
-- **References are inert.** Size-capped, no network/storage/external assets/iframes, served with a restrictive CSP and a visible banner. They can only be written under `.secufusion/designs/`.
-- **Traceability:** requirement → design (`HAS_UI_REFERENCE`) → components, and requirement → each user decision. `/sfn-code` and `verify_against_spec` receive the decisions and design, and `find_traceability_gaps` flags unconfirmed or unlinked references.
-- The MCP stays deterministic here: it records, validates and refuses; the host LLM investigates and converses.
-
-Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP suites).
-
----
-
-## Project Intelligence Layer (`.mcp/`)
-
-Project knowledge belongs to the repository, not to an agent prompt, an MCP instance or an engineer's memory. The code explains WHAT the system does; `.mcp/` explains WHY it is that way, which decisions are intentional, which inconsistencies are legacy, and which mistakes were already made. It is version-controlled with the code.
+## The Project Intelligence Layer (`.mcp/`)
 
 ```
 .mcp/
-  agents.md            (optional) lightweight: workflow rules and engineering philosophy only
-  architecture/        system design, service relationships, domain terminology, entity ownership, data flow
-  adr/                 decisions made, alternatives rejected, reasoning, constraints, tradeoffs
-  patterns/            coding conventions, API / Kafka / repository patterns, naming standards
-  known-exceptions/    intentional inconsistencies, legacy constraints, accepted debt
-  lessons-learned/     incidents, review findings, historical bugs, common false positives
-  operational/         deployment constraints, migration knowledge, environment behaviour, risk areas
-  release-history/     change-driven release notes + the snapshots they compare against
+├── agents.md            optional; lightweight: workflow rules and engineering philosophy only
+├── architecture/        how the system works
+├── adr/                 why decisions were made
+├── patterns/            how code should be written
+├── known-exceptions/    intentional behaviours that may look incorrect
+├── lessons-learned/     historical mistakes, findings, incidents, review lessons
+├── operational/         deployment and runtime knowledge
+└── release-history/     version evolution and release intelligence
 ```
 
-Each entry is one markdown file with a small frontmatter block (`id`, `title`, `category`, `status`, `tags`, `applies_to`, `source`, `date`, `supersedes`).
+| Folder | Holds | Typical entry |
+|---|---|---|
+| `architecture/` | System design, service relationships, domain terminology, entity ownership, data flow | *Device vs Machine terminology* |
+| `adr/` | The decision, the alternatives rejected, the reasoning, the constraints and trade-offs | *Manual migrations instead of auto-apply* |
+| `patterns/` | Coding conventions, API / Kafka / repository patterns, naming standards | *Query-level tenant scoping* |
+| `known-exceptions/` | Intentional inconsistencies, legacy constraints, backward-compatibility decisions, accepted debt | *Retention scheduler authorizes as the system principal* |
+| `lessons-learned/` | Production incidents, review findings, historical bugs, common false positives | *A 3-line change landed as a 1,100-line diff* |
+| `operational/` | Deployment constraints, migration knowledge, environment-specific behaviour, risk areas | *Migrations are applied manually* |
+| `release-history/` | Release notes and the snapshots each release is compared against | `v2.2.5.md`, `snapshots/v2.2.5.json` |
 
-| Tool | Role |
-|---|---|
-| `load_project_knowledge` | `/sfn-init` builds the unified memory model: compact index per category, validation problems, unreviewed entries, and a warning if `agents.md` has become a knowledge dump. `scaffold=true` creates the structure. |
-| `get_project_knowledge` | Returns what **applies** to a task, ranked by ticket terms, touched files and tags, with the reason each matched. No match means "nothing recorded", never "nothing intentional". |
-| `record_project_knowledge` | Adds one entry (a terminology trap, decision, exception, lesson). A `source` is mandatory. |
-| `set_knowledge_status` | Accept, deprecate or supersede an entry. |
+Each entry is one markdown file with a small frontmatter block:
 
-- **Trust is explicit.** New entries are `proposed` (shown, labelled *unreviewed*, never grounds for a blocker). Only a person makes one `accepted`, via `user_statement`. `superseded`/`deprecated` entries are hidden unless asked for.
-- **Where it is used.** `/sfn-init` loads it; `/sfn-spec` consults it before investigating (a naming inconsistency is not a bug until it is checked against recorded exceptions); `/sfn-review` and `verify_against_spec` receive the entries that apply to the changed files, so an *accepted* exception is not flagged as a defect and a change that contradicts an *accepted* decision is a finding.
-- **Easy to add.** One file, or one tool call. Found a trap? Say so and it is recorded with its source, ready to commit.
-- **Validated.** Missing fields, wrong folder, bad status, duplicate ids, dangling `supersedes`, empty bodies are reported, never silently ignored.
-- **Migrated so far:** *Device vs Machine* (moved out of `AGENTS.md`, which dropped 27 lines and now points to `.mcp/architecture/terminology-device-vs-machine.md`) and the *3-line change / 1,100-line diff* lesson. `AGENTS.md` still holds other project-specific sections (migration guardrails, platform and service architecture) that are candidates to move the same way.
-- Release notes and their snapshots are written to `.mcp/release-history/` when the layer exists.
+```markdown
+---
+id: "terminology-device-vs-machine"
+title: "Device vs Machine terminology"
+category: architecture             # must match the folder
+status: accepted                   # proposed | accepted | superseded | deprecated
+tags: ["terminology", "device", "machine"]
+applies_to: ["device", "*Device*"] # terms and/or path globs; used to surface the entry when relevant
+source: "Where this came from: ticket, PR, incident, person, file"
+date: 2026-10-08
+supersedes: []
+---
+What is true, why, and what must NOT be "fixed".
+```
+
+Entries are validated on load: missing fields, a wrong folder, a bad status, duplicate ids, dangling `supersedes` and empty bodies are reported, never silently ignored.
+
+**It is retrieved by relevance, not dumped.** `/sfn-init` builds a compact index of the whole layer; during a task, `get_project_knowledge` returns only the entries that apply, ranked by the ticket's terms, the files involved and tags, with the reason each matched. Generic words in a free-text ticket do not drag in unrelated entries.
 
 ---
 
-## Release notes: a changelog, not a repository scan
-
-`generate_release_notes` (called by `/sfn-init` after a spec merge) answers "what changed in this release?" first. It snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release, and renders the delta before any metadata:
+## The workflow
 
 ```
-# Version X.Y.Z
-## Executive Summary          why the release exists + a quantified, itemised delta ("added: 1 service, 2 topics; changed: ...; 2 resolved, 1 new risk")
-## Added / Changed / Fixed / Removed / Deprecated     each with a count; "None." when empty
-## Risks                      introduced vs resolved (derived from structure: topic with no consumer, table with two owners, unresolved CONFLICT values, manual-review flags)
-## Repository Intelligence Updates    new services, topics, relationships, table ownership, graph growth
-## Rule Changes               added / modified (before → after) / removed / unchanged
-## Detailed Snapshot          optional, compact, last, and labelled "not a list of changes"
+   /sfn-init   ──►   /sfn-spec   ──►   /sfn-code   ──►   /sfn-review
+   Load context      Think             Build             Verify
 ```
 
-- **Detected, not written.** Everything code can know is computed from the two snapshots. The author supplies only what it cannot (`why`, fixes, deprecations, discoveries); those appear as labelled *Author notes* and are counted. An omitted `why` is shown as "not stated", never guessed.
-- **Honest about nothing.** An unchanged release says *"No significant changes since vX"* and each section says "None." A first release is recorded as a baseline and claims no delta.
-- **One event, one place.** A fixed ambiguity (`CONFLICT … → 8081`) appears once, under Fixed; resolved risks live under Risks.
-- **Baseline.** Each release stores `.secufusion/releases/snapshots/vX.json`; the next compares against the newest older one (numeric version order). If none exists, pass the merge's `.secufusion-project-spec.json.backup-*` as `previous_spec_path`.
-- Tolerates both spec shapes in use (object or string `golden_rules`, with or without top-level `kafka_topics`); large inputs are capped ("…and 60 more").
+| Legacy | Current |
+|---|---|
+| `explore` → `plan` → `code` → `review` | `init` → `spec` → `code` → `review` |
+
+**Why `explore` and `plan` were merged.** In practice they almost always ran back to back: exploration finds the current state, the root cause and the affected areas, and planning immediately uses those findings to define the approach, scope, risks and acceptance criteria. They are one engineering thought process, so they are now one **specification phase** (`/sfn-spec`) that keeps the same analytical depth behind a single command. The old command names no longer exist.
+
+Between the commands the server enforces **gates**, so steps cannot be skipped:
+
+```
+philosophy → intent → classification → requirement → plan → review
+```
+
+A tool called before its prerequisites have passed returns `⛔ SPEC GATE` and says what to run first. `spec_status` shows the ledger and the next step at any time.
+
+> **Command names.** In examples the commands are written `/sfn-init`, `/sfn-spec`, `/sfn-code`, `/sfn-review`. Use the `sfn-` prefix when invoking them: bare `/init` and `/review` collide with built-in commands in some clients.
+
+---
+
+## Commands
+
+### `/sfn-init`: build project understanding
+
+**Purpose.** Establish project intelligence and working context. Not only metadata: it constructs the project's understanding.
+
+**Responsibilities**
+- Scan the repository and workspace; create or merge `.secufusion-project-spec.json` (services, topics, rules, patterns) and the knowledge graph
+- Load the Project Intelligence Layer: architecture, ADRs, patterns, known exceptions, lessons learned, operational knowledge, release history (`load_project_knowledge`)
+- Validate it and report unreviewed entries, problems, and whether `agents.md` has grown into a knowledge dump
+- Draw the architecture diagram and generate change-driven release notes when the spec version changes
+
+**Outcome.** The MCP understands the project before making any decision. *Mental model: context first.*
+
+### `/sfn-spec`: think before building
+
+**Purpose.** Investigation and design as one process, ending in a complete specification.
+
+**Responsibilities**
+- Understand the requirement; check intent and story integrity (`philosophy_check`)
+- Consult the project's recorded knowledge for the ticket's terms and files
+- Investigate the **real** repository; identify the **root cause** with `file:line` evidence; classify the work
+- Identify impacted services and contracts (blast radius, traceability)
+- Assess UI impact; build a static, clearly-marked reference design when the UI changes, and have **you** review it
+- Ask **you** every decision only you can make, then stop until you answer
+- Confirm the requirement, create and validate the implementation plan, assess risks
+- Define acceptance criteria and write the specification
+
+**Outcome.** A complete **Implementation Specification** (`spec.md`), assembled from recorded state, never free-written: requirement, current state, root cause, scope, impact, decisions, strategy, expected file changes, acceptance criteria, tests, risks, assumptions and unknowns. *Mental model: understand → analyze → design.*
+
+### `/sfn-code`: build only what was specified
+
+**Purpose.** Implement the approved specification.
+
+**Responsibilities**
+- Refuse to start without a validated specification
+- Follow the specification; produce focused changes
+- Preserve repository conventions, including line endings and formatting
+- Minimize the change surface; no unrelated refactoring; stop and ask before touching a file the specification does not cover
+
+**Outcome.** An implementation that stays aligned to the specification and blends into the codebase. *Mental model: build only what was specified.*
+
+### `/sfn-review`: verify the change, not just the logic
+
+**Purpose.** Validate implementation quality **and** change quality.
+
+**Responsibilities**
+- Verify functionality, requirement coverage and specification compliance (every acceptance criterion judged, with evidence)
+- Verify architecture alignment, impacted services, edge cases, security and tenant isolation
+- Verify repository consistency and diff cleanliness (**PASS 10**): CRLF ↔ LF conversions, mixed line endings, diff inflation, formatting rewrites, whitespace-only changes, encoding changes, unnecessary reordering, files outside the specification
+- Check naming and convention consistency against the surrounding code
+- Consult recorded exceptions and decisions before flagging anything
+
+**Outcome.** Only intentional, minimal, repository-consistent changes pass. *Mental model: trust but verify.*
+
+---
+
+## How the MCP thinks
+
+The server and the model have different jobs, and the split is deliberate.
+
+| The server (deterministic) | The model (judgment) | The human (decision) |
+|---|---|---|
+| Stores state, enforces the order of steps, validates every verdict against a schema | Reads the code, forms an investigation, judges "is this requirement clear", "does this plan cover every criterion", "is every criterion met" | Business, security, tenant, data, deletion, API, UX and destructive decisions |
+| Measures the diff, detects line endings, computes release deltas, retrieves relevant knowledge | Writes the investigation and the implementation | Approves designs, accepts knowledge, accepts diff noise |
+
+- **Judgments are recorded, not assumed.** Tools such as `philosophy_check`, `classify_task`, `manage_requirement assess`, `validate_implementation_plan` and `verify_against_spec` either ask the client model directly (MCP sampling) or reply `🧠 JUDGMENT REQUIRED` with a rubric, the evidence and a JSON shape. The model answers by calling the tool again with a `judgment`. Nothing is recorded until it validates, and verdicts need evidence (a criterion is `MET` only with a `file:line` or a test).
+- **Evidence over assertion.** Output is labelled FACT, INFERENCE, ASSUMPTION, UNKNOWN, CONFLICT, BLOCKER, DECISION or USER_DECISION_REQUIRED. Inferences are never presented as facts.
+- **Never invent a decision.** An open decision is put to you with concrete options, and the work stops. Answering a decision, approving a design, accepting knowledge, accepting diff noise and converting line endings all require `user_statement`: your own words.
+- **Hard gates, not reminders.** The server refuses out-of-order steps. A deterministic HIGH diff-quality finding blocks `APPROVED` no matter what the model concludes; only you can accept it.
+
+---
+
+## Review philosophy
+
+A real review once exposed a gap. A client reported that **a three-line change showed up as a 1,100-line diff** because of an unintended CRLF → LF conversion. The functionality was correct, but the change was unreviewable: the real edit was buried, merge-conflict risk went up, and reviewer trust went down. The review process had checked correctness and missed repository consistency.
+
+So reviews now validate:
+
+| Dimension | Question |
+|---|---|
+| **Functional correctness** | Does it do what the acceptance criteria say, with evidence? |
+| **Architectural correctness** | Does it fit the service boundaries, tenancy, contracts and recorded decisions? |
+| **Repository consistency** | Does it follow the conventions already in this file and repository? |
+| **Diff cleanliness** | Is the committed diff the size of the intended change? |
+| **Traceability** | Does every change trace to a criterion or a necessary consequence? |
+
+> **A correct implementation with a noisy diff is not a fully reviewed change.**
+
+`check_diff_quality` measures the diff that **would be committed** (respecting `core.autocrlf` and `.gitattributes`) against the real change and explains the gap:
+
+| Finding | Meaning |
+|---|---|
+| `LINE_ENDING_CHANGE` | Line endings flipped; churn far larger than the real change |
+| `MIXED_LINE_ENDINGS` | CRLF and LF in one file (introduced by this change vs already there) |
+| `WHITESPACE_CHURN`, `FORMAT_REWRITE`, `REORDERING` | Re-indentation, re-wrapped code with the same tokens, or the same lines in a different order |
+| `ENCODING_CHANGE`, `EOF_NEWLINE_CHANGE`, `FILE_MODE_CHANGE` | BOM / encoding, final newline, executable bit |
+| `SHEBANG_WITH_CRLF` | A script with a shebang saved as CRLF: a real defect |
+| `CONFIG_DISAGREES_WITH_FILE_HISTORY`, `CONVENTION_SOURCES_DISAGREE` | The repository's own settings conflict with its files, or with each other. Reported, never silently resolved |
+
+**"When in Rome, do as the Romans do."** The existing file and repository style is the expected style. Consistent CRLF is not a defect; consistent LF is not a defect. Mixed endings, unexplained churn and deviation from convention are. The reviewer never demands normalization to its own taste, and recommends it only when there is evidence it is required. The convention is read from `.gitattributes`, `.editorconfig`, prettier/eslint config, then the file's own history, then its tracked siblings; if those disagree, the conflict is reported.
+
+When a file needs restoring, `normalize_line_endings` converts it back to **its own** style, changing only line terminators. It previews by default and writes only with your confirmation.
+
+Generated, vendor, binary and lock files are excluded, files over 2 MB are skipped and reported, and outside a git repository the check says it cannot measure churn.
+
+---
+
+## Knowledge management
+
+The MCP must not turn its own assumptions into architectural truth. Every piece of project knowledge carries its trust level and its origin.
+
+| Status | Meaning | How agents treat it |
+|---|---|---|
+| **`proposed`** | Recorded, not yet reviewed by a person | Shown and labelled *unreviewed*. A hint to look harder; never grounds for a blocker |
+| **`accepted`** | A person confirmed it is true | Authoritative. An accepted exception is not flagged as a defect; a change that contradicts an accepted decision is a finding |
+| **`superseded`** | Replaced by a newer entry | Hidden from retrieval unless asked for |
+| **`deprecated`** | No longer applies | Hidden from retrieval unless asked for |
+
+- **Source is mandatory.** Every entry says where it came from (ticket, PR, incident, person, file). Knowledge without provenance is refused.
+- **An agent cannot accept its own claim.** Recording as `proposed` is the default; `accepted` requires your words (`user_statement`). `set_knowledge_status` accepts, deprecates or supersedes an existing entry.
+- **No match is not "nothing intentional".** If retrieval finds nothing, it says nothing is *recorded*, and invites you to record what you discover.
+- **Knowledge is easy to add** (see [Contributing knowledge](#contributing-knowledge)) and **validated** when loaded.
+
+---
+
+## Lessons learned
+
+Lessons from production incidents, reviews, investigations and historical discoveries are stored in `.mcp/lessons-learned/`, so the next engineer (or agent) does not pay for them again.
+
+**Recorded today**
+
+- **Device vs Machine terminology.** "Device" is a *browser installation*; "Machine" is a *physical endpoint*. Naming inconsistency is not automatically a bug. (Stored in `architecture/`, because it is also how the domain is modelled.)
+- **Review diff-noise incident.** The 3-line change that became a 1,100-line diff (`lessons-learned/line-ending-diff-noise.md`).
+
+**What belongs here as the project learns**
+
+- Historical production findings, and root causes that were not obvious.
+- Common false positives: things that look wrong and are intentional.
+- Investigation outcomes: what was ruled out, and why.
+
+A good lesson states what happened, what it taught, what to do differently, and the common way people misread it.
+
+---
+
+## Architectural decisions (ADRs)
+
+Important architectural decisions belong in `.mcp/adr/`, **not** in `AGENTS.md`. An ADR answers four questions:
+
+1. **What decision was made?**
+2. **Why was it made?**
+3. **What alternatives were rejected?**
+4. **What constraints existed?**
+
+ADR ids are numbered automatically (`adr-0001-…`, `adr-0002-…`). When a decision changes, write a new ADR that `supersedes` the old one rather than editing history; the old entry is marked superseded and stays readable.
 
 ---
 
 ## Work-item identity
 
-A ticket reference (`BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`, `EPIC-1230`, `WI-2847`, a Jira key) is metadata that must read the same in Azure Boards, task folders, intent files, branches, commits and PRs.
+A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230` or `EPIC-1230` is metadata. It must read the same in Azure Boards, task folders, intent files, branches, commits and PRs.
 
-- **The type you give is kept verbatim** (case included; only the separator is normalized, `Bug 1230` → `Bug-1230`). It is never replaced by a default like "task" and never overridden by the classification's `task_type`. If no type was given, none is invented: a bare `1230` stays `1230-…` and the tool says how to supply the real reference.
-- **Names are not free-handed.** `resolve_work_item_ref(work_item, title)` returns the canonical `ref`, task-folder name, `branch_suffix`, `commit_prefix` (`BUG-1230: `) and PR-title prefix, to be used verbatim.
-- **Conflicts are refused, not resolved.** Ticket numbers are unique, so registering `TASK-1230` when `BUG-1230` exists returns `IDENTITY CONFLICT` instead of silently changing the type.
-- Task folders are `BUG-1230-tenant-deletion-fails`, intent files `0001-BUG-1230-…` (no more `WI-BUG-1230`). Folders and intents written by older versions (`Task-1230-…`, `0001-WI-…`) are still found.
-
----
-
-## Diff quality & line endings (PASS 10)
-
-A change can be functionally right and still be a bad diff: three edited lines that land as 1,100 changed lines because the file was silently converted CRLF→LF. `check_diff_quality` (also `/sfn-review` PASS 10, and evidence inside `verify_against_spec`) catches that deterministically, with no LLM.
-
-- **Measures the diff that would be committed** (honouring `core.autocrlf` and `.gitattributes`) against the real change, then attributes the gap: line endings, trailing whitespace, re-indentation, blank lines, re-wrapped code (same tokens, different layout), BOM/encoding, end-of-file newline, file mode, and CRLF in shebang scripts.
-- **"When in Rome":** the file's and repository's existing convention is the expected style. Consistent CRLF and consistent LF are both fine; mixed endings, unexplained churn, and deviation from convention are not. Convention is read from `.gitattributes`, `.editorconfig` (nested, sections), prettier/eslint config, then the file's own history, then tracked siblings. If these sources disagree it **reports the conflict instead of choosing**, once, not per file.
-- **Severity** `HIGH/MEDIUM/LOW/INFO` maps to review `BLOCKER/WARNING/SUGGESTION/note`. Pre-existing mixed endings are LOW; churn tied to a formatting-config change is INFO ("keep it in its own commit").
-- **It gates the review.** A HIGH finding makes `verify_against_spec` refuse `APPROVED` whatever the model says. Only the user can accept it, via `acknowledge_diff_quality` with their own words.
-- **Skipped, and said so:** binary, vendor/dist/build, lockfiles, `@generated`, `-text`/`linguist-generated` paths, files over 2 MB, and the MCP's own `.secufusion/` output. Outside a git repo it checks file state only and says it cannot measure churn.
-- **Fixing it:** `normalize_line_endings` converts a file back to *its own* style (e.g. a CRLF file that picked up LF insertions goes back to CRLF). It changes only line terminators (content, BOM, and final-newline state are preserved and verified), takes the target from repo config or the file's style at the base commit and refuses to guess, and defaults to a **preview**. Writing needs `apply=true` plus `user_statement` (the user's own words). It refuses binary/generated/vendor files, symlinks, lone-CR files, `.git`, and paths outside the repo.
-- Thresholds live in `THRESHOLDS` in `diff_quality.ts`: ≥50 committed lines and ≤20% of them real = disproportionate.
+- The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
+- `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
+- Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
 
 ---
 
-## Installation
+## Release notes philosophy
 
-[![Claude Marketplace](https://img.shields.io/badge/Download_from-Claude_Marketplace-blue?logo=anthropic)](https://claude.ai/marketplace/secufusion-mcp)
+**A release is a changelog, not a repository scan.** The most important question a reader has is *what changed in this release?* Release notes therefore lead with the delta from the previous version and put the state of the repository last.
 
-### Option 1 — `npx` (no install required)
+`generate_release_notes` snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release's snapshot, and renders:
+
+```
+# Version X.Y.Z
+## Executive Summary                 why the release exists + a quantified, itemised delta
+## Added                             new rules, terminology, mappings, configuration
+## Changed                           behavioural, topology, configuration changes
+## Fixed                             resolved ambiguities and author-reported fixes
+## Removed / Deprecated              services, topics, rules, mappings that no longer apply
+## Risks                             introduced vs resolved
+## Repository Intelligence Updates   new services, topics, relationships, table ownership
+## Rule Changes                      added / modified (before → after) / removed / unchanged
+## Detailed Snapshot                 optional, compact, last, labelled "not a list of changes"
+```
+
+- **Detected, not written.** Everything code can know is computed from the two snapshots. The author supplies only what code cannot (`why` the release exists, fixes, deprecations, discoveries); those appear as labelled *Author notes*. A missing rationale is shown as "not stated", never guessed.
+- **Honest about nothing.** An unchanged release says *No significant changes since vX*, and empty sections say "None". A first release is a baseline and claims no delta.
+- **One event, one place.** A fixed ambiguity appears once, not three times.
+- **Quantified.** Section headings carry counts; the summary says *what* changed, not just how many things.
+- **Version-controlled.** Notes and the snapshots they compare against are written to `.mcp/release-history/` when the layer exists.
+
+---
+
+## Getting started
+
+**Requirements:** Node.js ≥ 18, and an MCP-capable client (Claude Code / Claude Desktop, Cursor, Cline, …).
+
+### As a Claude plugin
+
+The plugin manifest is in `secufusion-mcp/.claude-plugin/plugin.json` and the server is wired in `.mcp.json` (`node ${CLAUDE_PLUGIN_ROOT}/mcp/dist/server.js --root .`), so the server reads whichever repository the session is in. The four commands (`/sfn-init`, `/sfn-spec`, `/sfn-code`, `/sfn-review`), the agent personas and a session-start knowledge-drift hook ship with the plugin.
+
+### From source
 
 ```bash
-npx secufusion-mcp
+cd secufusion-mcp
+npm install
+npm run build
 ```
 
-### Option 2 — Global install
+Then register the server with your MCP client:
 
-```bash
-npm install -g secufusion-mcp@2.2.5
-```
-
-### Option 3 — Local project install
-
-```bash
-npm install --save-dev secufusion-mcp@2.2.5
-```
-
----
-
-## Setup: Add to Your MCP Client
-
-### Claude Desktop
-
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or  
-`%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "secufusion-mcp": {
-      "command": "npx",
-      "args": ["-y", "secufusion-mcp"]
-    }
-  }
-}
-```
-
-### Cursor
-
-Open **Settings → MCP** and add:
-
-```json
-{
-  "secufusion-mcp": {
-    "command": "npx",
-    "args": ["-y", "secufusion-mcp"]
-  }
-}
-```
-
-### Cline (VS Code Extension)
-
-Open Cline settings → MCP Servers → Add:
-
-```json
-{
-  "secufusion-mcp": {
-    "command": "npx",
-    "args": ["-y", "secufusion-mcp"],
-    "disabled": false
-  }
-}
-```
-
-### Using a local build (development)
-
-```json
-{
-  "secufusion-mcp": {
-    "command": "node",
-    "args": ["C:/path/to/secufusion-mcp/index.js"]
-  }
-}
-```
-
----
-
-## Tools Reference
-
-### 1. manage_branch_state
-
-Manages a structured JSON state file (`.secufusion-state.json`) keyed to the current Git branch. This replaces unstructured Markdown parsing and ensures the AI can resume perfectly.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `action` | string | Yes | `initialize`, `read`, or `update` |
-| `task_description` | string | No | (For `initialize`) Summary of the work |
-| `pending_acs` | array | No | Array of strings for pending tasks (For `initialize`/`update`) |
-| `completed_acs` | array | No | Array of completed AC strings (For `update`) |
-| `next_step` | string | No | **CRITICAL for `update`**: A clear instruction on what to do next to allow instant resumption. |
-| `reference_file_path` | string | No | Path to a reference file with standard coding patterns (auto-compressed to save tokens) |
-
-**Example — Starting a new task:**
-```json
-{
-  "action": "initialize",
-  "task_description": "Implement DeviceActivitySummaryDTO with browserUsage map.",
-  "pending_acs": ["Add browserUsage map", "Add unit tests", "Update OpenAPI"]
-}
-```
-
-**Example — Updating progress:**
-```json
-{
-  "action": "update",
-  "pending_acs": ["Update OpenAPI"],
-  "completed_acs": ["Add browserUsage map", "Add unit tests"],
-  "next_step": "Generate the OpenAPI YAML for DeviceActivitySummaryDTO and test generation."
-}
-```
-
----
-
-### 2. `log_rejected_pattern`
-
-Appends a rejected code pattern to `.rejected-patterns.json`. The AI checks this file implicitly before every architectural suggestion to avoid repeating past mistakes.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `pattern` | string | Yes | The bad pattern or approach |
-| `reason` | string | Yes | Why it was rejected and what to do instead |
-| `category` | enum | No | `architecture` \| `security` \| `database` \| `logging` \| `api-design` \| `testing` \| `other` |
-| `file_context` | string | No | File or area where the pattern was observed |
-
-**Example:**
-
-```
-Tell your AI: "Never use a global @Repository bean without tenantId scoping again.
-It was leaking cross-tenant data."
-```
-
-The AI will call:
-```json
-{
-  "pattern": "Injecting global @Repository bean and querying without tenantId filter",
-  "reason": "Causes cross-tenant data leakage. Always add .where(tenantId = :tenantId) or use TenantAwareRepository base class.",
-  "category": "security",
-  "file_context": "src/repositories/AuditLogRepository.java"
-}
-```
-
-This writes to `.rejected-patterns.json`:
-```json
-[
-  {
-    "id": 1,
-    "timestamp": "2026-08-26T14:35:00.000Z",
-    "category": "security",
-    "pattern": "Injecting global @Repository bean...",
-    "reason": "Causes cross-tenant data leakage...",
-    "file_context": "src/repositories/AuditLogRepository.java"
-  }
-]
-```
-
----
-
-### 3. generate_ado_comments
-### 3. Native Document Generation (v1.0.58+)
-
-Instead of using a generic tool, the agent natively generates two highly structured files based on strict `AGENTS.md` templates:
-- **`ado-comments.md`**: For the Azure DevOps board (Layman summary + Technical Deep-Dive).
-- **`pr-comment.md`**: For the PR Description (Changes, Impact, Scenarios, Guardrails).
-
-The AI constructs these dynamically by reading `scenarios.json`, `decisions.json`, and `files-touched.json`, and presents them to the developer.
-
----
-
-### 4. `manage_project_spec`
-
-Loads and manages `.secufusion-project-spec.json` — the permanent project memory file. **Called automatically at the start of every session (Phase 00)** before any task begins.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `action` | enum | Yes | `read` \| `get_service` \| `get_golden_rules` \| `get_coding_patterns` \| `update` |
-| `service_name` | string | No | **(For `get_service`)** Name of the microservice, e.g. `sfn-events-api` |
-| `update_path` | string | No | **(For `update`)** Dot-notation path, e.g. `microservices.sfn-iam-api.port` |
-| `update_value` | any | No | **(For `update`)** New value to set at `update_path` |
-
-**Actions:**
-
-| Action | Returns | Token cost |
-|---|---|---|
-| `read` | Full spec (all services, all patterns, all rules) | High — use once at session start |
-| `get_service` | Only the block for the requested microservice | Low — use when focused on one service |
-| `get_golden_rules` | `golden_rules` block + `rejected_patterns` | Low — use before any architectural decision |
-| `get_coding_patterns` | `coding_patterns` block | Low — use before writing any new class |
-| `update` | Confirmation of surgical dot-notation write | Low — never overwrites the full file |
-
-**Example — Session start (reads full project context):**
-```json
-{ "action": "read" }
-```
-
-**Example — Focused lookup before writing a service:**
-```json
-{ "action": "get_service", "service_name": "sfn-iam-api" }
-```
-
-**Example — Check golden rules before an architectural decision:**
-```json
-{ "action": "get_golden_rules" }
-```
-
-**Example — Surgical port update (never overwrites the full file):**
-```json
-{
-  "action": "update",
-  "update_path": "microservices.sfn-iam-api.port",
-  "update_value": 9005
-}
-```
-
-**File location resolution order:**
-1. Same directory as `index.js`
-2. `process.cwd()`
-3. Walk up from `cwd` (up to 5 levels)
-4. The global MCP package installation directory (bundled spec fallback)
-
----
-
-### 5. `get_secufusion_rules`
-
-A simple utility tool that returns the raw text of the `AGENTS.md` workflow rules. This is designed as a workaround for AI clients (like older versions of Cline or Claude Code) that do not support the MCP **Resources** capability.
-
-By calling this tool, the AI can read the globally bundled rules without you needing to copy the `.agents` folder into your local repository.
-
-**Example:**
-> "Call the get_secufusion_rules tool and read the rules before we begin."
-
-
----
-
-## Guardrails Summary
-
-These rules are enforced automatically — the AI will never violate them:
-
-```
-✅ All DB queries and event payloads scoped with tenantId
-✅ No console.log() or System.out.println() in any source file
-✅ No hardcoded UAT/Prod IPs or environment URLs
-✅ Every JPA @Entity change accompanied by a Flyway .sql migration
-✅ State in .secufusion-state.json must be fully resolved before PR is raised
-✅ Token Efficiency: Every tool response includes a 📊 Telemetry receipt tracking input/output tokens, cost, and the Session Total
-```
-
-**Performance Guardrails** (enforced whenever writing queries, Kafka consumers, or cross-service calls):
-```
-✅ All GET service methods use @Transactional(readOnly = true)
-✅ No repository method called inside a for/forEach loop — batch with findAllById/saveAll
-✅ Every new query column that is filtered/sorted has a CREATE INDEX in the Flyway migration
-✅ Kafka listeners never do synchronous DB writes or REST calls — offload to @Async
-✅ Every RestTemplate/WebClient call has an explicit timeout and fallback
-```
-
-**Rollback Guardrails** (enforced on every Flyway migration, API contract change, Kafka schema change):
-```
-✅ SAFE migration (additive) — safe to roll back by reverting code
-⚠️  RISKY migration (NOT NULL without DEFAULT) — requires compensating migration
-🚫 DANGEROUS migration (DROP/RENAME) — requires explicit developer confirmation before writing
-✅ API hard cutover (removing /v1/ or a field) — requires confirmation; prefer /v2/ + deprecation first
-✅ Kafka schema change — coordinated deployment of producer + all consumers; flagged in rollback plan
-✅ Every manage_task initialize logs a rollback strategy starter entry in decisions.json
-```
-
-**Breaking Change Detection** (run as Step 4 in Phase 0.5 before any plan is written):
-```
-✅ Check 1: Endpoint consumers — who calls this endpoint? Flag if response shape changes
-✅ Check 2: Entity/table consumers — @Query annotations across all repos for this column
-✅ Check 3: Kafka topic consumers — coordinated deployment required if schema changes
-✅ Check 4: Chrome extension — silent breaks invisible until users report them
-✅ Over-flag > under-flag: always present a breaking change report if in doubt
-```
-
-**classify_task — Deep Analysis Engine** (runs first on every task, before anything else):
-```
-✅ Weighted signal tiers: service names = 10pts, tech constructs = 5pts, generic = 1pt
-✅ Root-cause extraction: classifies by WHERE THE FIX LIVES, not where the symptom appears
-✅ Negation detection: "not a UI issue" removes frontend signal weight
-✅ Bug disambiguation: data-correctness/exception/auth/CRUD/performance bugs → +backend
-✅ Confidence gate: HIGH only when score ratio ≥ 1.8× AND Tier 1/2 signal matched
-✅ Persists to .secufusion/classifications/{id}.json — no re-classification on resume
-```
-
----
-
-## File Outputs
-
-| File | Description | Commit? |
-|---|---|---|
-| `.secufusion-project-spec.json` | **Project DNA** — all services, ports, patterns, golden rules. Generated once, read every session | ✅ Yes |
-| `.secufusion/registry.json` | Index of all initialized work items and their exact dynamic folder names — used by `search_tasks` | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/spec.json` | Task spec — title, description, ACs, tags, status | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/progress.json` | AC tracking — pending, completed, next_step | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/decisions.json` | Architectural decisions log (including rollback strategy) | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/files-touched.json` | All files modified with change summaries | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/scenarios.json` | Test scenarios (unit / integration / e2e / manual) | ✅ Yes |
-| `.secufusion/tasks/{id}-{slug}/pr-summary.md` | Auto-generated PR summary on `manage_task complete` | ✅ Yes |
-| `.secufusion-state.json` | **Legacy** branch-scoped state — still works via `manage_branch_state` | ✅ Yes |
-| `.rejected-patterns.json` | Cumulative log of all rejected patterns across sessions | ✅ Yes |
-| `.secufusion-tokens.json` | Persistent tracking of session-wide LLM token usage and cost | ❌ No |
-
-> **Tip:** Commit the entire `.secufusion/` folder and `.rejected-patterns.json` to your repo. Do **not** commit `.secufusion-tokens.json`.
-
----
-
-## Workflow Overview
-
-```
-┌──────────────┬──────────────────────────────────────────────────────────────┐
-│  Phase 00    │  manage_project_spec (action=read + get_golden_rules)         │
-│  Project DNA │  → FIRST step — runs before ANY problem statement is read     │
-│  (Session    │  → AI loaded with ALL services, ports, coding patterns,       │
-│   Start)     │     Kafka topics, golden rules, and tenant isolation config   │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 0.5   │  Ultimate Reasoning (ReAct) → classify_task                   │
-│  Task        │  Step 1: AI outputs ### Ultimate Reasoning block              │
-│  Classification  Deconstruction / Observation / Root Cause / Hypothesis    │
-│              │  Step 2: classify_task → 5-pass deep analysis engine          │
-│              │    Pass 1: Weighted signal scoring (Tier 1-4)                 │
-│              │    Pass 2: Negation detection per sentence                    │
-│              │    Pass 3: Root-cause phrase extraction                       │
-│              │    Pass 4: Bug disambiguation matrix                          │
-│              │    Pass 5: Confidence gate (≥ 1.8× + Tier 1/2 required)      │
-│              │  → allowed_next_action: PROCEED / CONFIRM / STOP              │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 0.6.6 │  manage_task (action=read_summary)  OR  search_tasks          │
-│  Resume      │  → Token-efficient status view → resume next_step instantly   │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 0.7   │  Present full plan (scope, files, ACs, perf, rollback)        │
-│  Plan Gate   │  → STOP and wait for "proceed" / "adjust" / "cancel"          │
-│              │  → manage_task (action=initialize) only after proceed          │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase -1    │  philosophy_check (Silently validates WHY/WHO/WHAT/RISK)       │
-│  Philosophy  │  → Blocks planning if intent or safety is unclear (ALL TASKS)  │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 1     │  search_tasks → get_task_history → manage_task initialize     │
-│  Planning    │  → Creates .secufusion/tasks/{id}-{slug}/ with all 5 files    │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 2     │  manage_task: update_spec / log_file_touched /                │
-│  Execution   │              log_decision / add_scenario                       │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 3     │  log_rejected_pattern                                          │
-│  Correction  │  → Record mistakes permanently to avoid repeat                │
-├──────────────┼──────────────────────────────────────────────────────────────┤
-│  Phase 4     │  /sfn:review (Standalone AI Reviewer Engine)                  │
-│  PR Handoff  │  → Enforces 10 strict architecture passes directly on code    │
-│              │  → manage_task (action=complete) → pr-summary.md generated    │
-│              │  → Document Generation (ado-comments.md, pr-comment.md)         │
-└──────────────┴──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Real-World Walkthrough
-
-A complete end-to-end example of what you actually type and what happens at each phase.
-
----
-
-### Step 1 — Integrate (one-time setup)
-
-Add this to your MCP client config and restart. That's it.
-
-**Antigravity / Claude Desktop / Cline — if you have the source on disk:**
 ```json
 {
   "mcpServers": {
     "secufusion-mcp": {
       "command": "node",
-      "args": ["C:\\Users\\YourName\\Desktop\\mcp\\secufusion-mcp\\index.js"],
+      "args": ["<absolute path>/secufusion-mcp/mcp/dist/server.js", "--root", "<your project>"],
       "type": "stdio"
     }
   }
 }
 ```
 
-**Teammates / fresh machines — pulls from npm, cached after first run:**
-```json
-{
-  "mcpServers": {
-    "secufusion-mcp": {
-      "command": "npx",
-      "args": ["-y", "secufusion-mcp"],
-      "type": "stdio"
-    }
-  }
-}
+A published package (`npx -y secufusion-mcp`) is also supported where it is available to your registry.
+
+### First run
+
 ```
-
-> **Why two options?** If you have the compiled `index.js` on disk, `node` starts instantly and works fully offline. Teammates who don't have the source use `npx` — it downloads from npm once (~3s), then caches it locally so every subsequent run is instant with no network needed.
-
----
-
-### Step 2 — Start a new task (Classification phase)
-
-Just paste your Azure DevOps work item ID and description directly into the chat. No special syntax needed.
-
-Before analyzing the problem statement, the AI has already loaded the Project DNA from Phase 00. It now outputs an **Ultimate Reasoning block** — a structured, spec-grounded analysis of the problem — then calls `classify_task`.
-
-**You type:**
-```
-WI-2847: Add MFA enforcement for admin users on login
-
-**User Story:**
-As a security administrator,
-I want to enforce TOTP-based Multi-Factor Authentication (MFA) for all users with the ADMIN role,
-So that sensitive dashboard actions are protected against compromised credentials.
-
-**Acceptance Criteria:**
-1. Any user with the ADMIN role attempting to log in must be prompted for a TOTP token after password verification.
-2. The system must validate the TOTP token against the user's registered MFA device.
-3. Service accounts (role = SERVICE_ACCOUNT) are exempt from MFA, even if they possess admin privileges.
-4. If MFA fails 3 times, the account should be temporarily locked for 15 minutes.
-```
-
-**The AI outputs:**
-```
-### Ultimate Reasoning
-- **Deconstruction:** TOTP enforcement is an auth-layer concern. sfn-iam-api owns the login flow.
-- **Observation:** AuthService.java contains the password verification step (line 112). No MFA interceptor exists yet. sfn-iam-api runs on port 9001 per project spec.
-- **Root Cause:** No MFA gate exists between password verification and JWT issuance.
-- **Hypothesis:** Add a MfaVerificationService that validates TOTP after password passes, blocks JWT issuance on failure, and records attempts for lockout logic.
-```
-
-**Then classifies and upon approval initializes:**
-```json
-{
-  "action": "initialize",
-  "work_item_id": "2847",
-  "title": "Add MFA enforcement for admin users on login",
-  "description": "Enforce TOTP-based MFA for ADMIN roles, exempting service accounts, with account lockout on 3 failed attempts.",
-  "acceptance_criteria": [
-    "Prompt ADMIN users for TOTP token post-password",
-    "Validate TOTP token",
-    "Exempt SERVICE_ACCOUNT role",
-    "Lock account for 15m after 3 failed attempts"
-  ],
-  "tags": ["security", "auth", "mfa"]
-}
+/sfn-init                      # build project understanding (scaffolds .mcp/ if you want it)
+/sfn-spec BUG-1230 <summary>   # investigate and design; answer the decisions it asks you
+/sfn-code BUG-1230             # implement the approved specification
+/sfn-review BUG-1230           # verify the change and the diff
 ```
 
 ---
 
-### Step 3 — Write code normally
+## New contributor guide
 
-Just code as usual. With the MCP server active, the AI automatically:
-
-- Adds `tenantId` scoping to every DB query it writes
-- Uses a proper logger (e.g., `log.info()`) — never `console.log`
-- Reads `.rejected-patterns.json` before making any architectural suggestion
-- Reminds you to create a Flyway migration if it touches a `@Entity`
-- References any `reference_file_path` you provided to match your coding style
-
----
-
-### Step 4 — Tick off completed work (Execution phase)
-
-As you finish pieces of the feature, tell the AI:
-
-```
-I've finished the tenantId scoping on all queries and written the unit tests.
-Update the state.
-```
-
-The AI calls `manage_task` with `action=update_spec` and the state updates:
-
-```json
-{
-  "action": "update_spec",
-  "work_item_id": "2847",
-  "pending_acs": ["Exempt SERVICE_ACCOUNT role", "Lock account for 15m after 3 failed attempts"],
-  "completed_acs": ["Prompt ADMIN users for TOTP token post-password", "Validate TOTP token"],
-  "next_step": "Implement exemption logic for service accounts in AuthController"
-}
-```
-
+1. **Clone the repository** and open it in your MCP-enabled client.
+2. **Run initialization:** `/sfn-init`. It builds or merges the project spec and knowledge graph.
+3. **Load project intelligence.** `/sfn-init` runs `load_project_knowledge`; read the index it prints. If `.mcp/` is missing it offers to scaffold it.
+4. **Read the relevant architecture knowledge** in `.mcp/architecture/` for the area you will touch, and the terminology entries first.
+5. **Review the ADRs** in `.mcp/adr/` to learn which decisions are deliberate and why.
+6. **Generate a specification:** `/sfn-spec <TICKET-REF>`. Answer the decisions it puts to you; review any reference design; approve `spec.md`.
+7. **Implement:** `/sfn-code <TICKET-REF>`. Stay inside the specification and the file's existing style.
+8. **Run the review workflow:** `/sfn-review <TICKET-REF>`. Fix findings, including diff-quality ones, until it is approved.
+9. **Update project knowledge if you discovered something new:** a trap, an exception, a decision, a lesson. Record it (below). Do this *before* you forget.
+10. **Generate release notes when applicable:** when the spec version changes, `/sfn-init` produces the change-driven notes; add the `why` and any fixes only you know.
 
 ---
 
-### Step 5 — Course correction (if the AI does something wrong)
+## Contributing knowledge
 
-Say the AI used a hardcoded URL or proposed a pattern your team has banned:
+Knowledge is only valuable if it is easy to add and stays with the repository. Contribute whenever you find:
 
-```
-Stop using hardcoded staging URLs like https://staging.secufusion.io.
-All env URLs must come from application.properties. Never hardcode them.
-```
+- a **new architectural discovery** (who really owns a table, what a topic's real topology is)
+- a **historical finding** or the root cause of an incident
+- a **known exception**: something intentional that looks wrong
+- a **review lesson** or a common false positive
+- a **terminology correction**
+- a **design decision** and the alternatives you rejected
 
-The AI **immediately** calls `log_rejected_pattern`:
+**Two ways to add it:**
 
-```json
-{
-  "pattern": "Hardcoded staging URL https://staging.secufusion.io in source files",
-  "reason": "Must use @Value('${app.base-url}') from application.properties. Hardcoded URLs break environment parity and expose internal topology.",
-  "category": "security",
-  "file_context": "src/services/NotificationService.java"
-}
-```
+1. Ask the agent: it calls `record_project_knowledge` with a category, title, body, tags, `applies_to` and a mandatory `source`. It is saved as `proposed`.
+2. Copy the entry template from `.mcp/README.md` into the right folder.
 
----
+Then **commit it with the code**. A reviewer (a person) marks it `accepted` by editing `status:` or via `set_knowledge_status`. Superseding an entry marks the old one superseded and keeps it readable.
 
-### Step 6 — Complete the task (PR Handoff phase)
+Good entries say what is true, why, and **what must not be "fixed"**; cite `file:line` where possible; and use `applies_to` globs and terms so the entry surfaces when someone touches the relevant code.
 
-When you're done, say:
-
-```
-I'm done with WI-2847. Please complete the task and generate the ADO comments.
-```
-
-The AI marks the task complete, auto-generates a PR summary locally, and then outputs two Azure DevOps comments for you to paste into the ticket:
-
-**✅ Passing output:**
-```
-Here are the comments for your ADO ticket:
-
-**Layman Summary:**
-The problem where some devices weren't accurately appearing on the admin dashboard has been resolved. The fix ensures that the system accurately tallies the registered hardware without throwing silent errors.
-
-**Technical Deep-Dive:**
-The `DeviceActivitySummaryDTO` was throwing a NullPointerException because the `browserUsage` map was uninitialized when `deviceList` was empty. I added an explicit `ConcurrentHashMap` initialization and scoped the iteration inside a `tenantId` check to preserve cross-tenant boundaries.
-```
+`AGENTS.md` should stay lightweight. If it grows past a few hundred lines, `/sfn-init` warns you; move project-specific history, terminology and exceptions into `.mcp/`.
 
 ---
 
-## How It Works (The 3 Layers)
+## Tool reference
 
-The SecuFusion MCP operates across three complementary layers to prevent AI amnesia, enforce architecture standards, and gate code quality:
+The server exposes the tools below. Most workflow tools record state under `.secufusion/`. Tools that can write anywhere else (your source files or `.mcp/`) are marked **writes**, and each one is guarded: previewed by default, or gated on the user's own words. Detailed parameters are in each tool's description.
 
-**Layer 1 — Project Spec (permanent, project-scoped):** `.secufusion-project-spec.json` — loaded once per session via `manage_project_spec`. The AI never needs to be told what port a service runs on, what pattern to use for DTO mapping, or how tenantId flows through the system.
+**Workflow and gates**
 
-**Layer 2 — Task Memory (persistent, work-item-scoped):** `.secufusion/tasks/{id}-{slug}/` — one dynamically named folder per work item, initialized via `manage_task`. Tracks spec, progress, decisions, files touched, scenarios, and generates a `pr-summary.md` on completion. Cross-task intelligence via `search_tasks`, `get_task_history`, and `get_pattern_from_task` prevents re-solving solved problems.
-
-**Layer 3 — AST Guardrails (automated, quality-gating):** ESLint, Maven Checkstyle, tenant isolation scanner, Flyway checker, performance rules, rollback classification, and breaking change detection run at PR time. Cannot be bypassed without explicit `skip_checks`.
-
-### How it all wires together
-
-```
-mcp_config.json                →  starts the server (tools available)
-      +
-.agents/AGENTS.md              →  tells AI when to invoke each tool
-      ↓
-★ SESSION STARTS
-      ↓
-Phase 00: manage_project_spec (read + get_golden_rules)
-          → AI's brain loaded with full Project DNA BEFORE any task is read
-          → knows all ports, services, patterns, tenant rules from spec
-      ↓
-You say: "WI-1042: Add audit log export"
-      ↓
-Phase 0.5: ### Ultimate Reasoning (spec-grounded ReAct)
-           → Deconstruction / Observation / Root Cause / Hypothesis (written to chat)
-           → classify_task: 5-pass deep analysis
-              weighted scores + root-cause phrases + negation + bug heuristics
-              allowed_next_action: PROCEED (backend) / CONFIRM (mixed) / STOP (frontend)
-              + performance risk scan (GREEN/AMBER/RED)
-              + breaking change scan (endpoints/entities/Kafka/extension)
-      ↓
-Phase 0.7: full plan presented → developer approves ("proceed")
-      ↓
-Phase 1: search_tasks (always) → get_task_history → manage_task initialize
-       → .secufusion/tasks/1042-add-audit-log-export/ created
-      ↓
-Phase 2: code + log_file_touched + log_decision + add_scenario (ALL mandatory)
-      ↓
-Phase 4: /sfn:review → APPROVED / DISCUSS
-       → manage_task complete  →  pr-summary.md generated
-       → Generate PR & ADO Documents natively using templates
-```
-
-### Reusing across projects (Global Bundling)
-
-As of version **1.0.13+**, `secufusion-mcp` globally bundles both `.secufusion-project-spec.json` and `AGENTS.md`. You **no longer need to copy these files** into every single repository!
-
-When you install globally (`npm install -g secufusion-mcp@2.2.5`), the AI can automatically read your rules and project spec on the fly from the global installation.
-
-**How to load the Rules in a new project:**
-Depending on your AI client's capabilities, you can load the rules instantly by telling the AI:
-- **"Use the `secufusion_developer` prompt"** (if Prompts are supported)
-- **"Read the `secufusion://rules` resource"** (if Resources are supported)
-- **"Call the `get_secufusion_rules` tool"** (if only Tools are supported)
-
-*(If you prefer the legacy method, you can still copy `.agents/AGENTS.md` and `.secufusion-project-spec.json` into your project root).*
-
-### Dynamic Task Folders (v1.0.17+)
-
-As of version **1.0.17**, the MCP server automatically generates human-readable, safe folder names for all new tasks using the task's title.
-
-When you pass a title like `"BUG-1140: Tenant deletion reports failure"` to `manage_task initialize`, the server strips bad characters, truncates the string safely, and generates a perfect folder name:
-`.secufusion/tasks/BUG-1140-tenant-deletion-reports-failure/`
-
-- **Backward Compatible:** The AI only ever needs to supply the `work_item_id` (e.g. `BUG-1140`) for subsequent updates. The server instantly finds the correct folder via `registry.json` (O(1) lookup) or falls back to a prefix scan for legacy `WI-{id}` folders.
-- **OS Safe:** Automatically trims trailing dashes and clamps lengths to prevent Windows `MAX_PATH` errors.
-
-### Dynamic Architecture Validation (v1.0.23+)
-
-As of version **1.0.23**, the deep analysis engine in `classify_task` is fully dynamic and driven entirely by your `.secufusion-project-spec.json`:
-- Validation dynamically cross-references explicit microservices, frontend repos, and Chrome extensions.
-- Explicit frontend overrides (e.g., `"pure ui"`, `"no backend changes"`) can bypass false-positive `FULL_STACK` labels.
-- The Breaking Change Pre-Scan safely checks for exact table names and Kafka topics derived from your architecture.
-- `coding_patterns` defined in the spec are injected seamlessly into `secufusionFlags` validation.
-
-### Retrospective Intelligence (v1.0.24+)
-
-As of version **1.0.24**, the MCP server introduces a fully automated **Retrospective Layer**:
-- **Auto-Retrospective Trigger**: `manage_task complete` now automatically generates a partial retrospective and asks the developer 7 targeted questions.
-- **record_retrospective**: A new tool that saves retrospective insights, tracking plan accuracy, classification accuracy, and pre-PR check attempts.
-- **Dynamic Learning (Pass 0)**: `classify_task` now includes a Pass 0 that injects learned signals from past retrospectives into the active classification logic.
-
-### Rule 0 Enforcement & Frontend Fallbacks (v1.0.50+)
-
-As of version **1.0.50**, the MCP server strictly enforces **Rule 0** and adds intelligent fallbacks:
-- **Rule 0 (DNA Load First)**: Agents are now strictly forbidden from reasoning, classifying, or planning until they have called `manage_project_spec` to load the project DNA.
-- **Auto-Syncing AGENTS.md**: The package now automatically syncs the workspace rules before publishing, guaranteeing AI agents always run the latest constraints.
-- **Frontend Service Resolution**: `get_service` now intelligently resolves frontend and extension repositories (like `sfn-web-ui`) even when they aren't explicitly keyed as backend microservices.
-- **Explicit AC Recognition**: `classify_task` now overrides `VAGUE` completeness warnings if it detects explicit Acceptance Criteria in the task description.
-
-### Strict Comment Guardrails & Slugification Fixes (v1.0.55+)
-
-As of version **1.0.55**, the MCP server introduces two new quality-of-life and enforcement updates:
-- **No Ticket IDs in Comments**: A strict rule has been added to `AGENTS.md` and the Tier 2 AI Reviewer now explicitly flags any inline ticket IDs (e.g., `// WI-1097`) inside code comments as a CRITICAL violation. Comments must explain the durable WHY, not point to decaying tracking tickets.
-- **Clean Task Slugs**: `manage_task initialize` now automatically strips leading ticket prefixes (like `BUG-1173: `) from the title before generating the folder slug, preventing duplicated IDs in the folder path (e.g., no more `1173-bug-1173-`).
-
----
-
-## Talking to the AI — What You'll Ever Say
-
-Once all three layers are in place, you interact completely naturally:
-
-| Situation | What you say |
+| Tool | Purpose |
 |---|---|
-| 🆕 New task | `WI-XXXX: [paste description from Azure]` |
-| ✅ Done a chunk | `Done with the tenantId scoping, update the state` |
-| ❌ AI did something wrong | `Don't do X, do Y instead` |
-| 🚀 Ready for PR | `Run checks for WI-XXXX` or `Prepare PR` |
-| 🔄 Resuming after a break | `What's left?` or `Resume the current task` |
-| 🔍 Starting similar work | `Has this been done before?` — AI calls `search_tasks` |
-| 📋 Want the full plan first | AI automatically presents plan in Phase 0.7 — type `proceed` to start |
+| `philosophy_check` | WHY / WHO / WHAT / RISK check of a ticket before any planning (judged, recorded) |
+| `spec_create_intent`, `spec_read_intent`, `spec_next_number` | The business intent (WHY layer) and its acceptance criteria |
+| `classify_task` | Which layers a change touches and what it can break (judged; regex score is only a hint) |
+| `manage_requirement` | The requirement lifecycle: facts, root cause, decisions, clarifications, assessment, `CONFIRMED` |
+| `manage_exploration` | UI impact, questions only the user can answer, UI-reference feedback, exploration readiness |
+| `manage_implementation_plan`, `validate_implementation_plan` | Create and validate the plan against the requirement (judged) |
+| `generate_spec_document` | Assemble the Implementation Specification from recorded state |
+| `verify_against_spec` | Adversarial review verdict; blocked by unaccepted HIGH diff noise |
+| `spec_status` | The gate ledger and the next step |
+| `manage_task`, `get_task_history`, `search_tasks`, `get_pattern_from_task`, `record_retrospective` | Task records and cross-task memory |
+| `resolve_work_item_ref` | Canonical identity strings for a ticket |
+| `manage_project_spec`, `prime_session`, `log_rejected_pattern` | Project spec access, token-efficient session start, rejected patterns |
 
-**Before `manage_project_spec`:** The AI started cold every session. You explained ports, coding patterns, and tenantId flow every single time.
+**Investigation and evidence**
 
-**After `manage_project_spec`:** The AI reads `.secufusion-project-spec.json` at session start and **already knows your entire architecture**. You just describe the work.
-
-**Before `manage_task`:** The AI used a flat branch-state file with no cross-task memory.
-
-**After `manage_task`:** Every work item has its own structured folder. The AI tracks decisions, files, and scenarios per task. `search_tasks` finds related past work. `get_pattern_from_task` reuses proven approaches.
-
-**Before Phase 0.5 + 0.7:** The AI started coding immediately with no ownership check or explicit plan.
-
-**After Phase 0.5 + 0.7:** The AI performs deep code investigation, writes an **Ultimate Reasoning** block to prove its root-cause understanding, and then calls `classify_task`. The deep analysis engine confirms the classification, runs a performance risk and breaking change scan, presents a complete plan with rollback strategy, and **waits for your approval before writing a single line of code**.
-
-**Before strict AGENTS.md:** Each phase was a soft bullet list with suggestions. The AI could skip steps.
-
-**After strict AGENTS.md:** Every phase has a MANDATORY tool-call sequence in code-block format, an explicit ❌ prohibition list, and a hard gate. Skipping any step is a named violation.
-
----
-
-## Tool 10: `classify_task` — Deep Analysis Engine
-
-The **mandatory first step** for every task without exception. Classifies a task as `BACKEND_ONLY`, `FRONTEND_ONLY`, `FULL_STACK`, or `EXTENSION_ONLY` using a 5-pass deep analysis pipeline.
-
-> **Core principle:** Classifies by **where the fix lives** — not where the symptom appears.
-> `"Dashboard shows wrong device count"` → fix is in the API/DB query → **BACKEND_ONLY**
-> `"Button layout is broken"` → fix is in the React component → **FRONTEND_ONLY**
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `work_item_id` | string | Yes | Azure DevOps work item ID, e.g. `BUG-1140` or `2847` |
-| `title` | string | Yes | Full task title from Azure DevOps |
-| `description` | string | Yes | Full task description / problem statement — paste everything |
-| `task_type` | enum | Yes | `bug` \| `user_story` \| `feature` \| `hotfix` \| `refactor` \| `chore` |
-
-**The analysis passes:**
-
-| Pass | What it does |
+| Tool | Purpose |
 |---|---|
-| **Pass 1 — Weighted signal tiers** | Tier 1: service names = 10pts each (dynamically populated from `project-spec.json`). Tier 2: tech constructs = 5pts. Tier 3: domain terms = 2-3pts. Tier 4: generic words = 1pt. |
-| **Pass 2 — Negation detection** | Scans each sentence. `"not a UI issue"` → frontend penalty. Explicit overrides (e.g. `"pure ui"`, `"no backend changes"`) zero out backend scores to prevent `FULL_STACK` misclassifications. |
-| **Pass 3 — Root-cause phrase extraction** | 25 backend patterns + 9 frontend patterns matched via regex. |
-| **Pass 4 — Bug disambiguation matrix** | For `task_type: bug`: data-correctness → +15 backend, exception/crash → +15 backend, auth/permission → +12 backend. |
-| **Pass 4.5 — Problem Statement Validation** | **NEW (v1.0.19+)**: Validates Title, Scope, and Task Type. Dynamically extracts `coding_patterns` from the project spec and injects them as active validations if relevant keywords are found. |
-| **Pass 5 — Confidence & Breaking Change Gate** | `HIGH` only when dominant score ≥ 1.8× second-place **AND** at least one Tier 1/2 signal matched. Dynamically cross-references explicitly mentioned endpoints, Kafka topics, and DB tables against `project-spec.json` to accurately flag breaking change risks. |
+| `investigate_entity`, `investigate_relationship`, `query_knowledge_graph` | Query the repository evidence graph |
+| `calculate_blast_radius`, `analyze_impact`, `score_change_risk`, `get_change_context` | Impact and risk of a change |
+| `smart_search` | Search with context |
+| `scan_repository_stack`, `extract_domain_models`, `extract_api_endpoints`, `extract_event_topics`, `refresh_repository_knowledge` | Build the knowledge graph from the code |
+| `discover_secufusion_workspace`, `inspect_workspace_repositories`, `get_workspace_status`, `get_evidence_completeness` | Workspace and evidence completeness |
+| `start_dna_watcher`, `load_external_env_file` | Keep the graph fresh; load an external env file |
 
-**Output — `allowed_next_action`:**
+**Traceability and tests**
 
-| Value | Meaning | What the AI does |
-|---|---|---|
-| `PROCEED` | `BACKEND_ONLY` HIGH confidence | Moves directly to Phase 0.7 plan presentation |
-| `CONFIRM` | Mixed / LOW / extension | Presents analysis report, waits for developer YES |
-| `STOP` | `FRONTEND_ONLY` | Hard stop — routes to frontend team, no code written |
-
-**Mixed signal resolution:** Backend dominates only when `backendScore ≥ 2.5× frontendScore`. Below that threshold → `FULL_STACK` (requires confirmation).
-
-**Persistence:** Result saved to `.secufusion/classifications/{work_item_id}.json`. Resuming a classified task skips re-classification and loads the prior result.
-
-**Example output for a bug:**
-```
-✅ BACKEND_ONLY (HIGH confidence)
-
-Weighted scores: Backend=47 | Frontend=3 | Extension=0
-Score ratio: 15.7x dominant
-Root-cause evidence: [BE+12] data correctness → backend query | [BE+12] persistence failure → backend
-Bug heuristic: data-correctness bug → +15 backend (API/DB likely source)
-Classification reason: Backend dominates (47 vs FE:3 EXT:0) — frontend signals are noise
-
-Proceeding to plan presentation. No developer confirmation needed.
-```
-
----
-
-## What Changed — Strict Enforcement Update
-
-### `classify_task` — Deep analysis engine (replaces keyword counting)
-
-| Before | After |
+| Tool | Purpose |
 |---|---|
-| Flat keyword counting — every word scored equally | 4-tier weighted scoring — service names = 10× generic words (dynamically loaded from `project-spec.json`) |
-| `"dashboard"` → scored as frontend | Root-cause phrases — `"shows wrong count on dashboard"` → backend +12 |
-| No negation awareness | Sentence-level negation — `"not a UI issue"` removes frontend weight. Explicit overrides (e.g. `"pure ui"`) safely force `FRONTEND_ONLY`. |
-| Bug heuristic: default to backend only on LOW confidence | 5-category bug disambiguation matrix (+12–15pts per category) |
-| HIGH confidence even on equal scores | HIGH only when ratio ≥ 1.8× AND Tier 1/2 signal matched |
-| Mixed signals → always FULL_STACK | Backend dominates at 2.5× → classified BACKEND_ONLY, frontend treated as noise |
-| Validation / Breaking Changes hardcoded | Validation rules, endpoints, DB tables, and Kafka topics dynamically extracted from `project-spec.json` |
+| `create_traceability_link`, `trace_requirement`, `find_traceability_gaps` | Requirement → design → code → tests |
+| `generate_test_obligations`, `suggest_test_scenarios` | What must be tested |
+| `discover_tests`, `execute_tests`, `ingest_test_results`, `get_test_results`, `correlate_test_failure` | Run and correlate tests |
 
-### `AGENTS.md` — All phases rewritten to strict enforcement
+**Engineering experience**
 
-| Phase | Before | After |
+| Tool | Purpose |
+|---|---|
+| `record_engineering_experience`, `get_engineering_experience`, `get_experience_context`, `validate_experience`, `find_experience_conflicts`, `find_repeated_outcomes`, `mark_experience_stale`, `retire_experience`, `link_experience`, `get_learning_feedback`, `skill_recommend` | Validated historical lessons linked to components, with staleness and conflict handling |
+
+**UI design reference**
+
+| Tool | Purpose |
+|---|---|
+| `get_design_context`, `discover_ui_patterns` | Existing frontend evidence |
+| `generate_static_ui_reference` | A bounded, self-contained static HTML reference: `REFERENCE_ONLY`, `NOT_IMPLEMENTED`, no network or storage, never touches source (writes under `.secufusion/designs/`) |
+
+**Review quality**
+
+| Tool | Purpose |
+|---|---|
+| `check_diff_quality` | Deterministic diff-quality and line-ending findings (PASS 10) |
+| `normalize_line_endings` | Convert a file back to its own style (preview by default; **writes** only with `apply` and the user's words) |
+
+**Project intelligence and releases**
+
+| Tool | Purpose |
+|---|---|
+| `load_project_knowledge` | Build the memory model from `.mcp/` (**writes** only with `scaffold`) |
+| `get_project_knowledge` | Knowledge that applies to the terms and files you give |
+| `record_project_knowledge`, `set_knowledge_status` | **Write** one entry / change an entry's status (the latter requires the user's words) |
+| `generate_release_notes` | Change-driven release notes and snapshot (**writes** unless `dry_run`) |
+
+---
+
+## Repository layout and where state lives
+
+```
+.
+├── .mcp/                         the Project Intelligence Layer (commit this)
+├── .agents/                      agent instructions for this repository (being slimmed as knowledge moves to .mcp/)
+├── .secufusion-project-spec.json project DNA: services, topics, rules, patterns
+├── .secufusion/                  working state (see below)
+└── secufusion-mcp/               the plugin and server
+    ├── .claude-plugin/ .mcp.json plugin manifest and server wiring
+    ├── commands/                 sfn-init, sfn-spec, sfn-code, sfn-review
+    ├── agents/                   planner, coder, reviewer personas and the workflow router
+    ├── hooks/                    session-start knowledge-drift hook
+    ├── mcp/src/                  the server (TypeScript) → mcp/dist
+    └── tests/                    end-to-end and documentation-consistency tests
+```
+
+| Location | What | Commit? |
 |---|---|---|
-| **Phase 00** | Bullet list, no gate | MANDATORY 3-step sequence + ❌ prohibition list |
-| **Phase 0 (Resume)** | `"Call read_summary, begin executing"` | Explicit STEP 1/2/3 + ❌ list (no guessing, no re-reading) |
-| **Phase 0.7 (Plan Gate)** | `"Build a plan"`, soft suggestions | Every plan section is **mandatory** — omitting any = violation. Explicit proceed/adjust/cancel contract. |
-| **Phase 1 (Planning)** | `"Call search_tasks if relevant"` | `search_tasks` is **unconditional** — STEP 1 always, even if "sure" there's no prior work |
-| **Phase 2 (Execution)** | Bullet suggestions | MANDATORY code block for all 4 tool calls + `next_step` contract with explicit VIOLATION labels |
-| **Phase 3 (Correction)** | `"Immediately call log_rejected_pattern"` | Explicit STEP 1/2/3 + ❌ list — log immediately, not end of session |
-| **Phase 4 (PR Handoff)** | `"Call complete → run checks → fix if error"` | Explicit STEP 1-3 **fix → recheck loop** until ZERO errors (Unified 3-tier check) |
-| **Guardrails** | Mixed soft/hard language | All `should` → `MUST`, all `avoid` → `FORBIDDEN`, linter errors explicitly blocking |
-| **Cross-Task Intelligence** | Prose bullets | MANDATORY STEP 1-4 sequence + ❌ list |
+| `.mcp/` | Project-owned knowledge and release history | **Yes, always** |
+| `.secufusion-project-spec.json`, `.secufusion-migrations.json` | Project DNA and migration state | Yes |
+| `.secufusion/requirements`, `plans`, `tasks`, `judgments`, `gates`, `designs` | The audit trail of how each change was specified, judged and approved | Your choice. Commit it if you want that audit trail |
+| `.secufusion/dna.json`, `registry.json`, caches | Regenerable working state | Usually no |
+| `.secufusion-tokens.json` | Local token accounting | No |
 
+The server is organised as: `server.ts` (entry) · `shared.ts` (helpers) · `tools_*.ts` (one `register…` function per tool group) · pure libraries (`diff_quality`, `line_ending_fix`, `release_notes`, `project_knowledge`, `exploration`, `requirement_manager`, `work_item_ref`, `spec_document`, `judge`, `gates`, `verdicts`) that hold the logic so it can be tested without the protocol.
 
 ---
 
-## 🏗️ v2.0.0 — Native Claude Plugin Architecture
+## Development
 
-`secufusion-mcp@2.0.0` is a **complete architectural rebuild** of the MCP server into a native Claude Plugin. It unifies the MCP server, slash commands, personas, and hooks into a single self-contained, portable package following the enterprise-grade `ml-specs` plugin standard.
-
-### What Changed
-
-| Area | Before (≤ 1.2.8) | After (2.0.0) |
-|---|---|---|
-| **Plugin type** | Standalone MCP server only | Native Claude Plugin (`.claude-plugin/plugin.json` + `.mcp.json`) |
-| **Slash commands** | Disconnected — no wiring to server | Natively registered — appear in Claude IDE `/` command menu |
-| **Agent personas** | Scattered globally in `.agents/` | Self-contained inside `agents/` within the plugin package |
-| **Path portability** | Hardcoded absolute paths | Fully portable via `${CLAUDE_PLUGIN_ROOT}` |
-| **DNA plugin** | Separate `secufusion-dna-plugin` package | Fully merged into `secufusion-mcp` |
-| **TypeScript build** | Root-level compile | Isolated in `mcp/src/` → compiles to `mcp/dist/` |
-| **Repo validation** | Not present | Reads `.secufusion-project-spec.json` to verify all mandatory repos are cloned |
-| **Frontend/ext validation** | Not present | Checks `frontend.repo` and `chrome_extension.repo` from project spec |
-
-### New Package Structure
-
-```
-secufusion-mcp/
-├── .claude-plugin/
-│   └── plugin.json          ← Claude registers this as a native plugin
-├── .mcp.json                ← MCP server wired into the plugin (${CLAUDE_PLUGIN_ROOT} relative)
-├── agents/                  ← All agent personas (planner, coder, reviewer, claude, AGENTS.md)
-├── commands/                ← All slash command definitions (markdown)
-├── hooks/                   ← Lifecycle hooks (knowledge-drift.sh)
-├── mcp/
-│   ├── src/
-│   │   ├── server.ts        ← Main MCP server logic
-│   │   └── parsers/         ← Polyglot AST parsers (Java, TS, React, Config, Infra...)
-│   ├── dist/                ← Compiled output (what npm ships)
-│   └── tsconfig.json        ← Isolated TypeScript config
-├── scripts/
-│   ├── sfn-pr-check.js      ← Pre-PR mechanical guardrail runner
-│   └── utils.js
-└── package.json
+```bash
+cd secufusion-mcp
+npm install
+npm run build        # tsc → mcp/dist
+npm test             # build + 11 suites
 ```
 
-### Merged: SecuFusion DNA Plugin
+`npm test` runs deterministic benchmarks (state machines, diff quality against real temporary git repositories, work-item identity, release notes, project knowledge) and end-to-end suites that drive the real server over stdio (full lifecycle, exploration, identity, release, knowledge), plus a **documentation-consistency test** that fails if a command or agent document references a tool that does not exist, or if the README's tool reference drifts from the server.
 
-The previously separate `secufusion-dna-plugin` is now fully merged into `secufusion-mcp`. There is no longer a need to install or configure it separately. All DNA discovery tools are available natively:
+Conventions for contributors:
 
-- `scan_repository_stack` — discovers framework/stack and validates repos vs project spec
-- `extract_domain_models` — maps JPA entities and domain objects via AST
-- `extract_api_endpoints` — maps REST/GraphQL endpoints across all services
-- `extract_event_topics` — maps Kafka producers and consumers
-- `start_dna_watcher` — starts continuous background file watcher
-
-### Mandatory Repository Validation
-
-During `scan_repository_stack`, the server reads `.secufusion-project-spec.json` and cross-references:
-- All keys under `"microservices"` (e.g., `sfn-auth-api`, `sfn-events-api`)
-- The `"frontend.repo"` value (e.g., `sfn-web-ui`)
-- The `"chrome_extension.repo"` or `"snf-browser-extn"` value (e.g., `snf-browser-extn`)
-
-If any of these are physically missing from your local workspace folder, a `[WARNING]` is emitted listing exactly which core pillars need to be cloned before a complete DNA map can be built.
+- **Logic goes in a pure library with tests; the tool is a thin wrapper.** Tests use real temporary git repositories and the real server, not mocks.
+- **The documents are the product's interface to the model.** When behaviour changes, update the command or agent document in the same change, and keep the README honest.
+- **Preserve the file's existing style and line endings.** Run `/sfn-review` on your own change; it checks its own diff.
+- **No tool writes without a guard.** Writes are previewed by default or require the user's own words.
 
 ---
 
-## ⚡ End-to-End Slash Command Workflow
+## Status and known limitations
 
-All commands are natively registered as Claude Plugins and appear directly in the Claude IDE `/` command picker. The workflow is streamlined into **4 core commands** with zero redundancy:
-
-| # | Command | Persona / Role | When to run | What it does |
-|---|---|---|---|---|
-| **1** | `/sfn-init` | Ecosystem Architect | First thing in morning, on new machine, or new clone | Bootstraps workspace, validates mandatory repos against `.secufusion-project-spec.json`, extracts domain models, API endpoints, Kafka topics, generates `.secufusion/dna.json`, builds full Mermaid architecture diagram, and launches continuous background file watcher (`chokidar`). |
-| **2** | `/sfn-spec <ticket-id or desc>` | `planner.md` | When starting any story, chore, feature, bug, or hotfix | Evaluates Phase -1 Philosophy gate (WHY/WHO/WHAT/RISK), creates Markdown business intent (`spec_create_intent`), primes session AST context (`prime_session`), classifies task boundaries (`classify_task`), enforces **Rule 5 STRICT YIELD** for your green light, then generates structured `plan.md`. |
-| **3** | `/sfn-code` | `coder.md` | After you approve the plan | Implements strictly according to the approved plan. Enforces zero-trust standards: mandatory tenant isolation on DB operations, proper `@Transactional` scoping, DTO mapping rules, and logs anti-patterns to `.rejected-patterns.json`. |
-| **4** | `/sfn-review` | `reviewer.md` | After coding is done, before opening a PR | Adversarial PR gate running 3 tiers in a single pass: (1) Mechanical AST guardrails (tenant isolation, N+1 queries, hardcoded endpoints), (2) AI file-by-file code review, (3) Context-aware task evaluation against spec. Blocks PR if Tier 1 violations exist. |
-
----
-
-### 📊 The 4-Command SDLC Flow at a Glance
-
-```
-Morning / First Setup
-  │
-  ▼
-/sfn-init                    ← Scans workspace, writes dna.json, draws Mermaid diagram, starts watcher
-  │
-Ticket Arrives (Feature / Bug / Hotfix)
-  │
-  ▼
-/sfn-spec WI-XXXX            ← Phase -1 Philosophy check → Intent WHY → Prime → Classify → STRICT YIELD
-  │
-  ├─► User Approves Plan ✅
-  │
-  ▼
-/sfn-code                    ← Implement approved plan with zero-trust guardrails
-  │
-  ▼
-/sfn-review                  ← 3-Tier PR Gate: mechanical AST checks + AI review + spec matching
-  │
-  ▼
-PR Ready to Merge 🚀
-```
-
----
-
-## Requirements
-
-- **Node.js** >= 18.0.0
-- An MCP-compatible AI client (Antigravity IDE, Claude Desktop, Cursor, Cline, etc.)
-
----
-
-## License
-
-ISC © SecuFusion
-
-## Phase 9 Features Added
-- Config-driven deterministic Workspace Discovery (`.secufusion/workspace.json`)
-- Dynamic Core vs Optional Repository Classification
-- Evidence Completeness Engine (`get_evidence_completeness`)
-- Portable Workspace Paths (No hardcoded paths)
-
-## Phase 10 Features Added
-- End-to-End Real Repository Validation
-- Handled massive-scale AST extraction spanning 800+ entities
-- Fixed undefined identifier faults for raw source parsing
-- Proven against Real MFA, Retention, and User Deletion Workflows
+- **Judgments depend on the model.** In clients without MCP sampling, the model that did the work also judges it. Schemas force evidence, but for an independent review use a sampling-capable client or review in a separate session.
+- **`user_statement` cannot prove a quote is genuine.** It stops silent self-approval; review the transcript for destructive decisions.
+- **Retrieval is keyword and glob based, not semantic.** A differently worded ticket can miss a relevant entry. "No match" means "nothing recorded".
+- **`autocrlf` hides history.** With `core.autocrlf=true` git stores the normalized form, so a file that was mixed on disk before cannot be seen as mixed at base; pre-existing mixed files may be reported as introduced.
+- **Gate ledgers are keyed by the reference string.** `BUG-1230` and `1230` have separate ledgers; always pass the reference exactly as written.
+- **Migration of project knowledge out of `AGENTS.md` is gradual.** Device vs Machine is migrated; other project-specific sections (migration guardrails, platform and service architecture) are candidates.
+- **Phase 7 regression functions** exist as library code but are not exposed as tools; regression context is assembled from blast radius, traceability gaps, experience and test results.
+- **Licence:** ISC (see `package.json`).

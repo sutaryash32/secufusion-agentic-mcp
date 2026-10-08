@@ -43,6 +43,7 @@ const NOT_TOOLS = new Set([
     "scope_creep", "guardrail_violations", "out_of_scope_changes", "reported_by", "client_confirmed", "skip_checks",
     "run_pre_pr_checks_with_reviewer_agent", // retired; checked separately below
     "spec_json", "claude_plugin_root",
+    "spec_document", // a library module (mcp/src/spec_document.ts), not a tool
 ]);
 const TOOL_SHAPED = /\b(?:manage|get|spec|check|verify|validate|record|resolve|normalize|classify|philosophy|prime|generate|discover|investigate|trace|create|find|calculate|score|search|suggest|skill|log|ingest|execute|correlate|query|refresh|inspect|extract|scan|start|load|mark|retire|link|analyze|smart|detect|set|ask|answer)_[a-z_]+\b/g;
 
@@ -50,6 +51,18 @@ for (const rel of docs) {
     const text = read(rel);
     const unknown = [...new Set(text.match(TOOL_SHAPED) ?? [])].filter((t) => !tools.has(t) && !actions.has(t) && !NOT_TOOLS.has(t));
     check(`${rel}: every tool-shaped name it uses exists on the server`, unknown.length === 0, unknown.join(", "));
+}
+
+// ── the root README is the front door: it must match the server ──────────
+{
+    const readme = read("../README.md");
+    const missing = [...tools].filter((t) => !new RegExp("`" + t + "`").test(readme));
+    check("README's tool reference mentions every registered tool", missing.length === 0, missing.join(", "));
+    const invented = [...new Set(readme.match(TOOL_SHAPED) ?? [])].filter((t) => !tools.has(t) && !actions.has(t) && !NOT_TOOLS.has(t));
+    check("README names no tool that does not exist", invented.length === 0, invented.join(", "));
+    check("README documents the four-command workflow and the .mcp layer", ["/sfn-init", "/sfn-spec", "/sfn-code", "/sfn-review", ".mcp/", "Project teaches the agent"].every((x) => readme.includes(x)));
+    check("README covers the requested sections", ["## Why this exists", "## The Project Intelligence Layer", "## Review philosophy", "## Knowledge management", "## Lessons learned", "## Architectural decisions", "## New contributor guide", "## Contributing knowledge", "## Release notes philosophy"].every((h) => readme.includes(h)));
+    check("README no longer describes retired commands or removed tools", !/sfn-plan|sfn-explore|manage_branch_state|@2\.2\.5/.test(readme.replace(/Legacy[\s\S]*?Current/, "")), "");
 }
 
 const cmds = Object.fromEntries(fs.readdirSync(path.join(PKG, "commands")).map((f) => [f, read(`commands/${f}`)]));
