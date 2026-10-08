@@ -112,6 +112,15 @@ check("plugin.json describes the init -> spec -> code -> review workflow", /sfn-
 check("generate_spec_document is registered", tools.has("generate_spec_document"));
 
 
+for (const f of ["AGENTS.md", "claude.md", "coder.md", "planner.md", "reviewer.md"]) {
+    const norm = (t) => t.replace(/\r\n/g, "\n");
+    let rootCopy = null;
+    try { rootCopy = norm(read(`../.agents/${f}`)); } catch { /* the repo-level copy is optional when the package is tested on its own */ }
+    if (rootCopy !== null) check(`agent file ${f}: repo-level .agents copy is aligned with the shipped plugin copy`, rootCopy === norm(read(`agents/${f}`)));
+}
+const readmeText = read("../README.md");
+check("README presents DNA (what) and Project Intelligence (why) as one Unified Project Knowledge System", /## Unified Project Knowledge System/.test(readmeText) && /What exists\?/.test(readmeText) && /Why does it exist\?/.test(readmeText) && /DNA tells the MCP what the system is\. Project Intelligence tells the MCP why the system became that way\./.test(readmeText));
+check("/sfn-init loads both layers and says they are combined; the agent router does too", /Unified Project Knowledge System/.test(cmds["sfn-init.md"]) && /what exists/.test(cmds["sfn-init.md"]) && /why it exists/.test(cmds["sfn-init.md"]) && /Layer 2/.test(read("agents/claude.md")) && /Layer 1/.test(read("agents/claude.md")));
 check("/sfn-init builds project understanding from .mcp/ and keeps agents.md lightweight", /load_project_knowledge\(/.test(cmds["sfn-init.md"]) && /agents\.md lightweight|Keep agents\.md lightweight/i.test(cmds["sfn-init.md"]) && /record_project_knowledge/.test(cmds["sfn-init.md"]));
 check("/sfn-spec consults project knowledge before investigating", /get_project_knowledge/.test(cmds["sfn-spec.md"]) && /terminology trap|intentional exception/i.test(cmds["sfn-spec.md"]));
 check("/sfn-review and the reviewer persona check recorded exceptions before flagging", /get_project_knowledge/.test(cmds["sfn-review.md"]) && /get_project_knowledge/.test(read("agents/reviewer.md")) && /known exception|intentional/i.test(read("agents/reviewer.md")));

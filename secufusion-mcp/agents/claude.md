@@ -28,8 +28,9 @@ You must strictly execute these commands in the prescribed order by calling the 
 ### 1. `sfn:init`
 **Purpose:** Prime the ecosystem for the first time.
 **Execution Sequence:**
-1. Call the `secufusion-dna-plugin` tools to scan the repository.
+1. Call the `secufusion-dna-plugin` tools to scan the repository. This is **Layer 1, DNA: what exists** (services, APIs, topics, models, topology).
 2. Generate the architectural map and configuration extracts.
+2b. Call `load_project_knowledge`. This is **Layer 2, Project Intelligence (`.mcp/`): why it exists** (decisions, exceptions, terminology, lessons). Use both together: DNA tells you what the system is; Project Intelligence tells you why it became that way. Never treat a DNA anomaly as a bug before checking `.mcp/`.
 3. Update the `<MEMORY>` block in this file with a summary of the architecture and set `DNA_LOADED = true`.
 
 ### 2. `sfn:spec [ticket-ref]`

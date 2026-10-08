@@ -13,28 +13,29 @@ It does not just answer questions about your code. It runs a **workflow** (under
 1. [Core Philosophy](#core-philosophy)
 2. [Why This Exists](#why-this-exists)
 3. [Major Revamp: Project Intelligence Layer](#major-revamp-project-intelligence-layer)
-4. [Project Intelligence Layer](#project-intelligence-layer)
-5. [MCP Workflow](#mcp-workflow)
-6. [Commands](#commands)
-7. [How the MCP Thinks](#how-the-mcp-thinks)
-8. [Review Philosophy](#review-philosophy)
-9. [Knowledge Management](#knowledge-management)
-10. [Lessons Learned](#lessons-learned)
-11. [Architectural Decisions](#architectural-decisions)
-12. [Work-Item Identity](#work-item-identity)
-13. [What's New in 4.1.0](#whats-new-in-410)
-14. [What's New in 4.0.0](#whats-new-in-400)
-15. [Upgrading from 3.x](#upgrading-from-3x)
-16. [Getting Started](#getting-started)
-17. [New Contributor Guide](#new-contributor-guide)
-18. [Contributing Knowledge](#contributing-knowledge)
-19. [Release Notes Philosophy](#release-notes-philosophy)
-20. [Tool Reference](#tool-reference)
-21. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-22. [Development](#development)
-23. [Status and Known Limitations](#status-and-known-limitations)
-24. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-25. [Long-Term Vision](#long-term-vision)
+4. [Unified Project Knowledge System](#unified-project-knowledge-system)
+5. [Project Intelligence Layer](#project-intelligence-layer)
+6. [MCP Workflow](#mcp-workflow)
+7. [Commands](#commands)
+8. [How the MCP Thinks](#how-the-mcp-thinks)
+9. [Review Philosophy](#review-philosophy)
+10. [Knowledge Management](#knowledge-management)
+11. [Lessons Learned](#lessons-learned)
+12. [Architectural Decisions](#architectural-decisions)
+13. [Work-Item Identity](#work-item-identity)
+14. [What's New in 4.1.0](#whats-new-in-410)
+15. [What's New in 4.0.0](#whats-new-in-400)
+16. [Upgrading from 3.x](#upgrading-from-3x)
+17. [Getting Started](#getting-started)
+18. [New Contributor Guide](#new-contributor-guide)
+19. [Contributing Knowledge](#contributing-knowledge)
+20. [Release Notes Philosophy](#release-notes-philosophy)
+21. [Tool Reference](#tool-reference)
+22. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+23. [Development](#development)
+24. [Status and Known Limitations](#status-and-known-limitations)
+25. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+26. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -77,6 +78,26 @@ It does not just answer questions about your code. It runs a **workflow** (under
 | **Trust in recorded knowledge** | Implicit | Explicit: `proposed` vs `accepted`, with a source on every entry |
 
 Knowledge belongs to the project, not to a specific engineer or MCP instance. The code explains **what** the system does. The Project Intelligence Layer explains **why**: which decisions are intentional, which patterns are preferred, which inconsistencies are legacy, which behaviours must not change, and which mistakes were already found.
+
+---
+
+## Unified Project Knowledge System
+
+The MCP builds one understanding of a project from two complementary layers. Neither is useful alone.
+
+| | Layer 1: **DNA** | Layer 2: **Project Intelligence** (`.mcp/`) |
+|---|---|---|
+| **Answers** | *What exists?* | *Why does it exist?* |
+| **Holds** | Services, controllers, APIs, topics, domain models, event flows, dependencies, database mappings, topology | Terminology, auth models, decisions, intentional exceptions, incidents, lessons, review findings, operational constraints |
+| **Produced by** | Scanning the code (`scan_repository_stack`, `extract_*`); regenerable | People and reviews, with a source on every entry; version-controlled |
+| **Lives in** | `.secufusion/dna.json`, `.secufusion-project-spec.json`, `.secufusion-migrations.json` | `.mcp/` |
+| **Can be rebuilt from code?** | Yes | **No.** That is why it must be recorded |
+
+> **DNA tells the MCP what the system is. Project Intelligence tells the MCP why the system became that way.**
+
+`/sfn-init` loads both and presents them together: DNA counts (what exists) beside Project Intelligence counts (what is explained), then the health report, which measures how much of the discovered structure has recorded reasoning. Structure without rationale is how a deliberate trade-off gets "fixed" as a bug; rationale without structure cannot be checked against the code.
+
+The knowledge belongs to the repository. Clone the project, run `/sfn-init`, and inherit both the structure and the understanding, regardless of who wrote it or which MCP instance is running.
 
 ---
 
@@ -345,7 +366,11 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 
 ## What's New in 4.1.0
 
-A minor release: no breaking changes. It adds the first three roadmap items and fixes four defects found by running 4.0.0 on a real repository.
+A minor release: no breaking changes. It adds the first three roadmap items, presents DNA and Project Intelligence as one Unified Project Knowledge System, and fixes defects found by running 4.0.0 on a real repository.
+
+**Unified Project Knowledge System** (DNA = *what exists*, Project Intelligence = *why it exists*)
+- `load_project_knowledge` (and so `/sfn-init`) now prints both layers side by side: DNA counts from `.secufusion/dna.json` (services, APIs, topics, domain classes, tables, frontend) next to the `.mcp/` entry counts. If either layer is missing, it says which and what to run.
+- The README, `/sfn-init`, the agent router and the generated `.mcp/README.md` all describe the same model. DNA is regenerable from code; Project Intelligence is not, which is why it must be recorded.
 
 **Project Intelligence health report** (`get_knowledge_health`, also shown by `/sfn-init`)
 - Coverage is **documented vs discovered entities**, per dimension: services, topics, golden rules, domain concepts and platform decisions, discovered from the project spec. An entity is *documented* when an `accepted` entry names it, *proposed-only* when only unreviewed entries do, and *undocumented* otherwise. It is a ratio of counts with the definition printed beside it, never a score.
@@ -360,7 +385,13 @@ A minor release: no breaking changes. It adds the first three roadmap items and 
 - Lookups through `get_project_knowledge` and `investigate_entity` are remembered locally (`.secufusion/knowledge-lookups.json`, not committed). A topic looked up three or more times without accepted knowledge answering it triggers *"Repeated investigation detected. Consider recording this as project knowledge"*, and clears once accepted knowledge exists.
 - Suggestions cite their evidence and give a prefilled `record_project_knowledge` call **without a body**: only verified content gets recorded. Similar anomalies are grouped (40 tables owned by several services is one question, not 40).
 
+**Knowledge governance**
+- Tribal-knowledge detection now scans **every** agent-facing file (`AGENTS.md`, `CLAUDE.md`, `.agents/`, skill-bundled copies), not only the first one found, and reports a section copied into several files once. Any agent file over 250 lines gets a warning.
+- The first real migration followed the intended model: a terminology section (*Device vs Machine*) moved out of an `AGENTS.md` into `.mcp/architecture/` **verbatim**, with the original section replaced by a pointer, the source noted, and a backup taken first. `AGENTS.md` stays about behaviour, workflow and engineering philosophy.
+- The repository's own `.agents/` persona files had drifted from the shipped plugin copies (they lacked the work-item identity rule and the `/sfn-code` step); they are re-aligned, and a test now fails if they diverge again.
+
 **Fixes found by the first real run**
+- The server reported version `1.0.0` to MCP clients regardless of the release. It now reports the package version.
 - Release notes now read the migrations format this MCP itself writes (`microservices`); before, migration changes were invisible and a release could say "no migration changed" when two services had moved. When one side has no migration or graph data, the notes say **"Not compared"** instead.
 - Scans rewrote `.secufusion-migrations.json` and destroyed its previous state. A scan now keeps a timestamped backup when the file changes and preserves its line endings. `/sfn-init` backs up the spec and migrations before scanning and passes `previous_migrations_path`.
 - `scan_repository_stack` only looked at the workspace root and reported "Node.js" for a Spring Boot ecosystem; it now inspects service folders.

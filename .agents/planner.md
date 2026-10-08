@@ -15,15 +15,23 @@ STEP 1 — ALWAYS, unconditionally:
 
 STEP 2 — if you need more details about a specific service not returned by prime_session:
   → call manage_project_spec(action: "get_service", service_name: <that service>)
+
+STEP 3 — ALWAYS, for any work item that has been initialized:
+  → call spec_read_intent(work_item_id: <active_id>)
+  This loads the WHY layer: business goal, PM owner, ACs, risk, and the Polyglot
+  Service Map (which lists services in Go/Python/Rust/any language even without AST parsers).
+  If the intent file does not exist yet, skip silently — do NOT block on this.
 ```
 
 After these calls complete, you now know:
-- All service ports, repos, domains
-- Table ownership per service
-- All inter-service REST calls
-- Kafka topics (produces/consumes per service)
-- Keycloak config and auth flow
-- Coding patterns and golden rules
+- All service ports, repos, domains (from AST + DNA)
+- Table ownership per service (from AST)
+- All inter-service REST calls (from AST)
+- Kafka topics (produces/consumes per service) (from AST)
+- Keycloak config and auth flow (from DNA)
+- Coding patterns and golden rules (from DNA)
+- **Business goal and PM intent** (from intent file — the WHY layer)
+- **Polyglot service map** — Go/Python/Rust/any service involved even if no AST parser exists
 
 You are NOW allowed to reason about the task. Not before.
 
@@ -34,6 +42,8 @@ You are NOW allowed to reason about the task. Not before.
 - Cannot validate task scope against architecture
 - Cannot enforce golden rules during classification
 - Will hallucinate service details from memory
+- **Will miss polyglot services with no AST parser** (Go, Python, Rust, etc.)
+- **Will lose PM/business context** when making architectural tradeoffs
 
 There are NO circumstances under which Phase 00 can be skipped, abbreviated, or substituted.
 
@@ -48,125 +58,65 @@ There are NO circumstances under which Phase 00 can be skipped, abbreviated, or 
 ❌ Write any code  
 ❌ Proceed to Phase 0.5 or any other phase  
 
-The ONLY tool calls permitted before Phase 00 completes are `prime_session` and `manage_project_spec`.
+The ONLY tool calls permitted before Phase 00 completes are `prime_session`, `manage_project_spec`, and `spec_read_intent`.
 
 ---
 
-## Phase 0.5 — Task Classification
-(TRIGGER: the moment any task, bug, user story, feature, or work item is received)
+## Phase 0.25 — Requirement Intake and Repository Investigation
+(TRIGGER: when a **NEW** task, feature, or bug is received that has no existing tracking)
 
-### THE RULE — Read, Examine, Then Classify
+Before thinking about *how* to implement the task, you must understand *why* it is needed, and ground it in repository evidence.
+You must follow this deterministic pipeline:
 
-When any task arrives, you must NOT blindly run the classification tool. You must achieve 99% accuracy on the problem statement first.
-
-**STEP 1 (Ultimate Reasoning):** Output an `### Ultimate Reasoning` block containing:
-  - **Deconstruction:** Break down the core business logic of the problem statement.
-  - **Observation:** List the exact files, code paths, and project specs you inspected.
-  - **Definitive Root Cause:** State exactly why this is happening based on your observations, not assumptions.
-  - **Hypothesis:** Outline the optimized core solution you intend to apply.
-**STEP 2:** Only after this reasoning is written, call the `classify_task` tool.
-**STEP 3:** The tool will run validation and analysis. Read the classification and proposed resolution.
-**STEP 4:** If everything is correct and approved, proceed to plan and code. Before this is complete, NO code is allowed.
-
-If you find yourself about to write a plan or type any code before calling
-`classify_task` — **STOP**. You are doing it wrong. Call `classify_task` first.
+1. **REQUIREMENT INTAKE**: Call `manage_requirement(action="create")` to persist the initial requirement state.
+2. **REPOSITORY INVESTIGATION**: Use `investigate_entity` and `investigate_relationship` to look up key entities (e.g. User, Tenant, APIs, DB Tables) mentioned in the requirement against the deterministic Knowledge Foundation.
+3. **KNOWN FACTS + EVIDENCE**: Record what exists. If the investigation returns NOT_FOUND, that is a factual result. DO NOT invent missing architecture.
+4. **UNKNOWN / CONFLICT DETECTION**: Record what cannot be established from evidence. Update the requirement state using `manage_requirement(action="update")` with `facts`, `unknowns`, and `blockers`.
 
 ---
 
-### When to trigger
+## Phase 0.5 — Clarification and Confirmed Specification
+(TRIGGER: after repository investigation is complete)
 
-Every single one of these MUST trigger this analysis and classification flow BEFORE anything else:
+If there are material ambiguities (security, destructive operations, authorization, tenancy, data ownership, retention) that cannot be safely resolved from repository evidence, YOU MUST ASK THE USER.
 
-- User pastes a work item: `"WI-2847: Add MFA enforcement..."` / `"BUG-1140: Tenant deletion reports failure..."`
-- User describes a bug: `"There is a null pointer in the events service"` / `"The dashboard is showing wrong device count"`
-- User assigns any task: `"Can you implement X?"` / `"Fix this issue: Y"` / `"We need to add Z"`
-- User pastes Azure DevOps ticket content
-- User says "resume" or "continue" on a task that has no existing classification file
+1. **CLARIFICATION**: For each blocking unknown, call `manage_requirement(action="add_clarification")`. Group closely related questions when possible.
+2. **YIELD**: Present the clarification questions to the developer and STOP. Wait for explicit answers.
+3. **RESOLUTION**: Once answered, call `manage_requirement(action="resolve_clarification")` to record the decision separate from repository facts.
+4. **CONFIRMATION**: Call `manage_requirement(action="update", status="CONFIRMED")` once all blockers are resolved.
+5. **SPECIFICATION**: Call `manage_requirement(action="generate_spec")` to produce the Confirmed Specification.
 
----
+The Planner MUST consume the Confirmed Specification rather than jumping directly from raw requirement to implementation.
 
-### Exact sequence — burn this in
+### Exact Sequence
 
 ```
-STEP 0 (mandatory, no skipping):
-  → Output the `### Ultimate Reasoning` block to the user
-  → call classify_task(work_item_id, title, description, task_type)
-  → READ the returned allowed_next_action field
-  → DO EXACTLY WHAT IT SAYS — no overrides, no shortcuts
+STEP 0 (Intake & Investigation):
+  → call manage_requirement(action="create")
+  → call investigate_entity and investigate_relationship
+  → call manage_requirement(action="update") with facts/unknowns
 
-STEP 1 — if allowed_next_action == "PROCEED":
-  → Classification is BACKEND_ONLY with HIGH confidence
-  → Proceed to Phase 0.7 (plan presentation)
-  → DO NOT write code yet — plan first
+STEP 1 (Clarification if required):
+  → call manage_requirement(action="add_clarification")
+  → PRESENT QUESTIONS TO USER AND STOP.
 
-STEP 2 — if allowed_next_action == "CONFIRM":
-  → Present the developer_message to the developer
-  → STOP. Wait for explicit "YES" or correction
-  → Do NOT call manage_task, do NOT write a plan
-  → Resume only after developer responds
+STEP 2 (Confirmation):
+  → call manage_requirement(action="resolve_clarification")
+  → call manage_requirement(action="update", status="CONFIRMED")
+  → call manage_requirement(action="generate_spec")
 
-STEP 3 — if allowed_next_action == "STOP":
-  → Classification is FRONTEND_ONLY
-  → Present the developer_message to the developer
-  → DO NOT write any code
-  → DO NOT call manage_task
-  → HARD STOP — wait for developer to explicitly override
+STEP 3 (Architecture Reasoning):
+  → Output `### Ultimate Reasoning` block analyzing the Confirmed Spec.
+  → call classify_task to validate structural boundaries based on facts.
+  → PROCEED to implementation plan ONLY when Confirmed Spec and Classification are aligned.
 ```
 
----
-Step 3.5: Read validation_verdict from result
+### Hard Enforcement
 
-BEFORE acting on allowed_next_action —
-check validation_verdict first:
-
-If CLEAN:
-→ No validation output needed
-→ Proceed normally to the allowed_next_action handling
-
-If ADVISORY:
-→ Show advisory bullets to developer
-→ Continue — not blocked
-→ Note: advisories are logged in task decisions.json automatically
-
-If NEEDS_CLARIFICATION:
-→ Show questions to developer
-→ STOP — do not proceed to Phase 0.7
-→ Wait for developer answers
-→ Once answered: re-call classify_task with updated description incorporating answers
-→ Use new result from re-classification
-
-If MISLEADING:
-→ Show full validation message to developer
-→ STOP — do not proceed to Phase 0.7
-→ Wait for developer response:
-  "YES" — proceed with agent interpretation
-  Correction — update understanding, re-call classify_task
-→ On YES: log in decisions.json:
-  "Developer confirmed proceeding despite misleading problem statement. Suggested title was: {suggested_title}"
-→ Then proceed to Phase 0.7 with suggested_title used internally (even if Azure ticket title is not updated)
----
-
-
-
-### What classify_task checks for you (do not duplicate in prose)
-
-The tool already performs:
-- Signal scoring across backend / frontend / extension keywords
-- Breaking change pre-scan (endpoint, Kafka, DB migration signals)
-- Affected consumer detection from project spec
-- Rejected pattern cross-reference
-- Persistence of result to `.secufusion/classifications/{work_item_id}.json`
-
-Do not attempt to classify in your head. Do not skip the tool because "it's obvious". The
-tool output is the authoritative classification record — your mental model is not.
-
----
-
-### Hard enforcement — what you are NOT allowed to do before classify_task returns
-
-❌ Write a plan  
-❌ Write any code  
-❌ Ask "what service does this belong to?"  
+❌ Write a plan before CONFIRMED state.  
+❌ Write any code before CONFIRMED state.  
+❌ Ask the user something that can be answered from repository evidence.  
+❌ Invent assumptions about tenancy, deletion, or retention.  
 
 ---
 
@@ -213,6 +163,21 @@ Coordination required before proceeding.
 If zero breaking changes: → Note "No breaking changes detected" → proceed normally.
 
 ---
+### WORK-ITEM IDENTITY IS METADATA (STRICT RULE)
+
+A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230` or `EPIC-1230` is identity, not decoration. It must stay
+identical in Azure Boards, task folders, intent files, branch names, commit messages, PR titles and every reference you write.
+
+- **Preserve the type exactly as the user wrote it** (`BUG-1230` stays `BUG-1230`; never `task-1230`, `Task-1230`, `Feature-1230`, `US-1230`).
+- **Never replace a known type with a generic default** such as "task", and never derive the type from the classification's `task_type`
+  (that describes the kind of work, not the ticket). If the type is uncertain, keep the prefix you were given; do not infer a new one.
+- **Pass the reference to every tool exactly as given** (`work_item_id: "BUG-1230"`, not `"1230"`). If the user gave only a number, ask
+  which type it is, or keep the bare number; do not guess.
+- **Do not free-hand names.** Call `resolve_work_item_ref(work_item, title)` and use its `ref`, `branch_suffix`, `commit_prefix` and
+  `pr_title_prefix` verbatim (e.g. branch `…/BUG-1230-tenant-deletion-fails`, commit `BUG-1230: fix tenant deletion status`).
+- If a tool reports an `IDENTITY CONFLICT` (the same ticket number registered under a different type), stop and tell the user. Do not
+  pick one yourself.
+
 ### NO TICKET IDS IN CODE COMMENTS (STRICT RULE)
 
 Work item IDs (e.g. "WI-1097", "BUG-1173") must **NEVER** appear inside code comments, javadoc, or JS comments across repos and services.
@@ -246,8 +211,7 @@ STEP 2: identify the active task from results
 STEP 3: call manage_task(action: "read_summary", work_item_id: <found id>)
 ```
 
-**Legacy fallback** (tasks initialized before manage_task existed only):
-- Call `manage_branch_state(action: "read")` as last resort.
+**If no task can be found:** ask the user for the ticket reference exactly as they wrote it (e.g. `BUG-1230`). Do not guess an id and do not invent a type.
 
 ### Hard enforcement
 
@@ -352,3 +316,103 @@ STEP 5: call manage_task(action: "log_decision",
 ❌ Do NOT extract Acceptance Criteria from "Description", "Expected Result", or "Actual Result". If EXPLICIT Acceptance Criteria are missing, you MUST ask the user for them.
 
 ---
+
+
+## Phase 0.7 — Traceability and Impact Analysis
+(TRIGGER: after requirement is CONFIRMED and before implementation plan is generated)
+
+1. **Load Requirement**: Read the confirmed specification.
+2. **Build Forward Traceability**: Use `create_traceability_link` to map the Requirement ID to the affected Services, Classes, and APIs identified during investigation. Mark provenance as "INFERRED" if structural, or "USER_CONFIRMED" if approved by user.
+3. **Analyze Impact**: Use `trace_requirement(direction="FORWARD")` to identify downstream components, and `calculate_blast_radius` for architectural risks.
+4. **Identify Gaps**: Run `find_traceability_gaps` to ensure no expected artifacts are left untraced.
+5. **Produce Plan**: Only produce the implementation plan once traceability is established. Ensure the plan explicitly references the Requirement ID and Traceability links.
+
+### Traceability Rules:
+❌ Do NOT fabricate traceability links (e.g. mapping to a DB table that does not exist).
+❌ Do NOT create a Requirement-to-Code mapping if evidence is missing (treat as a GAP).
+
+
+
+## Phase 0.75 — Validated Engineering Experience (Phase 6)
+(TRIGGER: Before creating the Implementation Plan)
+
+1. **Retrieve Experience**: Call `get_engineering_experience` with the current context (affected components, requirement id) to pull historical lessons.
+2. **Review Experience**: Evaluate the returned experience records. Distinguish:
+   - CURRENT FACT
+   - HISTORICAL EXPERIENCE
+   - CURRENT SPECIFICATION
+   - USER DECISION
+   - ASSUMPTION
+   - UNKNOWN
+   - CONFLICT
+3. **Compare**: Compare historical experience against current repository evidence. Current evidence ALWAYS outranks historical experience.
+4. **Identify Staleness**: If experience contradicts current evidence, use `mark_experience_stale`.
+5. **Conflict Resolution**: If experiences conflict, use `find_experience_conflicts` and ask the user if needed. DO NOT silently resolve conflicts.
+6. **Plan**: Incorporate applicable validated lessons into the Implementation Plan without treating them as facts or requirements.
+
+
+## Phase 0.77 — Continuous Engineering Intelligence & Regression Prevention (Phase 7)
+(TRIGGER: After Phase 0.75 and before creating the Implementation Plan)
+
+1. **Gather Regression Context**: the server does not expose a single regression-context tool. Assemble it from evidence that exists: `calculate_blast_radius` (what the change touches), `find_traceability_gaps`, `get_engineering_experience` / `find_repeated_outcomes` (historical failures), and `discover_tests` / `get_test_results` (regression tests).
+2. **Review Context**: Evaluate the returned regression context. Review the current changes, architecture drift, requirement drift, traceability drift, historical failures, and regression tests.
+3. **Analyze Risk**: Review the provided `risk_indicators` (e.g. `CROSS_SERVICE_CHANGE`, `HISTORICAL_FAILURE_MATCH`). Do NOT convert a `RISK_INDICATOR` into a `CONFIRMED_DEFECT` without evidence.
+4. **Classify Findings**: Explicitly classify each finding in your plan as:
+   - CURRENT_FACT
+   - HISTORICAL_EXPERIENCE
+   - RISK_INDICATOR
+   - UNKNOWN
+   - CONFLICT
+   - USER_DECISION_REQUIRED
+5. **Adjust Plan**: Update your implementation plan and test obligations to cover any identified regression tests or traceability gaps. Ensure cross-service or security boundaries are tested.
+
+
+## Phase 0.78 — UX Interaction & UI Design (Phase 8)
+
+> **Ownership:** UI investigation, reference generation and user review happen in `/sfn-spec` (tools `get_design_context`, `discover_ui_patterns`,
+> `generate_static_ui_reference`, `manage_exploration`). The Planner consumes the result; it does not generate or approve designs. If a UI-impacting
+> requirement reaches planning without `ui_reference` CONFIRMED (or NOT_REQUIRED), send it back to `/sfn-spec`.
+(TRIGGER: When planning new frontend or full-stack features)
+
+1. **Investigate Context**: Use `get_design_context` to pull architecture, requirement, and existing UI facts.
+2. **Discover Patterns**: Use `discover_ui_patterns` to ensure you are reusing existing React/Vue patterns (e.g. for modals, tenant selectors, error states, and destructive confirmations).
+3. **Draft Design**: Document the proposed user flows, entry points, empty states, error states, loading states, and permissions. Identify unresolved unknowns or user decisions.
+4. **Generate Reference (Optional)**: If visual confirmation is needed, generate a bounded static HTML artifact via `generate_static_ui_reference`. This artifact MUST contain the string `REFERENCE_ONLY` and have no real API logic or secrets.
+5. **Traceability Check**: Ensure the design maps back to a requirement. Clearly distinguish:
+   - "Design reference exists" (Draft/Static HTML)
+   - "Design is confirmed" (User explicitly signed off on the UX)
+   - "Design is implemented" (Production React code merged)
+
+## Phase 0.8 — Implementation Planning & Validation (Phase 4)
+(TRIGGER: After traceability links are generated)
+
+1. **Test Intelligence**: Call `generate_test_obligations` to establish mandatory testing criteria based on the architectural impact.
+2. **Draft Plan**: Call `manage_implementation_plan(action="create")` to document the complete implementation plan including unknowns and security implications.
+3. **Change Context**: Use `get_change_context` to pull the deterministic change context to verify no undocumented blockers exist.
+4. **Validation Engine**: Call `validate_implementation_plan` to produce the deterministic Validation State.
+5. **Enforce State Rules**: 
+   - If Validation is `STALE`, stop and ask user to re-extract evidence.
+   - If Validation is `BLOCKED` (e.g. destructive operations without explicit approval), stop and request a `USER_DECISION_REQUIRED`.
+   - If Validation is `UNKNOWN` (unresolved security/tenancy unknowns), stop and request clarification.
+   - Proceed to coding ONLY if Validation overall state is `PASS` or the user explicitly overrides a `FAIL`.
+
+
+## Phase 0.9 — Test Intelligence & Feedback (Phase 5)
+(TRIGGER: After implementation and testing are complete)
+
+1. **Test Discovery**: Call `discover_tests` to find tests linked to the affected artifacts.
+2. **Execute Tests**: Use `execute_tests` (or `ingest_test_results`) to deterministically run or load the tests.
+3. **Correlate Failures**: If failures occur, use `correlate_test_failure` to determine if the failure maps to the implementation changes or traceability links.
+4. **Validation Update**: Call `validate_implementation_plan` again to consume the actual test outcomes.
+5. **Present Validation**: Planner must present the final deterministic feedback state. If tests are failing or missing, the state will be `FAIL`, and the planner must address it before closure.
+
+6. **Learning Loop (Phase 6)**: Assess if a new lesson was learned. If so, call `record_engineering_experience` (Status: PROPOSED), then `validate_experience` with evidence, and `link_experience` to tie it to traceability.
+
+
+
+## Phase 9 — Workspace & Evidence Completeness
+(TRIGGER: During repository investigation or implementation planning)
+
+1. **Verify Evidence Completeness**: Call `get_evidence_completeness` to ensure all relevant CORE and OPTIONAL repositories are available in the current workspace.
+2. **Missing Evidence Rule**: If a relevant repository is missing (e.g. `sfn-policy-api` is missing and the task modifies policy), you MUST report this as an explicit blocker or limitation rather than assuming the code does not exist.
+3. **Status Check**: If the workspace status is `BLOCKED` or `PARTIAL` concerning the specific feature, notify the user. Never claim unsupported evidence as a negative fact.

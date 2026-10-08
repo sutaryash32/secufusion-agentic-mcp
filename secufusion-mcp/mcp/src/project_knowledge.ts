@@ -469,6 +469,9 @@ const README_TEXT = `# Project Intelligence Layer
 This folder is the project's own memory. It is version-controlled with the code so that any engineer,
 reviewer or AI agent can understand **why** the system is the way it is, without tribal knowledge.
 
+This is Layer 2 of the Unified Project Knowledge System. Layer 1, the DNA (.secufusion/dna.json), is generated from the code
+and answers "what exists?". This folder answers "why does it exist?" and cannot be regenerated from the code.
+
 The code explains WHAT the system does. This folder explains:
 WHY it was designed this way, WHICH decisions are intentional, WHICH patterns are preferred,
 WHICH inconsistencies are legacy, WHICH behaviours must not change, WHICH mistakes were already

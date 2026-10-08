@@ -476,6 +476,8 @@ Write `.secufusion/dna.json` with the combined scan output:
 
 ## PHASE 4.5 — Build project understanding (Project Intelligence Layer)
 
+The project's knowledge has two complementary layers, and `/sfn-init` loads both: **DNA** (Phases 1-4: *what exists*: services, APIs, topics, models, topology) and **Project Intelligence** (this phase: *why it exists*: decisions, exceptions, terminology, lessons). Together they are the **Unified Project Knowledge System**. DNA tells the MCP what the system is; Project Intelligence tells it why the system became that way. `load_project_knowledge` prints a *Unified project knowledge* block that puts the two side by side. Relay it, and treat DNA anomalies as questions for `.mcp/` before treating them as defects.
+
 `/sfn-init` is not only metadata loading: it constructs the project's understanding. Project knowledge (architecture, ADRs, patterns, intentional exceptions,
 lessons learned, operational constraints) belongs to the **repository**, under `.mcp/`, not to this agent file or to anyone's memory.
 

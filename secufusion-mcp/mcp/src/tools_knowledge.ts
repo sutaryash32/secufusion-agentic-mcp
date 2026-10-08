@@ -7,7 +7,7 @@ import {
   CATEGORIES, CATEGORY_PURPOSE, STATUSES, KNOWLEDGE_DIR, loadKnowledge, queryKnowledge, renderEntry,
   createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd, autoScaffoldEnabled,
 } from "./project_knowledge.js";
-import { buildHealth, renderHealth, renderSuggestions, readLookups, recordLookup, findRepeated, significantTerms } from "./knowledge_health.js";
+import { buildHealth, renderHealth, renderUnifiedKnowledge, renderSuggestions, readLookups, recordLookup, findRepeated, significantTerms } from "./knowledge_health.js";
 
 /** The directory that owns .mcp/: the nearest ancestor that already has one, else the git root, else the given directory. */
 export function knowledgeRoot(start: string): string {
@@ -86,6 +86,7 @@ export function registerKnowledgeTools(server: any): void {
         if (unreviewed.length) lines.push(`\n⚠️ ${unreviewed.length} proposed (unreviewed) entr${unreviewed.length === 1 ? "y" : "ies"}: treat as hints until a person accepts them (set_knowledge_status).`);
         if (m.problems.length) lines.push(`\n⛔ ${m.problems.length} problem(s) in the knowledge files:\n${m.problems.slice(0, 20).map((p) => `- ${p.file}: ${p.code}: ${p.message}`).join("\n")}`);
         if (agents.file) lines.push(`\nagents file: ${agents.file} (${agents.lines} lines)` + (agents.warning ? `\n⚠️ ${agents.warning}` : " — lightweight, as intended."));
+        try { lines.push("\n" + renderUnifiedKnowledge(loadDna(root), m)); } catch { /* optional view */ }
         try {
           const health = buildHealth({ spec: loadSpec(root), dna: loadDna(root), model: m, workspaceRoot: root, events: readLookups(root) });
           lines.push(`\n${renderHealth(health)}`);

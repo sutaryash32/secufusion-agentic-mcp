@@ -4,6 +4,9 @@
  * SecuFusion MCP Server — entry point.
  * Tools live in tools_*.ts (one register function per group); shared helpers are in shared.ts.
  */
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerTasksTools } from "./tools_tasks.js";
@@ -17,9 +20,18 @@ import { registerReviewTools } from "./tools_review.js";
 import { registerReleaseTools } from "./tools_release.js";
 import { registerKnowledgeTools } from "./tools_knowledge.js";
 import { registerPrompts } from "./prompts.js";
+// the version the server reports is the package version, never a second hand-maintained number
+const packageVersion = (() => {
+    try {
+        return JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"), "utf-8")).version;
+    }
+    catch {
+        return "0.0.0-unknown";
+    }
+})();
 const server = new McpServer({
     name: "secufusion-mcp",
-    version: "1.0.0",
+    version: packageVersion,
 });
 registerTasksTools(server);
 registerAnalysisTools(server);

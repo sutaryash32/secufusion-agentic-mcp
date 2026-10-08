@@ -26,6 +26,8 @@ const call = async (name, args) => {
 const W = dir;
 
 const tools = new Set((await c.listTools()).tools.map((t) => t.name));
+const pkgVersion = JSON.parse(fs.readFileSync(`${PKG}/package.json`, "utf-8")).version;
+check("the server reports the package version to clients (not a stale hardcoded number)", c.getServerVersion()?.version === pkgVersion, `${c.getServerVersion()?.version} vs ${pkgVersion}`);
 check("the four knowledge tools are registered", ["load_project_knowledge", "get_project_knowledge", "record_project_knowledge", "set_knowledge_status"].every((t) => tools.has(t)));
 
 // ── a project with no intelligence layer yet ───────────────────────────────
@@ -68,6 +70,12 @@ check("unknown id is a clear error", r.err && r.text.includes("No knowledge entr
 
 r = await call("load_project_knowledge", { workspace_root: W });
 check("the model summary lists entries per category with accepted counts", r.text.includes("known-exceptions** (1, 1 accepted)") && r.text.includes("architecture** (1, 1 accepted)") && r.text.includes("terminology") === false || r.text.includes("Device vs Machine"), r.text);
+check("load shows the unified view: DNA missing is stated, Project Intelligence counted", r.text.includes("Unified project knowledge") && r.text.includes("DNA (what): not built yet") && /Project Intelligence \(why\): \d+ entr/.test(r.text), r.text);
+fs.mkdirSync(path.join(dir, ".secufusion"), { recursive: true });
+fs.writeFileSync(path.join(dir, ".secufusion", "dna.json"), JSON.stringify({ graph: { nodes: [{ id: "s1", name: "alpha", type: "SERVICE" }, { id: "s2", name: "beta", type: "SERVICE" }, { id: "t1", name: "orders", type: "TOPIC" }], edges: [] } }));
+r = await call("load_project_knowledge", { workspace_root: W });
+check("with DNA present, what exists (2 services, 1 topics) sits beside why it exists", r.text.includes("DNA (what): 2 services, 1 topics") && /Project Intelligence \(why\)/.test(r.text), r.text);
+fs.rmSync(path.join(dir, ".secufusion", "dna.json"));
 fs.writeFileSync(path.join(dir, ".mcp", "patterns", "broken.md"), "no frontmatter here\n");
 r = await call("load_project_knowledge", { workspace_root: W });
 check("a malformed entry is reported rather than silently ignored", r.text.includes("MISSING_FRONTMATTER") && r.text.includes("broken.md"), r.text);

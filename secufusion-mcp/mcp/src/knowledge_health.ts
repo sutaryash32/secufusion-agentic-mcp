@@ -369,6 +369,32 @@ export function buildHealth(args: {
     return { coverage, totals, by_category, tribal, repeated, unreconciled_graph_names: unreconciled, suggestions };
 }
 
+const DNA_LABELS: Array<[string, string]> = [
+    ["SERVICE", "services"], ["API", "API endpoints"], ["TOPIC", "topics"], ["CLASS", "domain classes"],
+    ["DATABASE_TABLE", "tables"], ["FRONTEND_APP", "frontend apps"], ["FRONTEND_COMPONENT", "frontend components"],
+];
+
+/** Layer 1 (DNA) answers "what exists?"; Layer 2 (.mcp) answers "why does it exist?". This renders both side by side. */
+export function renderUnifiedKnowledge(dna: any, model: KnowledgeModel): string {
+    const g = dna?.graph ?? dna;
+    const nodes: any[] = g && Array.isArray(g.nodes) ? g.nodes : [];
+    const out: string[] = ["🧬 Unified project knowledge (DNA = WHAT exists · Project Intelligence = WHY it exists)"];
+    if (!nodes.length) {
+        out.push("- DNA (what): not built yet. Run scan_repository_stack and the extract_* tools (or /sfn-init) to map the structure.");
+    } else {
+        const counts = DNA_LABELS.map(([t, label]) => ({ n: nodes.filter((x) => x.type === t).length, label })).filter((c) => c.n > 0);
+        out.push(`- DNA (what): ${counts.map((c) => `${c.n} ${c.label}`).join(", ") || `${nodes.length} nodes`}. Structure, not rationale.`);
+    }
+    if (!model.exists) {
+        out.push("- Project Intelligence (why): not created yet (.mcp/ missing), so the rationale behind that structure is not recorded.");
+    } else {
+        const acc = model.entries.filter((e) => e.status === "accepted").length;
+        out.push(`- Project Intelligence (why): ${model.entries.length} entr${model.entries.length === 1 ? "y" : "ies"} (${acc} accepted): decisions, exceptions, terminology, lessons.`);
+    }
+    out.push("- Together they answer: what is this system, and why did it become this way? Consult DNA for structure, then get_project_knowledge for the reasons.");
+    return out.join("\n");
+}
+
 export function renderHealth(h: HealthReport, opts: { detail?: boolean } = {}): string {
     const L: string[] = [];
     L.push(`## Project intelligence health`);
