@@ -520,13 +520,13 @@ After generating everything, output this exactly:
   them pre-populated on clone.
 
   Next steps:
-  • To start a task: /sfn:plan <WI-ID>
+  • To start a task: /sfn:spec <ticket-ref>
   • To review code:  /sfn:review <WI-ID>
   • To refresh DNA:  /sfn:init (safe — will not overwrite existing spec)
 
   If you cloned this repo and these files already exist:
   • You do not need to run /sfn:init
   • The MCP is already primed and ready
-  • Run /sfn:plan <your-ticket> to start working
+  • Run /sfn:spec <your-ticket> to start working
 ══════════════════════════════════════════════════════
 ```

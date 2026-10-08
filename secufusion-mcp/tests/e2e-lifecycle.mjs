@@ -121,6 +121,19 @@ const SAMPLING = V;
     r = await call(c, "validate_implementation_plan", { workspace_root: dir, plan_id: "PLAN-1", judgment: V.plan });
     check("plan validated + gate recorded", r.text.includes('"plan_gate": "PASSED"'), r.text.slice(-400));
 
+    // /sfn-spec deliverable: assembled from recorded state, written next to the task, refused without the gates.
+    r = await call(c, "manage_requirement", { workspace_root: dir, id, action: "update", root_cause: "Svc.java:10 drops the tenant filter", assumptions: ["Kafka is available in UAT"], facts: ["Svc.java:10 builds the query without tenantId"] });
+    r = await call(c, "generate_spec_document", { workspace_root: dir, work_item_id: id });
+    const specMd = path.join(dir, ".secufusion", "tasks", fs.readdirSync(path.join(dir, ".secufusion", "tasks"))[0], "spec.md");
+    check("spec document is written next to the task", !r.err && fs.existsSync(specMd), r.text.slice(0, 300));
+    const doc = fs.existsSync(specMd) ? fs.readFileSync(specMd, "utf8") : "";
+    check("spec document has every section of the specification", ["## 1. Requirement", "## 2. Current state", "## 3. Root cause", "## 4. Scope", "## 5. Impact", "## 6. Decisions", "## 7. Implementation strategy", "## 8. Expected file changes", "## 9. Acceptance criteria", "## 10. Tests", "## 11. Risks", "## 12. Assumptions"].every((h) => doc.includes(h)), doc.slice(0, 300));
+    check("spec document carries the recorded facts, root cause, assumption, AC and plan step", doc.includes("Svc.java:10 drops the tenant filter") && doc.includes("Kafka is available in UAT") && doc.includes("- [ ] AC1") && doc.includes("1. step1"));
+    check("spec document lists the gates it was built on", doc.includes("| plan | PASSED |") && doc.includes("| requirement | PASSED |"));
+    check("spec document states what is missing instead of inventing it", doc.includes("None recorded.") || doc.includes("Not recorded"));
+    const other = await call(c, "generate_spec_document", { workspace_root: dir, work_item_id: "WI-99" });
+    check("spec document is refused for a ticket that has not passed the gates", other.err && other.text.includes("SPEC GATE"), other.text.slice(0, 200));
+
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: { ...V.review, criteria: [{ criterion: "AC1", status: "MET", evidence: [] }] } });
     check("MET without evidence rejected", r.err && r.text.includes("evidence"), r.text);
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: { ...V.review, criteria: [{ criterion: "something else", status: "MET", evidence: ["x"] }] } });

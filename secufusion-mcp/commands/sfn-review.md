@@ -597,9 +597,19 @@ It reads `.gitattributes`, `.editorconfig`, prettier/eslint config and the file'
 | `LINE_ENDING_CHANGE` | Line endings flipped; churn far larger than the real change (HIGH), or pure EOL change (MEDIUM) |
 | `MIXED_LINE_ENDINGS` | CRLF and LF in one file. Introduced by this change (MEDIUM/HIGH) vs. already there (LOW) |
 | `WHITESPACE_CHURN` / `FORMAT_REWRITE` | Re-indent, trailing-space strip, or re-wrapped code with the same tokens |
+| `REORDERING` | The same lines in a different order (moved code, not changed code) |
 | `ENCODING_CHANGE`, `EOF_NEWLINE_CHANGE`, `FILE_MODE_CHANGE` | BOM/encoding, final newline, exec bit |
 | `SHEBANG_WITH_CRLF` | A script with a shebang in CRLF: a real defect |
 | `CONFIG_DISAGREES_WITH_FILE_HISTORY`, `CONVENTION_SOURCES_DISAGREE` | The repository's own settings conflict with its files or each other: **report, do not resolve** |
+
+**Also judge, with evidence (not in the tool, so cite `file:line` and the surrounding code you compared against):**
+- **Naming inconsistencies** and **repository convention violations**: names, import order, structure, comment style that differ from the neighbouring code.
+  The existing code is the reference; do not invent a style.
+- **Diff scope vs the specification.** `verify_against_spec` supplies `diff_scope`: `outside_plan` (changed files the specification never mentioned),
+  `planned_untouched`, and `total_churn_lines`. A large diff for a small specification, or unjustified files outside the plan, is a finding even when the code is correct.
+- **Change traceability:** every changed file should trace to an acceptance criterion or a necessary consequence (test, rename). Untraceable changes are out-of-scope changes.
+
+A correct implementation with a noisy diff is not a fully reviewed change.
 
 **Rules for you (the reviewer):**
 1. **Existing style is the expected style.** Consistent CRLF is not a problem. Consistent LF is not a problem. Do not ask for

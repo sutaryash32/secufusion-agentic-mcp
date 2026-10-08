@@ -79,7 +79,7 @@ export function registerExploreTools(server) {
             `USER_FEEDBACK_REQUIRED — STOP and wait. Do not treat this design as approved. Do not modify production UI.`,
         ].join("\n");
     }));
-    server.tool("manage_exploration", "Interactive-exploration bookkeeping for /sfn-explore. Records UI impact, questions only the USER can answer, the user's replies, and UI-reference feedback, and reports whether the requirement may be CONFIRMED. " +
+    server.tool("manage_exploration", "Interactive-exploration bookkeeping for /sfn-spec. Records UI impact, questions only the USER can answer, the user's replies, and UI-reference feedback, and reports whether the requirement may be CONFIRMED. " +
         "It never decides anything: answers and approvals require the user's verbatim words (user_statement).", {
         workspace_root: z.string().describe("Root directory of the workspace"),
         requirement_id: z.string(),

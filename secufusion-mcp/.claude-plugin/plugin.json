@@ -1,6 +1,6 @@
 {
   "name": "secufusion-mcp",
-  "description": "SecuFusion MSSP platform dev agent — project-level spec driven, tenant-isolation enforced, zero-trust guardrails. 5 Core Slash Commands: /sfn-init (dynamic DNA + architecture diagram + watcher), /sfn-plan (philosophy check + intent WHY + classify + plan), /sfn-code (spec-driven implementation), /sfn-review (zero-tolerance 3-tier PR gate), /sfn-explore (on-demand service graph or blast-radius analysis).",
+  "description": "SecuFusion MSSP platform dev agent: project-level spec driven, tenant-isolation enforced, zero-trust guardrails. Core workflow: /sfn-init (load context: DNA, architecture, conventions) -> /sfn-spec (investigate + analyze + design one complete specification; replaces /sfn-explore + /sfn-plan) -> /sfn-code (build only what was specified) -> /sfn-review (correctness AND diff quality: line endings, formatting rewrites, scope, conventions). /sfn-explore remains for architecture map and blast-radius utilities.",
   "version": "3.3.1",
   "author": {
     "name": "Motivity Labs"

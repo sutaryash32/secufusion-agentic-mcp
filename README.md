@@ -22,7 +22,7 @@
 | `get_task_history` | **Phase 0 / 1** — Cross-Task Intelligence | Retrieves the full history of a past task before starting similar work |
 | `search_tasks` | **Phase 0 / 1** — Cross-Task Intelligence | Keyword search across all past task files — prevents re-solving solved problems |
 | `get_pattern_from_task` | **Phase 1** — Cross-Task Intelligence | Extracts reusable decisions, file patterns, and test scenarios from a completed task |
-| `manage_branch_state` | Legacy — Branch State | Backward-compatible branch-scoped JSON state tracker (for tasks before `manage_task`) |
+| ~~`manage_branch_state`~~ | Removed | Superseded by `manage_task`; no longer registered by the server |
 | `log_rejected_pattern` | **Phase 3** — Course Correction | Records bad patterns to `.rejected-patterns.json` so they are never repeated |
 | `get_secufusion_rules` | **Setup** | Returns the `AGENTS.md` rules for AI clients that don't natively support MCP Resources |
 | `classify_task` | **Phase 0.5** — Task Classification | **NEW** — Deep multi-pass analysis engine. Classifies any task as `BACKEND_ONLY`, `FRONTEND_ONLY`, etc. based on root cause. |
@@ -86,8 +86,8 @@ Every task now requires **two complementary files** that the AI reads together:
 ### The Polyglot Bridge
 The new `spec_create_intent` tool captures a `services_involved` array that is **language-agnostic**. You can list a Go microservice, a Python Lambda, or a COBOL batch job. The AI reads this declaration and knows those services are in scope without needing a custom AST parser.
 
-### The New `/sfn-plan` Flow
-When you type `/sfn-plan WI-2847 Add MFA`:
+### The New `/sfn-spec` Flow
+When you type `/sfn-spec WI-2847 Add MFA`:
 1. **The Guard (Phase -1):** The AI silently runs a `philosophy_check` against your Project DNA. It evaluates the WHY, WHO, WHAT, and RISK of the task. (Note: Bugs and hotfixes still undergo this check, though with slightly relaxed sensing).
 2. **The Pushback (Phase 1):** If the Philosophy Engine fails the request (e.g. unclear business intent or high risk), the AI will **NOT** plan. It will stop and ask you for clarity: *"Why are we building this? Who confirmed it?"*
 3. **The WHY (Phase 1.5):** You answer, and the AI generates the Markdown intent file (`spec_create_intent`).
@@ -147,6 +147,30 @@ Version 2.2.0 removes the legacy, rigid TypeScript tools (`run_pre_pr_checks`) a
 
 ---
 
+## The workflow: init → spec → code → review
+
+```
+/sfn-init  →  /sfn-spec  →  /sfn-code  →  /sfn-review
+ load context    think         build         verify
+```
+
+The point is clear separation of responsibilities, not many commands. Investigation and planning almost always run back to back and are one engineering thought process, so `/sfn-explore` + `/sfn-spec` are now a single **`/sfn-spec`** (the old names remain as thin aliases that redirect to it).
+
+| Command | Purpose | Mental model | Ends with |
+|---|---|---|---|
+| `/sfn-init` | Establish project intelligence: DNA, architecture, repository mappings, service relationships, standards, conventions | Context first | project memory loaded |
+| `/sfn-spec <ref>` | Understand the request, investigate the real repo, find the root cause, analyze impact, resolve decisions **with the user**, design the change | Understand → Analyze → Design | a validated **Implementation Specification** (`spec.md`) |
+| `/sfn-code <ref>` | Implement the approved specification; minimal change surface, repository conventions preserved, no unrelated refactoring | Build only what was specified | changes aligned to the spec |
+| `/sfn-review <ref>` | Verify correctness **and change quality**: requirement coverage, architecture, edge cases, plus diff cleanliness (line endings, formatting rewrites, whitespace, encoding, reordering, scope, conventions) | Trust but verify | `APPROVED` only for intentional, minimal, repository-consistent changes |
+
+**`/sfn-spec`** produces one document (`generate_spec_document`, assembled from recorded state, never free-written): requirement, current state, root cause, scope, impact and dependencies, decisions (incl. UI reference), implementation strategy, expected file changes, acceptance criteria, tests, risks, and assumptions / inferences / unknowns. Gates (`philosophy → intent → classification → requirement → plan`) are enforced by the server, and `/sfn-code` refuses to start without it.
+
+**`/sfn-review`** treats a noisy diff as a failed review even when the logic is right (a three-line change that lands as 1,100 lines because of a CRLF→LF conversion was the lesson). It checks functional, architectural and repository consistency, diff cleanliness, change traceability and convention preservation; see *Diff quality & line endings* below.
+
+`/sfn-explore map` and `/sfn-explore impact <component>` remain as architecture utilities.
+
+---
+
 ## Spec-driven, LLM-judged lifecycle
 
 The server no longer makes judgment calls with keyword scoring. It gathers evidence, asks a model, validates the answer against a schema, records it, and then **enforces** it with hard gates.
@@ -177,9 +201,9 @@ Every judgment is stored in `.secufusion/judgments/<id>/<kind>.json` (source, ve
 
 ---
 
-## Interactive `/sfn-explore` (Phase 12)
+## Interactive exploration inside `/sfn-spec` (Phase 12)
 
-`/sfn-explore <ticket>` investigates, shows evidence, builds a UI reference when the UI is affected, asks **you** for every decision only you can make, and only then confirms the requirement and hands off to `/sfn-plan`. It never edits production code.
+`/sfn-spec <ticket>` investigates, shows evidence, builds a UI reference when the UI is affected, asks **you** for every decision only you can make, and only then confirms the requirement and hands off to `/sfn-code`. It never edits production code.
 
 ```
 RAW → UNDERSTOOD → INVESTIGATING → [UI_DESIGN_REQUIRED → USER_FEEDBACK_REQUIRED] → [CLARIFICATION_REQUIRED] → CONFIRMED
@@ -195,7 +219,7 @@ RAW → UNDERSTOOD → INVESTIGATING → [UI_DESIGN_REQUIRED → USER_FEEDBACK_R
 - **`CONFIRMED` is enforced by the server** (`explorationReadiness`): no open user decisions, no blockers, UI impact assessed, and for UI-impacting changes a reference the user approved (or explicitly waived).
 - **The user's words are required.** Answering a decision or approving a reference needs `user_statement`. This stops the happy path of the model answering for the user; it cannot prove the quote is genuine, so review the transcript for destructive decisions.
 - **References are inert.** Size-capped, no network/storage/external assets/iframes, served with a restrictive CSP and a visible banner. They can only be written under `.secufusion/designs/`.
-- **Traceability:** requirement → design (`HAS_UI_REFERENCE`) → components, and requirement → each user decision. `/sfn-plan` and `verify_against_spec` receive the decisions and design, and `find_traceability_gaps` flags unconfirmed or unlinked references.
+- **Traceability:** requirement → design (`HAS_UI_REFERENCE`) → components, and requirement → each user decision. `/sfn-code` and `verify_against_spec` receive the decisions and design, and `find_traceability_gaps` flags unconfirmed or unlinked references.
 - The MCP stays deterministic here: it records, validates and refuses; the host LLM investigates and converses.
 
 Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP suites).
@@ -1048,7 +1072,7 @@ All commands are natively registered as Claude Plugins and appear directly in th
 | # | Command | Persona / Role | When to run | What it does |
 |---|---|---|---|---|
 | **1** | `/sfn-init` | Ecosystem Architect | First thing in morning, on new machine, or new clone | Bootstraps workspace, validates mandatory repos against `.secufusion-project-spec.json`, extracts domain models, API endpoints, Kafka topics, generates `.secufusion/dna.json`, builds full Mermaid architecture diagram, and launches continuous background file watcher (`chokidar`). |
-| **2** | `/sfn-plan <ticket-id or desc>` | `planner.md` | When starting any story, chore, feature, bug, or hotfix | Evaluates Phase -1 Philosophy gate (WHY/WHO/WHAT/RISK), creates Markdown business intent (`spec_create_intent`), primes session AST context (`prime_session`), classifies task boundaries (`classify_task`), enforces **Rule 5 STRICT YIELD** for your green light, then generates structured `plan.md`. |
+| **2** | `/sfn-spec <ticket-id or desc>` | `planner.md` | When starting any story, chore, feature, bug, or hotfix | Evaluates Phase -1 Philosophy gate (WHY/WHO/WHAT/RISK), creates Markdown business intent (`spec_create_intent`), primes session AST context (`prime_session`), classifies task boundaries (`classify_task`), enforces **Rule 5 STRICT YIELD** for your green light, then generates structured `plan.md`. |
 | **3** | `/sfn-code` | `coder.md` | After you approve the plan | Implements strictly according to the approved plan. Enforces zero-trust standards: mandatory tenant isolation on DB operations, proper `@Transactional` scoping, DTO mapping rules, and logs anti-patterns to `.rejected-patterns.json`. |
 | **4** | `/sfn-review` | `reviewer.md` | After coding is done, before opening a PR | Adversarial PR gate running 3 tiers in a single pass: (1) Mechanical AST guardrails (tenant isolation, N+1 queries, hardcoded endpoints), (2) AI file-by-file code review, (3) Context-aware task evaluation against spec. Blocks PR if Tier 1 violations exist. |
 | **5** | `/sfn-explore [map \| <component>]` | Architecture Explorer | On-demand for cross-service impact & system maps | Dual-mode architecture query: `/sfn-explore map` renders the full cross-service Mermaid architecture diagram; `/sfn-explore <component-or-path>` calculates blast radius and affected downstream consumers before making breaking changes. |
@@ -1068,7 +1092,7 @@ Morning / First Setup
 Ticket Arrives (Feature / Bug / Hotfix)
   │
   ▼
-/sfn-plan WI-XXXX            ← Phase -1 Philosophy check → Intent WHY → Prime → Classify → STRICT YIELD
+/sfn-spec WI-XXXX            ← Phase -1 Philosophy check → Intent WHY → Prime → Classify → STRICT YIELD
   │
   ├─► User Approves Plan ✅
   │

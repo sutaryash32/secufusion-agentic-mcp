@@ -1,5 +1,5 @@
 ---
-description: Execute the approved implementation plan. Switches to the Coder Persona and writes code precisely as planned, using rejected-pattern memory to avoid past mistakes.
+description: Build only what was specified. Implements the approved Implementation Specification (from /sfn-spec) with the Coder Persona: focused changes, repository conventions preserved, no unrelated refactoring.
 argument-hint: <ticket-ref, exactly as written>  e.g. BUG-1230
 ---
 
@@ -9,11 +9,12 @@ Task: **$ARGUMENTS**
 
 **You are now in the IMPLEMENTATION phase.**
 
-## Pre-flight: Plan Check
+## Pre-flight: Specification Check
 
-1. Call `spec_status(work_item_id: "$ARGUMENTS")`. The `plan` gate must be ✅; read `.secufusion/tasks/$ARGUMENTS/plan.md`.
-2. If the plan gate has not passed or the plan file does not exist, **ABORT** and tell the user:
-   > ❌ No approved plan found for `$ARGUMENTS`. Please run `/sfn-plan $ARGUMENTS` first.
+1. Call `spec_status(work_item_id: "$ARGUMENTS")`. The `plan` gate must be ✅. Read the specification: `.secufusion/tasks/<ref>/spec.md` (written by `generate_spec_document`).
+2. If the plan gate has not passed or `spec.md` does not exist, **ABORT** and tell the user:
+   > ❌ No approved specification found for `$ARGUMENTS`. Please run `/sfn-spec $ARGUMENTS` first.
+   Do not improvise a plan here. Investigation and design belong to `/sfn-spec`.
 3. Read `.agents/coder.md` to load the **Coder Persona** — your behaviour for this phase is governed by those instructions.
 
 ## Phase 1 — Load Rejected Patterns Memory
@@ -34,9 +35,11 @@ If the file is not found: warn the user and continue, but flag any DB changes as
 
 ## Phase 3 — Implement
 
-Execute the plan file step by step:
+Execute the specification step by step (its "Implementation strategy" and "Expected file changes"):
 
-- Follow the file list in the plan exactly. Do not create files outside the plan's scope.
+- Follow the specification's file list exactly. Do not create or edit files outside its scope. If a file outside it must change, **stop and ask**: amend the spec first (`/sfn-spec`), then continue.
+- **Build only what was specified.** No unrelated refactoring, renames, reordering, reformatting or drive-by cleanups: they enlarge the diff and are flagged by `/sfn-review`.
+- **Preserve repository conventions.** Match the surrounding code (indentation, naming, import order, quote style, **line endings**). Never convert a file's line endings or reformat it as a side effect; if your editor changed them, restore them before handing off (`check_diff_quality`, then `normalize_line_endings` only if the user asks).
 - On every file that touches multi-tenant data: verify tenant isolation is enforced (row-level WHERE clause, header propagation). If it is not, **stop and flag it** before writing.
 - On every new DB query: check for N+1 patterns and missing indexes. Flag before writing.
 - On every Kafka publish: verify it is async / non-blocking. Flag synchronous calls.
@@ -91,7 +94,7 @@ After each logical step, call `manage_task(action: "update_spec", work_item_id: 
 
 ## Phase 4 — Self-Review
 
-Before handing off, perform a fast self-review against the Acceptance Criteria in `plan.md`. For each criterion, confirm it is met with a `file:line` citation.
+Before handing off, perform a fast self-review against the Acceptance Criteria in `spec.md`. For each criterion, confirm it is met with a `file:line` citation.
 
 For every migration script created in this task, verify:
 - [ ] Filename matches the naming pattern from `.secufusion-migrations.json`

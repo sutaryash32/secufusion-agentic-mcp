@@ -269,7 +269,7 @@ export function explorationStatus(root, id) {
         design: ref?.design_id ? loadDesignMetadata(root, ref.design_id) : null,
     };
 }
-/** What /sfn-plan and /sfn-review need to honour confirmed exploration. */
+/** What /sfn-spec, /sfn-code and /sfn-review need to honour confirmed exploration. */
 export function explorationSummary(root, id) {
     const req = loadRequirement(root, id);
     if (!req)

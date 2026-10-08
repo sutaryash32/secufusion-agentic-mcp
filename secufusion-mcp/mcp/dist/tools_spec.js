@@ -7,12 +7,14 @@ import { loadTestResults } from "./test_engine.js";
 import { loadPlan, savePlan, validatePlan } from "./implementation_plan.js";
 import { generateTestObligations, aggregateValidation } from "./validation_engine.js";
 import { explorationSummary } from "./exploration.js";
-import { analyzeDiffQuality, applyAcknowledgements, blockingFindings } from "./diff_quality.js";
+import { renderSpecDocument } from "./spec_document.js";
+import { displayRef, WORK_ITEM_ID_DESC } from "./work_item_ref.js";
+import { analyzeDiffQuality, applyAcknowledgements, blockingFindings, checkScope } from "./diff_quality.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
 import { RequirementVerdict, RequirementHint, RequirementRubric, PlanVerdict, PlanHint, PlanRubric, ReviewVerdict, ReviewHint, ReviewRubric, } from "./verdicts.js";
-import { getWorkspaceRoot, resolve, readJson, specEvidence, textResult, TASKS_DIR, resolveTaskFolder, getEcosystemRoot, getDnaPath } from "./shared.js";
+import { getWorkspaceRoot, resolve, readJson, writeFile, specEvidence, textResult, TASKS_DIR, resolveTaskFolder, getEcosystemRoot, getDnaPath } from "./shared.js";
 const PLAN_CREATED_HEADER = ["Plan created.", "", "Confirmed exploration this plan MUST honour (decisions are the user's, not yours to change):", ""].join(String.fromCharCode(10));
 export function registerSpecTools(server) {
     server.tool("manage_requirement", "Manages the structured lifecycle of a requirement, including clarification state and confirmation.", {
@@ -44,6 +46,10 @@ export function registerSpecTools(server) {
         acceptance_criteria: z.array(z.string()).optional(),
         constraints: z.array(z.string()).optional(),
         decisions: z.array(z.string()).optional(),
+        root_cause: z.string().optional().describe("Root cause as an evidence-backed FACT (file:line), not a hypothesis. Required for bugs."),
+        inferences: z.array(z.string()).optional(),
+        assumptions: z.array(z.string()).optional(),
+        conflicts: z.array(z.string()).optional(),
         judgment: judgmentParam
     }, async (args) => {
         try {
@@ -56,6 +62,7 @@ export function registerSpecTools(server) {
                 authorization: r.authorization, business_rules: r.business_rules, data_lifecycle: r.data_lifecycle,
                 acceptance_criteria: r.acceptance_criteria, constraints: r.constraints, facts: r.facts,
                 unknowns: r.unknowns, decisions: r.decisions, blockers: r.blockers,
+                root_cause: r.root_cause, assumptions: r.assumptions, inferences: r.inferences, conflicts: r.conflicts,
                 clarifications: (r.clarification_questions || []).map((c) => [c.id, c.state, c.answer]),
                 user_decisions: (r.user_decisions || []).map((d) => [d.id, d.state, d.answer]),
                 ui_impact: r.ui_impact ? [r.ui_impact.status, r.ui_impact.affected_components] : null,
@@ -148,6 +155,14 @@ export function registerSpecTools(server) {
                     req.constraints = args.constraints;
                 if (args.decisions)
                     req.decisions = args.decisions;
+                if (args.root_cause)
+                    req.root_cause = args.root_cause;
+                if (args.inferences)
+                    req.inferences = args.inferences;
+                if (args.assumptions)
+                    req.assumptions = args.assumptions;
+                if (args.conflicts)
+                    req.conflicts = args.conflicts;
                 if (args.status) {
                     validateStateTransition(req.status, args.status, req);
                     if (args.status === "CONFIRMED") {
@@ -450,6 +465,44 @@ export function registerSpecTools(server) {
             return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
         }
     });
+    server.tool("generate_spec_document", "Writes the /sfn-spec deliverable: the complete Implementation Specification for a work item, assembled deterministically from recorded state " +
+        "(requirement, root cause, facts, confirmed user decisions, UI reference, validated plan, gate ledger). Nothing is invented; missing sections say so. " +
+        "Requires every gate up to 'plan'. /sfn-code implements exactly this document.", {
+        workspace_root: z.string().describe("Root directory of the workspace"),
+        work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
+    }, async ({ workspace_root, work_item_id }) => {
+        try {
+            const wsRoot = getWorkspaceRoot();
+            const ecosystemRoot = getEcosystemRoot(workspace_root);
+            const gateError = requireGates(wsRoot, work_item_id, ["philosophy", "intent", "classification", "requirement", "plan"], "write the specification");
+            if (gateError)
+                return textResult(gateError, true);
+            const req = loadRequirement(ecosystemRoot, work_item_id);
+            if (!req)
+                return textResult(`Requirement ${work_item_id} not found.`, true);
+            let plan = null;
+            const plansDir = path.join(ecosystemRoot, ".secufusion", "plans");
+            if (fs.existsSync(plansDir)) {
+                for (const f of fs.readdirSync(plansDir).filter((n) => n.endsWith(".json"))) {
+                    const p = loadPlan(ecosystemRoot, f.replace(/\.json$/, ""));
+                    if (p && p.requirement_id === work_item_id) {
+                        plan = p;
+                        break;
+                    }
+                }
+            }
+            if (!plan)
+                return textResult(`No implementation plan references requirement ${work_item_id}. Run manage_implementation_plan first.`, true);
+            const doc = renderSpecDocument(work_item_id, req, plan, readLedger(wsRoot, work_item_id), explorationSummary(ecosystemRoot, work_item_id));
+            const taskDir = resolveTaskFolder(work_item_id, resolve(TASKS_DIR));
+            const target = taskDir ? path.join(taskDir, "spec.md") : resolve(path.join(".secufusion", "specs", `${displayRef(work_item_id)}.md`));
+            writeFile(target, doc);
+            return textResult(`📄 Specification written: ${target}\n\nShow it to the user for approval. Do not start coding until they approve; then run /sfn-code ${work_item_id}.\n\n---\n${doc}`);
+        }
+        catch (e) {
+            return textResult(`Error: ${e.message}`, true);
+        }
+    });
     server.tool("verify_against_spec", "Adversarial final review. Judges the implemented change against the task's acceptance criteria, the validated plan, recorded test results and the golden rules. " +
         "Every criterion must be MET with concrete evidence (file:line or test name) for the 'review' gate to pass; manage_task action=complete requires it.", {
         workspace_root: z.string().describe("Root directory of the workspace"),
@@ -499,6 +552,7 @@ export function registerSpecTools(server) {
             const dq = analyzeDiffQuality(wsRoot);
             applyAcknowledgements(dq.findings, acknowledge_diff_quality);
             const dqBlocking = blockingFindings(dq.findings);
+            const scope = checkScope(dq, plan?.affected_files ?? []);
             const outcome = await judge(server, wsRoot, {
                 kind: "review",
                 subject: work_item_id,
@@ -515,6 +569,10 @@ export function registerSpecTools(server) {
                         findings: dq.findings,
                         churn_by_file: dq.files.filter((f) => f.churn).map((f) => ({ file: f.file, ...f.churn, classes: f.classifications })),
                         guidance: "Deterministic. Existing file/repo style is the expected style; consistent CRLF or LF is not a defect. Report these findings; do not demand normalization to your own taste.",
+                    },
+                    diff_scope: {
+                        ...scope,
+                        guidance: "outside_plan = changed files the specification never mentioned (check each is a necessary consequence, e.g. a test or a rename); planned_untouched = specified files with no change. Report unjustified scope growth as out_of_scope_changes.",
                     },
                     diff_summary: diff_summary ?? null,
                     test_results: loadTestResults(ecosystemRoot),

@@ -288,7 +288,7 @@ export function explorationStatus(root: string, id: string) {
     };
 }
 
-/** What /sfn-plan and /sfn-review need to honour confirmed exploration. */
+/** What /sfn-spec, /sfn-code and /sfn-review need to honour confirmed exploration. */
 export function explorationSummary(root: string, id: string) {
     const req = loadRequirement(root, id);
     if (!req) return null;

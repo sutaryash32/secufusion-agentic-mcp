@@ -27,6 +27,8 @@ export const THRESHOLDS = {
     MINOR_NOISE: 10,
     /** Token delta below this share means "same code, different layout". */
     FORMAT_TOKEN_DELTA: 0.05,
+    /** Below this share of non-identical lines, a large diff is just the same lines moved around. */
+    REORDER_LINE_DELTA: 0.05,
 };
 export const REVIEW_SEVERITY = { INFO: "NOTE", LOW: "SUGGESTION", MEDIUM: "WARNING", HIGH: "BLOCKER" };
 const SEV_RANK = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
@@ -374,6 +376,30 @@ function tokenDelta(a, b) {
     }
     return total === 0 ? 0 : delta / total;
 }
+/** Share of lines (ignoring surrounding whitespace) that are not matched one-for-one between old and new. */
+function lineDelta(a, b) {
+    const count = (s) => {
+        const m = new Map();
+        for (const l of s.split(/\r?\n/)) {
+            const t = l.trim();
+            if (t)
+                m.set(t, (m.get(t) ?? 0) + 1);
+        }
+        return m;
+    };
+    const ca = count(a), cb = count(b);
+    let delta = 0, total = 0;
+    for (const [t, n] of ca) {
+        delta += Math.abs(n - (cb.get(t) ?? 0));
+        total += n;
+    }
+    for (const [t, n] of cb) {
+        if (!ca.has(t))
+            delta += n;
+        total += n;
+    }
+    return total === 0 ? 0 : delta / total;
+}
 function bomOf(buf) {
     if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf)
         return "utf8";
@@ -604,8 +630,20 @@ export function analyzeDiffQuality(workspaceRoot, opts = {}) {
                 });
             }
             else if (!cause && baseBuf && churn.semantic >= THRESHOLDS.MIN_CHURN && baseBuf.length <= THRESHOLDS.MAX_BYTES) {
-                const delta = tokenDelta(baseBuf.toString("utf-8"), buf.toString("utf-8"));
-                if (delta <= THRESHOLDS.FORMAT_TOKEN_DELTA) {
+                const oldText = baseBuf.toString("utf-8"), newText = buf.toString("utf-8");
+                const lineMove = lineDelta(oldText, newText);
+                const delta = tokenDelta(oldText, newText);
+                if (lineMove <= THRESHOLDS.REORDER_LINE_DELTA) {
+                    // The same lines, in a different order: moved code, not changed code.
+                    fr.classifications.push("REORDERING");
+                    fileFindings.push({
+                        file: rel, category: "FORMATTING", finding: "REORDERING", classification: "REORDERING", severity: configChanged ? "INFO" : "MEDIUM",
+                        evidence: `${rel}: ${churn.semantic} lines differ in the diff, but ${((1 - lineMove) * 100).toFixed(1)}% of lines are identical to the original, just in a different order`,
+                        expected: "existing order preserved unless re-ordering is the purpose of the change", actual: "lines reordered",
+                        recommendation: "Unless sorting/reordering is the stated purpose, restore the original order and reapply only the intended changes.",
+                    });
+                }
+                else if (delta <= THRESHOLDS.FORMAT_TOKEN_DELTA) {
                     fr.classifications.push("FORMAT_REWRITE");
                     fileFindings.push({
                         file: rel, category: "FORMATTING", finding: "FORMAT_REWRITE", classification: "FORMAT_REWRITE", severity: configChanged ? "INFO" : "HIGH",
@@ -720,4 +758,25 @@ export function renderFindingBlocks(report) {
             `   Severity: ${f.review_severity} (${f.severity})`,
         ].join("\n");
     }).join("\n\n");
+}
+// ── scope: which changed files did the specification not mention? ───────────
+function normPath(p) {
+    return p.split("\\").join("/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+/** A planned entry matches a changed file if equal, a path-suffix of it (or the reverse), or a containing directory. */
+export function matchesPlanned(changed, planned) {
+    const f = normPath(changed), p = normPath(planned);
+    if (!p)
+        return false;
+    return f === p || f.endsWith("/" + p) || p.endsWith("/" + f) || f.startsWith(p + "/");
+}
+export function checkScope(report, plannedFiles) {
+    const changed = report.files.map((f) => f.file).filter((f) => !f.startsWith(".secufusion/"));
+    const planned = (plannedFiles || []).filter(Boolean);
+    return {
+        changed,
+        outside_plan: planned.length ? changed.filter((c) => !planned.some((p) => matchesPlanned(c, p))) : [],
+        planned_untouched: planned.filter((p) => !changed.some((c) => matchesPlanned(c, p))),
+        total_churn_lines: report.files.reduce((n, f) => n + (f.churn?.raw ?? 0), 0),
+    };
 }

@@ -21,7 +21,7 @@ identical in Azure Boards, task folders, intent files, branch names, commit mess
 - If a tool reports an `IDENTITY CONFLICT` (the same ticket number registered under a different type), stop and tell the user. Do not
   pick one yourself.
 
-## The 4-Command Pipeline
+## The Command Pipeline: init, spec, code, review
 
 You must strictly execute these commands in the prescribed order by calling the underlying MCP tools or personas.
 
@@ -32,23 +32,30 @@ You must strictly execute these commands in the prescribed order by calling the 
 2. Generate the architectural map and configuration extracts.
 3. Update the `<MEMORY>` block in this file with a summary of the architecture and set `DNA_LOADED = true`.
 
-### 2. `sfn:plan [task_id]`
-**Purpose:** Architect the solution based on the loaded DNA and initialize the task workspace.
-**Execution Sequence:**
+### 2. `sfn:spec [ticket-ref]`  (replaces `sfn:explore` + `sfn:plan`)
+**Purpose:** Think before building. Investigation and design are one engineering thought process, and the deliverable is a complete Implementation Specification.
+**Execution Sequence:** follow `commands/sfn-spec.md` exactly. In short:
 1. Verify `DNA_LOADED == true` in the `<MEMORY>` block. If false, abort and tell the user to run `sfn:init`.
-2. Call `manage_task(action: "initialize", work_item_id: [task_id])` to create the dedicated task folder (`.secufusion/tasks/[task_id]`) and track progress.
-3. Call `prime_session` to load the DNA state efficiently.
-4. Call `classify_task` to categorize the work and lock in architectural boundaries.
-5. Route to `planner.md` to generate the strict implementation plan.
+2. Understand: intent, `philosophy_check`, `spec_create_intent`, `manage_task initialize`, `manage_requirement create`.
+3. Investigate the real repository (DNA, source, tests), find the root cause with `file:line` evidence, classify the task.
+4. Analyze: UI impact and reference (when affected), and every open decision, asked of the USER with a hard STOP. Never invent a decision.
+5. Confirm the requirement, create and validate the plan, then `generate_spec_document`. Yield for approval.
+**Never write production code in this phase.**
 
-### 3. `sfn:review`
-**Purpose:** Validate the code against zero-tolerance architectural rules.
-**Execution Sequence:**
-1. Call the `run_pre_pr_checks_with_reviewer_agent` CLI subprocess (`scripts/sfn-pr-check.ts`).
-2. Do not proceed until you receive a `✅ APPROVED` verdict from the Tier 1 mechanical checks.
-3. Route to `reviewer.md` for the final PR Handoff.
+### 3. `sfn:code [ticket-ref]`
+**Purpose:** Build only what was specified.
+**Execution Sequence:** follow `commands/sfn-code.md`. `spec_status` must show the plan gate passed and `spec.md` must exist; implement that document with the Coder Persona
+(`coder.md`): focused changes, repository conventions preserved (including line endings), no unrelated refactoring, nothing outside the specified files without amending the spec.
 
-### 4. `sfn:watch`
+### 4. `sfn:review [ticket-ref | service | file]`
+**Purpose:** Verify correctness AND change quality. A correct implementation with a noisy diff is not a fully reviewed change.
+**Execution Sequence:** follow `commands/sfn-review.md` (PASS 0-10, including PASS 10 diff quality via `check_diff_quality`), then record the verdict with `verify_against_spec`.
+That tool refuses `APPROVED` while a HIGH diff-quality finding is unacknowledged by the user. Route to `reviewer.md` for the final PR hand-off.
+
+### Utilities
+- `sfn:explore map` / `sfn:explore impact <component>`: architecture map and blast radius (ticket investigation now lives in `sfn:spec`).
+
+### 5. `sfn:watch`
 **Purpose:** Enable continuous background learning.
 **Execution Sequence:**
 1. Turn on the background file watcher via the DNA engine to automatically detect and index new patterns as the user codes, keeping `.secufusion/dna.json` fresh.

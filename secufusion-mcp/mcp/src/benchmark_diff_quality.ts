@@ -4,7 +4,7 @@ import path from "path";
 import { execFileSync } from "child_process";
 import {
     analyzeDiffQuality, detectLineEndings, applyAcknowledgements, blockingFindings, renderFindingBlocks,
-    DiffQualityReport, DQFinding,
+    DiffQualityReport, DQFinding, checkScope,
 } from "./diff_quality.js";
 import { fixLineEndings } from "./line_ending_fix.js";
 
@@ -286,6 +286,40 @@ const names = (r: DiffQualityReport) => r.findings.map((f) => f.finding).join(",
     check("an acknowledgement without the user's words does nothing", blockingFindings(r.findings).length === 1);
     applyAcknowledgements(r.findings, [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: "Yes, we are normalizing on purpose" }]);
     check("acknowledged with the user's words: no longer blocking, still reported", blockingFindings(r.findings).length === 0 && r.findings[0].acknowledged === true);
+}
+
+// ── reordering and scope ────────────────────────────────────────────────────
+{
+    const d = repo();
+    const L = Array.from({ length: 120 }, (_, i) => `import { thing${i} } from "./module${i}";`);
+    put(d, "a.ts", L.join("\n") + "\n"); commit(d);
+    const reversed = [...L].reverse();
+    put(d, "a.ts", reversed.join("\n") + "\n");
+    const r = run(d);
+    check("same lines in a different order: REORDERING (not 'changed code')", find(r, "REORDERING")?.severity === "MEDIUM" && r.files[0].classifications.includes("REORDERING"), names(r));
+    check("reordering recommendation asks to restore the order unless that was the purpose", !!find(r, "REORDERING")?.recommendation.includes("Unless sorting"));
+
+    const d2 = repo();
+    put(d2, "a.ts", L.join("\n") + "\n"); commit(d2);
+    put(d2, "a.ts", L.map((l, i) => (i % 2 ? l : l.replace("thing", "renamed"))).join("\n") + "\n");
+    check("genuinely different lines are not called reordering", !find(run(d2), "REORDERING"), names(run(d2)));
+
+    const d3 = repo();
+    put(d3, "a.ts", L.join("\n") + "\n"); commit(d3);
+    put(d3, "a.ts", [L[5], ...L.filter((_, i) => i !== 5)].join("\n") + "\n");
+    check("moving a single line is below the churn floor: no finding", !find(run(d3), "REORDERING"), names(run(d3)));
+
+    // scope
+    const d4 = repo();
+    put(d4, "src/Service.java", "a\n"); put(d4, "src/Other.java", "o\n"); put(d4, "test/ServiceTest.java", "t\n"); commit(d4);
+    put(d4, "src/Service.java", "a2\n"); put(d4, "src/Other.java", "o2\n"); put(d4, "README.md", "new\n");
+    const rep = run(d4);
+    const scope = checkScope(rep, ["src/Service.java", "test/ServiceTest.java"]);
+    check("scope: files the specification never mentioned are listed", JSON.stringify(scope.outside_plan.sort()) === JSON.stringify(["README.md", "src/Other.java"]), JSON.stringify(scope));
+    check("scope: specified files with no change are listed", JSON.stringify(scope.planned_untouched) === JSON.stringify(["test/ServiceTest.java"]), JSON.stringify(scope));
+    check("scope: directory and suffix entries in the plan match", checkScope(rep, ["src/"]).outside_plan.join() === "README.md" && checkScope(rep, ["Service.java"]).outside_plan.includes("src/Other.java"));
+    check("scope: an empty plan makes no claim (cannot judge scope without one)", checkScope(rep, []).outside_plan.length === 0);
+    check("scope: .secufusion/ is never counted", !checkScope(rep, ["src/Service.java"]).changed.some((f) => f.startsWith(".secufusion/")));
 }
 
 // ── convert back to the file's own style ────────────────────────────────────

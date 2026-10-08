@@ -73,6 +73,8 @@ export interface Requirement {
     
     // Reasoning State
     facts?: string[];
+    /** Where the fix lives and why, stated as evidence (bugs). Not a hypothesis. */
+    root_cause?: string;
     inferences?: string[];
     assumptions?: string[];
     unknowns?: string[];

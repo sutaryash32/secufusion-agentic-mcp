@@ -94,7 +94,7 @@ export function registerExploreTools(server: any): void {
 
   server.tool(
     "manage_exploration",
-    "Interactive-exploration bookkeeping for /sfn-explore. Records UI impact, questions only the USER can answer, the user's replies, and UI-reference feedback, and reports whether the requirement may be CONFIRMED. " +
+    "Interactive-exploration bookkeeping for /sfn-spec. Records UI impact, questions only the USER can answer, the user's replies, and UI-reference feedback, and reports whether the requirement may be CONFIRMED. " +
     "It never decides anything: answers and approvals require the user's verbatim words (user_statement).",
     {
       workspace_root: z.string().describe("Root directory of the workspace"),

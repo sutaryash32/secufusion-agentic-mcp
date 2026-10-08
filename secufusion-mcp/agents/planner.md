@@ -211,8 +211,7 @@ STEP 2: identify the active task from results
 STEP 3: call manage_task(action: "read_summary", work_item_id: <found id>)
 ```
 
-**Legacy fallback** (tasks initialized before manage_task existed only):
-- Call `manage_branch_state(action: "read")` as last resort.
+**If no task can be found:** ask the user for the ticket reference exactly as they wrote it (e.g. `BUG-1230`). Do not guess an id and do not invent a type.
 
 ### Hard enforcement
 
@@ -355,7 +354,7 @@ STEP 5: call manage_task(action: "log_decision",
 ## Phase 0.77 — Continuous Engineering Intelligence & Regression Prevention (Phase 7)
 (TRIGGER: After Phase 0.75 and before creating the Implementation Plan)
 
-1. **Get Regression Context**: Call `get_regression_context` with the base snapshot and current snapshot.
+1. **Gather Regression Context**: the server does not expose a single regression-context tool. Assemble it from evidence that exists: `calculate_blast_radius` (what the change touches), `find_traceability_gaps`, `get_engineering_experience` / `find_repeated_outcomes` (historical failures), and `discover_tests` / `get_test_results` (regression tests).
 2. **Review Context**: Evaluate the returned regression context. Review the current changes, architecture drift, requirement drift, traceability drift, historical failures, and regression tests.
 3. **Analyze Risk**: Review the provided `risk_indicators` (e.g. `CROSS_SERVICE_CHANGE`, `HISTORICAL_FAILURE_MATCH`). Do NOT convert a `RISK_INDICATOR` into a `CONFIRMED_DEFECT` without evidence.
 4. **Classify Findings**: Explicitly classify each finding in your plan as:
@@ -370,9 +369,9 @@ STEP 5: call manage_task(action: "log_decision",
 
 ## Phase 0.78 — UX Interaction & UI Design (Phase 8)
 
-> **Ownership:** UI investigation, reference generation and user review happen in `/sfn-explore` (tools `get_design_context`, `discover_ui_patterns`,
+> **Ownership:** UI investigation, reference generation and user review happen in `/sfn-spec` (tools `get_design_context`, `discover_ui_patterns`,
 > `generate_static_ui_reference`, `manage_exploration`). The Planner consumes the result; it does not generate or approve designs. If a UI-impacting
-> requirement reaches planning without `ui_reference` CONFIRMED (or NOT_REQUIRED), send it back to `/sfn-explore`.
+> requirement reaches planning without `ui_reference` CONFIRMED (or NOT_REQUIRED), send it back to `/sfn-spec`.
 (TRIGGER: When planning new frontend or full-stack features)
 
 1. **Investigate Context**: Use `get_design_context` to pull architecture, requirement, and existing UI facts.

@@ -78,7 +78,7 @@ Workspace root: ${workspace_root || process.cwd()}
 - Flag anything marked \`(inferred)\` that the human should verify.
 - Confirm \`.secufusion/dna.json\` was written successfully.
 
-**Next step:** Run \`/sfn-plan\` with a ticket ID to start your first task.`
+**Next step:** Run \`/sfn-spec\` with a ticket ID to start your first task.`
       }
     }]
   })

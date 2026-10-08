@@ -61,6 +61,7 @@ export const RequirementRubric = [
     "Do not invent facts. Anything not in the evidence is unknown, and a blocking unknown means NEEDS_CLARIFICATION.",
     "Each gap becomes a concrete question a human can answer in one sentence.",
     "BLOCKED = contradictory or unsafe requirement.",
+    "For a bug, root_cause must be present and stated as an evidence-backed fact (a file and line you read). A guess or symptom description is NEEDS_CLARIFICATION.",
 ];
 // ── plan vs spec ───────────────────────────────────────────────────────────
 export const PlanVerdict = z.object({
@@ -123,6 +124,8 @@ export const ReviewRubric = [
     "If exploration.ui_reference is CONFIRMED, check the production UI follows its intent (terminology, structure, states). Do not require pixel-perfect matching; report divergence from the approved intent.",
     "A UI reference is NOT_IMPLEMENTED until production code and a test exist; never count the static reference as evidence of implementation.",
     "diff_quality is deterministic evidence. Existing file/repo style is the expected style: consistent CRLF or LF is not a defect, and you must not ask for normalization to your own taste.",
+    "diff_scope.outside_plan lists changed files the specification never mentioned. Each needs a justification (a required test, a necessary rename); unjustified scope growth is an out_of_scope_change. A large total_churn_lines for a small specification is itself a finding.",
+    "Check naming consistency and repository conventions in the changed code (names, import order, structure) against the surrounding code. Cite file:line. Do not invent a style; the existing code is the reference.",
     "Report every diff_quality finding that is not acknowledged. Churn far larger than the real change (e.g. a 3-line change committed as 1,100 lines) means the change is not ready; recommend restoring the original style/line endings and reapplying only the intended edits.",
     "Config conflicts (diff_quality REPOSITORY_CONFIGURATION_ISSUE) are reported, not resolved. Never acknowledge diff noise on the user's behalf.",
 ];
