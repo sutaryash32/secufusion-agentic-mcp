@@ -40,6 +40,9 @@ import {
   ReviewVerdict, ReviewHint, ReviewRubric,
 } from "./verdicts.js";
 import { STATE_FILE, REJECTED_FILE, TOKEN_FILE, argv, rootFlag, ROOT, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, getCurrentBranch, loadMigrationSpec, getMigrationContextForService, getNextMigrationVersion, getMigrationGaps, findFilesRecursive, compressCode, appendTelemetry, specEvidence, textResult, INTENTS_DIR, TASKS_DIR, CLASSIFICATIONS_DIR, REGISTRY_FILE, slugify, nextIntentNumber, parseIntentFrontmatter, resolveTaskFolder, generateNewTaskFolder, readRegistry, writeRegistry, upsertRegistry, STOP_WORDS, extractSymptomWords, levenshteinClose, buildScopeText, getEcosystemRoot, getDnaPath, ensureDnaFile, readDna, writeDna, VALID_EXTENSIONS, getAllSourceFiles, getPolyRepoSourceFiles, generateMigrationSpec, performFullExtraction } from "./shared.js";
+import { knowledgeRoot } from "./tools_knowledge.js";
+import { loadKnowledge, queryKnowledge } from "./project_knowledge.js";
+import { recordLookup, readLookups, findRepeated, significantTerms } from "./knowledge_health.js";
 
 
 
@@ -207,7 +210,19 @@ server.tool(
         if (!graph) return { content: [{ type: "text", text: "No graph in DNA." }] };
         
         const res = investigateEntity(graph, entity_name);
-        return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+        // Remember that this was investigated; the same entity investigated again and again, with no accepted knowledge, is knowledge debt.
+        const content: any[] = [{ type: "text", text: JSON.stringify(res, null, 2) }];
+        try {
+          const kroot = knowledgeRoot(workspace_root);
+          const model = loadKnowledge(kroot);
+          if (model.exists) {
+            const answered = queryKnowledge(model.entries, { terms: [entity_name], limit: 3 }).filter((h) => h.entry.status === "accepted");
+            recordLookup(kroot, { ts: new Date().toISOString(), kind: "investigate", terms: [entity_name], files: [], matched: answered.map((h) => h.entry.id), accepted_matched: answered.length > 0 });
+            const rep = findRepeated(readLookups(kroot), model.entries, 3).find((r) => significantTerms([entity_name]).some((t) => r.terms.includes(t)));
+            if (rep) content.push({ type: "text", text: `💡 Repeated investigation detected: "${rep.terms.slice(0, 4).join(", ")}" has been investigated ${rep.count} times without accepted project knowledge. Consider recording what you verified as project knowledge (record_project_knowledge, or suggest_project_knowledge).` });
+          }
+        } catch { /* the investigation result stands without the nudge */ }
+        return { content };
     } catch (e) {
         return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
     }

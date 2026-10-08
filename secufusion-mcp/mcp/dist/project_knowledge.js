@@ -230,6 +230,134 @@ export function nextAdrNumber(model) {
     const nums = model.entries.filter((e) => e.category === "adr").map((e) => Number(/^adr-(\d+)/.exec(e.id)?.[1] ?? 0));
     return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, "0");
 }
+/** Per-category starter templates: what a good entry of that kind answers. Written to .mcp/templates/. */
+export const TEMPLATE_BODIES = {
+    architecture: {
+        status: "proposed", tags: '["terminology"]',
+        guide: `# <What this describes: a service, a boundary, a term, a data flow>
+
+**What it is.** One or two sentences a new engineer can act on.
+
+**How it relates to the rest.** Which services, tables, topics or screens it touches (name them exactly; names are how this entry is found).
+
+**What is easy to get wrong.** The misreading that has cost time, and the correct reading.
+
+**Do not "fix".** Anything that looks inconsistent but is deliberate.`,
+    },
+    adr: {
+        status: "proposed", tags: '["decision"]',
+        guide: `# <The decision, stated as a fact>
+
+## Decision
+What was decided.
+
+## Why
+The reasoning and the problem it solved.
+
+## Alternatives rejected
+What else was considered and why it lost.
+
+## Constraints
+What limited the choice (technical, organisational, time).
+
+## Consequences
+What this makes easier, what it makes harder, and when to revisit it.`,
+    },
+    patterns: {
+        status: "proposed", tags: '["convention"]',
+        guide: `# <The pattern or convention>
+
+**Rule.** How it is done here.
+
+**Example.** A real file and line that does it correctly.
+
+**Why.** What goes wrong otherwise.
+
+**Exceptions.** Where it is deliberately not followed (and link the known-exception).`,
+    },
+    "known-exceptions": {
+        status: "proposed", tags: '["intentional"]',
+        guide: `# <What looks wrong but is intentional>
+
+**What it looks like.** The thing a reviewer or a bug report would flag.
+
+**Why it is intentional.** The reason, the decision or the constraint behind it.
+
+**Do not change it unless.** The condition under which it should be revisited.
+
+**How to recognise it.** File, class or behaviour to look for (name them exactly).`,
+    },
+    "lessons-learned": {
+        status: "proposed", tags: '["incident"]',
+        guide: `# <What happened, in one line>
+
+**What happened.** The facts: when, where, impact.
+
+**What it taught.** The cause that was not obvious.
+
+**What to do differently.** The concrete practice or check that prevents a repeat.
+
+**Common misreading / false positive.** The wrong conclusion people draw from the symptoms.`,
+    },
+    operational: {
+        status: "proposed", tags: '["deployment"]',
+        guide: `# <Deployment, migration, environment or runtime fact>
+
+**What is true.** The behaviour or constraint.
+
+**Where it applies.** Environment, service, step in the release process.
+
+**What breaks if ignored.** The failure mode.
+
+**How to do it correctly.** The exact steps or commands.`,
+    },
+};
+/** Writes the starter templates (never overwrites). Returns what it created. */
+function writeTemplates(root) {
+    const dir = path.join(root, "templates");
+    const created = [];
+    fs.mkdirSync(dir, { recursive: true });
+    for (const c of CATEGORIES) {
+        const file = path.join(dir, `${c}.md`);
+        if (fs.existsSync(file))
+            continue;
+        const t = TEMPLATE_BODIES[c];
+        fs.writeFileSync(file, [
+            "---",
+            'id: "replace-with-a-short-unique-id"',
+            'title: "Replace with a human-readable title"',
+            `category: ${c}`,
+            `status: ${t.status}`,
+            `tags: ${t.tags}`,
+            'applies_to: ["a term people search for", "path/glob/**"]',
+            'source: "Ticket, PR, incident, person or file this came from (required)"',
+            `date: ${new Date().toISOString().slice(0, 10)}`,
+            "supersedes: []",
+            "---",
+            "",
+            t.guide,
+            "",
+        ].join("\n"));
+        created.push(`${KNOWLEDGE_DIR}/templates/${c}.md`);
+    }
+    return created;
+}
+/**
+ * Opt-in: should /sfn-init create .mcp/ without being asked? Off unless enabled by
+ * SECUFUSION_AUTO_SCAFFOLD=1 or `_meta.auto_scaffold_knowledge: true` in the project spec.
+ */
+export function autoScaffoldEnabled(workspaceRoot) {
+    const env = (process.env.SECUFUSION_AUTO_SCAFFOLD ?? "").toLowerCase();
+    if (env === "1" || env === "true")
+        return { enabled: true, via: "SECUFUSION_AUTO_SCAFFOLD" };
+    try {
+        const spec = JSON.parse(fs.readFileSync(path.join(workspaceRoot, ".secufusion-project-spec.json"), "utf-8").replace(/^\uFEFF/, ""));
+        if (spec?._meta?.auto_scaffold_knowledge === true)
+            return { enabled: true, via: "_meta.auto_scaffold_knowledge" };
+    }
+    catch { /* no spec, or unreadable: stay off */ }
+    return { enabled: false, via: null };
+}
 export function scaffoldKnowledge(workspaceRoot) {
     const root = path.join(workspaceRoot, KNOWLEDGE_DIR);
     const created = [];
@@ -248,6 +376,7 @@ export function scaffoldKnowledge(workspaceRoot) {
         fs.writeFileSync(readme, README_TEXT);
         created.push(`${KNOWLEDGE_DIR}/README.md`);
     }
+    created.push(...writeTemplates(root));
     return created;
 }
 export function createEntry(workspaceRoot, n) {
@@ -334,7 +463,8 @@ found, and WHICH assumptions are dangerous.
 ## Adding knowledge
 
 Found a terminology trap, a decision, an exception, a lesson? Add one file. Either ask the agent
-(\`record_project_knowledge\`) or copy this template into the right folder:
+(\`record_project_knowledge\`) or copy the template for its category from \`templates/\` (each says what a good
+entry of that kind answers). The generic shape is:
 
 \`\`\`markdown
 ---

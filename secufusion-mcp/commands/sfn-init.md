@@ -479,12 +479,21 @@ Write `.secufusion/dna.json` with the combined scan output:
 `/sfn-init` is not only metadata loading: it constructs the project's understanding. Project knowledge (architecture, ADRs, patterns, intentional exceptions,
 lessons learned, operational constraints) belongs to the **repository**, under `.mcp/`, not to this agent file or to anyone's memory.
 
-1. Call `load_project_knowledge(workspace_root)`. It builds the unified memory model and returns a compact index per category, validation problems, and whether
-   the agents file has grown into a knowledge dump. Read the index; do **not** read every entry. Entries are pulled on demand with `get_project_knowledge`.
-2. If `.mcp/` does not exist, say so and offer `load_project_knowledge(scaffold: true)`. Never create knowledge the project has not stated.
-3. Report: entries per category, how many are `proposed` (unreviewed hints) versus `accepted` (project decisions), any problems, and any `agents.md` warning.
-4. **Keep agents.md lightweight.** It teaches how to think (workflow, investigation and review philosophy, engineering principles). If the tool warns it is large,
-   list the project-specific sections that should move into `.mcp/` and offer to do it with `record_project_knowledge`; do not move anything silently.
+1. Call `load_project_knowledge(workspace_root)`. It builds the unified memory model and returns a compact index per category, validation problems, whether the agents file
+   has grown into a knowledge dump, and a **health report**. Read the index; do **not** read every entry. Entries are pulled on demand with `get_project_knowledge`.
+2. **If `.mcp/` does not exist,** the tool explains why the layer matters and what scaffolding creates. Relay that briefly, then offer `load_project_knowledge(scaffold: true)`
+   (it creates the folders, a README and one starter template per category in `.mcp/templates/`). It never creates knowledge. If the project has opted in
+   (`_meta.auto_scaffold_knowledge: true` in `.secufusion-project-spec.json`, or `SECUFUSION_AUTO_SCAFFOLD=1`) the tool scaffolds by itself and says so; otherwise ask first.
+3. **Present the health report as returned**, without rounding it into a score:
+   - *Coverage* is documented vs discovered entities (services, topics, golden rules, domain concepts, platform decisions) with the definition of "documented" stated.
+     Quote the counts; never turn them into a percentage or a grade.
+   - *Known-exception candidates* are anomalies the spec exposes. They are unconfirmed, some may be benign, and they are not part of the coverage line.
+   - List the **knowledge gaps**, the **repeatedly investigated** areas, and the **tribal-knowledge candidates** (project-specific sections still inside the agent file).
+4. **Offer the suggestions** (`suggest_project_knowledge`): the top few, with their evidence. Do not record anything on your own. Record only what is verified, with a `source`;
+   it is saved `proposed`, and only a person (their words) accepts it.
+5. **Keep agents.md lightweight.** It teaches how to think (workflow, investigation and review philosophy, engineering principles). For each tribal-knowledge candidate, offer to
+   move it into `.mcp/` with `record_project_knowledge`, and only after the user agrees replace the section with a pointer; do not move anything silently. Back up a file that is not under version control first.
+6. Report: entries per category, `proposed` (unreviewed hints) vs `accepted` (project decisions), any problems, and any `agents.md` warning.
 
 Adding knowledge must be easy. Whenever a terminology trap, a decision, an intentional exception, a lesson or an operational constraint comes up during any command, offer
 to record it with `record_project_knowledge` (saved as `proposed` with its `source`; a person accepts it with `set_knowledge_status`).

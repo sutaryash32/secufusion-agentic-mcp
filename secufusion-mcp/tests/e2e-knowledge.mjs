@@ -82,6 +82,58 @@ check("the next release compares against the snapshot kept in .mcp/release-histo
 r = await call("load_project_knowledge", { workspace_root: W });
 check("release history is part of the memory model", r.text.includes("release-history") && r.text.includes("v1.0.0.md"), r.text);
 
+// ── health report: documented vs discovered, no invented percentage ────────
+fs.writeFileSync(path.join(dir, ".secufusion-project-spec.json"), JSON.stringify({
+    platform: { event_bus: "Kafka", database: "PostgreSQL" },
+    terminology: { Device: "browser installation", Machine: "physical endpoint" },
+    microservices: { "svc-a": { language: "Java", kafka_produces: ["a-events"], owns_tables: ["t1"] }, "svc-b": { language: "Java", owns_tables: ["t2"] } },
+    golden_rules: { tenant_isolation: "scope by tenant" },
+}));
+r = await call("get_knowledge_health", { workspace_root: W });
+check("health reports 'N of M discovered entities documented' and no percentage", /\*\*Coverage: \d+ of \d+ discovered entities documented\*\*/.test(r.text) && !r.text.includes("%"), r.text.slice(0, 300));
+check("...Device/Machine are documented (an accepted entry names them); the services are not", r.text.includes("Domain concepts | 2 | 2 |") && r.text.includes("Services | 2 | 0 |"), r.text.slice(0, 700));
+check("...with the definition of 'documented' stated", r.text.includes("at least one `accepted` entry"));
+check("...and anomaly candidates reported separately", r.text.includes("Known-exception candidates (not in the coverage line)"));
+r = await call("load_project_knowledge", { workspace_root: W });
+check("the /sfn-init index now ends with the health report and top suggestions", r.text.includes("## Project intelligence health") && r.text.includes("suggestion(s) to turn what is known into project knowledge"), r.text.slice(-600));
+
+// ── repeated investigation is noticed, and clears once knowledge exists ────
+const q = { workspace_root: W, terms: ["quarantine zebra protocol"] };
+let n1 = await call("get_project_knowledge", q), n2 = await call("get_project_knowledge", q);
+check("the first two lookups of an unanswered topic raise no nudge", !n1.text.includes("Repeated investigation") && !n2.text.includes("Repeated investigation"));
+let n3 = await call("get_project_knowledge", q);
+check("the third raises 'Repeated investigation detected' with the dates and a way to act", n3.text.includes("Repeated investigation detected") && n3.text.includes("quarantine") && n3.text.includes("record_project_knowledge"), n3.text);
+r = await call("suggest_project_knowledge", { workspace_root: W });
+check("suggest_project_knowledge lists it first, as HIGH, with evidence and a prefilled call that has no body", r.text.includes("1. **[HIGH] Investigation notes: protocol, quarantine, zebra**") && r.text.includes("Looked up 3 times") && r.text.includes("record_project_knowledge(") && !r.text.includes("body:"), r.text.slice(0, 700));
+check("the lookups are kept as local working state, not in .mcp (which is committed)", fs.existsSync(path.join(dir, ".secufusion", "knowledge-lookups.json")) && !fs.readdirSync(path.join(dir, ".mcp")).some((f) => f.includes("lookup")));
+await call("record_project_knowledge", { workspace_root: W, category: "known-exceptions", title: "Quarantine zebra protocol", body: "The zebra quarantine is intentional.", source: "ops runbook", applies_to: ["quarantine zebra protocol"], status: "accepted", user_statement: "yes" });
+n3 = await call("get_project_knowledge", q);
+check("once accepted knowledge answers it, the nudge is gone", !n3.text.includes("Repeated investigation") && n3.text.includes("Quarantine zebra protocol"));
+r = await call("suggest_project_knowledge", { workspace_root: W });
+check("...and it is no longer suggested", !r.text.includes("quarantine"), r.text.slice(0, 400));
+
+// investigating an entity feeds the same history
+fs.mkdirSync(path.join(dir, ".secufusion"), { recursive: true });
+fs.writeFileSync(path.join(dir, ".secufusion", "dna.json"), JSON.stringify({ graph: { nodes: [], edges: [] } }));
+let i3;
+for (let i = 0; i < 3; i++) i3 = await call("investigate_entity", { workspace_root: W, entity_name: "Frobnicator" });
+check("investigating the same entity three times with no knowledge triggers the nudge too", i3.text.includes("Repeated investigation detected") && i3.text.includes("frobnicator"), i3.text.slice(-400));
+
+// ── adoption: explain why, offer, and only create when asked or opted in ────
+const bare = fs.mkdtempSync(path.join(os.tmpdir(), "e2etmp-"));
+fs.writeFileSync(path.join(bare, "package.json"), "{}");
+r = await call("load_project_knowledge", { workspace_root: bare });
+check("no .mcp/: it explains why the layer matters and how to opt in to auto-creation", r.text.includes("Why it matters") && r.text.includes("auto_scaffold_knowledge") && r.text.includes("off by default"), r.text.slice(0, 700));
+check("...and creates nothing by itself", !fs.existsSync(path.join(bare, ".mcp")));
+r = await call("get_knowledge_health", { workspace_root: bare });
+check("health without a layer says so instead of inventing a score", r.text.includes("No Project Intelligence Layer yet") && !r.text.includes("%"));
+fs.writeFileSync(path.join(bare, ".secufusion-project-spec.json"), JSON.stringify({ _meta: { auto_scaffold_knowledge: true }, microservices: { s: {} } }));
+r = await call("load_project_knowledge", { workspace_root: bare });
+check("with auto_scaffold_knowledge:true it creates the structure and says it did so automatically", r.text.includes("Created the Project Intelligence Layer") && r.text.includes("automatically") && fs.existsSync(path.join(bare, ".mcp", "adr")), r.text.slice(0, 500));
+check("...including a template per category", ["architecture", "adr", "patterns", "known-exceptions", "lessons-learned", "operational"].every((c) => fs.existsSync(path.join(bare, ".mcp", "templates", `${c}.md`))));
+check("...and it claims no knowledge exists yet", r.text.includes("It is empty") && r.text.includes("never invents knowledge") || r.text.includes("nothing has been claimed"), r.text);
+fs.rmSync(bare, { recursive: true, force: true });
+
 await c.close();
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);

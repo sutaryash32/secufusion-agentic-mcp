@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.0.0** · Node ≥ 18 · a breaking release: `/sfn-explore` and `/sfn-plan` are now `/sfn-spec`, project knowledge moves into the repository (`.mcp/`), and review gains diff-quality checks. 71 tools (15 new). See [What's New in 4.0.0](#whats-new-in-400) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.1.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), and 4.1.0 adds a knowledge health report, starter templates and a suggestion engine. 73 tools. See [What's New in 4.1.0](#whats-new-in-410) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -22,18 +22,19 @@ It does not just answer questions about your code. It runs a **workflow** (under
 10. [Lessons Learned](#lessons-learned)
 11. [Architectural Decisions](#architectural-decisions)
 12. [Work-Item Identity](#work-item-identity)
-13. [What's New in 4.0.0](#whats-new-in-400)
-14. [Upgrading from 3.x](#upgrading-from-3x)
-15. [Getting Started](#getting-started)
-16. [New Contributor Guide](#new-contributor-guide)
-17. [Contributing Knowledge](#contributing-knowledge)
-18. [Release Notes Philosophy](#release-notes-philosophy)
-19. [Tool Reference](#tool-reference)
-20. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-21. [Development](#development)
-22. [Status and Known Limitations](#status-and-known-limitations)
-23. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-24. [Long-Term Vision](#long-term-vision)
+13. [What's New in 4.1.0](#whats-new-in-410)
+14. [What's New in 4.0.0](#whats-new-in-400)
+15. [Upgrading from 3.x](#upgrading-from-3x)
+16. [Getting Started](#getting-started)
+17. [New Contributor Guide](#new-contributor-guide)
+18. [Contributing Knowledge](#contributing-knowledge)
+19. [Release Notes Philosophy](#release-notes-philosophy)
+20. [Tool Reference](#tool-reference)
+21. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+22. [Development](#development)
+23. [Status and Known Limitations](#status-and-known-limitations)
+24. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+25. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -123,6 +124,11 @@ What is true, why, and what must NOT be "fixed".
 Entries are validated on load: missing fields, a wrong folder, a bad status, duplicate ids, dangling `supersedes` and empty bodies are reported, never silently ignored.
 
 **It is retrieved by relevance, not dumped.** `/sfn-init` builds a compact index of the whole layer; during a task, `get_project_knowledge` returns only the entries that apply, ranked by the ticket's terms, the files involved and tags, with the reason each matched. Generic words in a free-text ticket do not drag in unrelated entries.
+
+**Health, templates and suggestions.**
+- `get_knowledge_health` compares what the project spec says exists with what `.mcp/` documents (see *What's New in 4.1.0* for the exact definition) and lists the gaps; `/sfn-init` prints it.
+- `.mcp/templates/` holds a starter per category. `load_project_knowledge(scaffold: true)` creates the layer; auto-creation is opt-in and off by default.
+- `suggest_project_knowledge` turns evidence (repeated lookups, undocumented entities, tribal sections in the agent file) into prefilled, bodiless `record_project_knowledge` calls.
 
 ---
 
@@ -337,6 +343,33 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 
 ---
 
+## What's New in 4.1.0
+
+A minor release: no breaking changes. It adds the first three roadmap items and fixes four defects found by running 4.0.0 on a real repository.
+
+**Project Intelligence health report** (`get_knowledge_health`, also shown by `/sfn-init`)
+- Coverage is **documented vs discovered entities**, per dimension: services, topics, golden rules, domain concepts and platform decisions, discovered from the project spec. An entity is *documented* when an `accepted` entry names it, *proposed-only* when only unreviewed entries do, and *undocumented* otherwise. It is a ratio of counts with the definition printed beside it, never a score.
+- Anomalies the spec exposes (a topic nobody consumes, a table owned by four services, an unresolved `CONFLICT`, a manual-review flag) are listed as **known-exception candidates**. They are unconfirmed and are not part of the coverage line.
+- It also lists **tribal-knowledge candidates**: project-specific sections still inside the agent file. Names that exist only in the knowledge graph (duplicates, code constants) are shown as *unreconciled*, not counted.
+
+**Starter templates and opt-in auto-scaffold**
+- Scaffolding now writes one template per category to `.mcp/templates/` (each says what a good entry of that kind answers) and never overwrites a customised one.
+- When `.mcp/` is missing, `/sfn-init` explains why it matters. Creating it automatically is **off by default**; enable it with `_meta.auto_scaffold_knowledge: true` in the project spec or `SECUFUSION_AUTO_SCAFFOLD=1`. Scaffolding creates structure only, never knowledge.
+
+**Knowledge suggestion engine** (`suggest_project_knowledge`)
+- Lookups through `get_project_knowledge` and `investigate_entity` are remembered locally (`.secufusion/knowledge-lookups.json`, not committed). A topic looked up three or more times without accepted knowledge answering it triggers *"Repeated investigation detected. Consider recording this as project knowledge"*, and clears once accepted knowledge exists.
+- Suggestions cite their evidence and give a prefilled `record_project_knowledge` call **without a body**: only verified content gets recorded. Similar anomalies are grouped (40 tables owned by several services is one question, not 40).
+
+**Fixes found by the first real run**
+- Release notes now read the migrations format this MCP itself writes (`microservices`); before, migration changes were invisible and a release could say "no migration changed" when two services had moved. When one side has no migration or graph data, the notes say **"Not compared"** instead.
+- Scans rewrote `.secufusion-migrations.json` and destroyed its previous state. A scan now keeps a timestamped backup when the file changes and preserves its line endings. `/sfn-init` backs up the spec and migrations before scanning and passes `previous_migrations_path`.
+- `scan_repository_stack` only looked at the workspace root and reported "Node.js" for a Spring Boot ecosystem; it now inspects service folders.
+- Snapshot tables drop an all-empty language column; paths in tool output use forward slashes.
+
+**New tools (2):** `get_knowledge_health`, `suggest_project_knowledge`.
+
+---
+
 ## What's New in 4.0.0
 
 4.0.0 is a breaking release. The changes since 3.3.1:
@@ -417,7 +450,7 @@ Then register the server with your MCP client:
 }
 ```
 
-A published package is also available: `npx -y secufusion-mcp` or `npm install -g secufusion-mcp` (current version **4.0.0**; see [Upgrading from 3.x](#upgrading-from-3x) if you are on an older release).
+A published package is also available: `npx -y secufusion-mcp` or `npm install -g secufusion-mcp` (current version **4.1.0**; see [Upgrading from 3.x](#upgrading-from-3x) if you are on an older release).
 
 ### First run
 
@@ -574,6 +607,8 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | `load_project_knowledge` | Build the memory model from `.mcp/` (**writes** only with `scaffold`) |
 | `get_project_knowledge` | Knowledge that applies to the terms and files you give |
 | `record_project_knowledge`, `set_knowledge_status` | **Write** one entry / change an entry's status (the latter requires the user's words) |
+| `get_knowledge_health` | Documented vs discovered entities per dimension, gaps, tribal-knowledge candidates |
+| `suggest_project_knowledge` | Evidence-backed suggestions for knowledge worth recording (creates nothing) |
 | `generate_release_notes` | Change-driven release notes and snapshot (**writes** unless `dry_run`) |
 
 ---
@@ -613,7 +648,7 @@ The server is organised as: `server.ts` (entry) · `shared.ts` (helpers) · `too
 cd secufusion-mcp
 npm install
 npm run build        # tsc → mcp/dist
-npm test             # build + 11 suites
+npm test             # build + 12 suites
 ```
 
 `npm test` runs deterministic benchmarks (state machines, diff quality against real temporary git repositories, work-item identity, release notes, project knowledge) and end-to-end suites that drive the real server over stdio (full lifecycle, exploration, identity, release, knowledge), plus a **documentation-consistency test** that fails if a command or agent document references a tool that does not exist, or if the README's tool reference drifts from the server.
@@ -646,9 +681,9 @@ The layer has been implemented and validated in a real repository run. That firs
 
 | # | Area | Status today | What exists | What is missing |
 |---|---|---|---|---|
-| 1 | **Auto-scaffold** project intelligence | Partial | `/sfn-init` detects a missing `.mcp/`, explains why it matters and offers `scaffold=true`; it never creates knowledge the project has not stated | An opt-in setting to auto-create the structure; starter templates and example entries; a clearer benefits summary in the init report |
-| 2 | **Knowledge suggestion engine** | Not started (prompt nudge only) | `/sfn-init`, `/sfn-spec` and `/sfn-review` tell the agent to offer `record_project_knowledge` when a trap or exception comes up | Detecting *repeated* investigation; a record of lookups that found nothing; the "Consider recording this as project knowledge" prompt driven by evidence |
-| 3 | **Project intelligence health report** | Partial | Per-category counts, accepted vs proposed, validation problems and `agents.md` size are reported at `/sfn-init` | A coverage measure (with a stated definition), knowledge-gap detection, tribal-knowledge candidates, repeatedly-investigated areas |
+| 1 | **Auto-scaffold** project intelligence | **Done in 4.1.0** | Missing `.mcp/` is detected and explained; `scaffold=true` creates folders, README and a template per category; auto-creation is opt-in (`_meta.auto_scaffold_knowledge` or `SECUFUSION_AUTO_SCAFFOLD=1`), off by default | Example entries seeded from the project (deliberately not done: scaffolding never invents knowledge) |
+| 2 | **Knowledge suggestion engine** | **Done in 4.1.0 (first form)** | Lookups are remembered locally; repeated investigation without accepted knowledge triggers the nudge and a prefilled suggestion; undocumented entities, anomalies and tribal sections are suggested with evidence | Learning from review findings and incident write-ups, which the server does not see today |
+| 3 | **Project intelligence health report** | **Done in 4.1.0** | Coverage as documented vs discovered entities (definition printed), gaps, known-exception candidates, tribal-knowledge candidates, repeatedly investigated areas | Trend over time (is coverage improving?) |
 | 4 | **Semantic retrieval** | Not started | Keyword, tag and path-glob matching with generic-word filtering; `applies_to` lets authors add terms by hand | Conceptual matches (*endpoint* → *machine*, *browser installation* → *device*, *tenant authorization* → *impersonation*) without exact wording |
 | 5 | **Release intelligence** | Partial | Notes are change-driven: services, topics, rules, terminology, configuration, migrations and risks are diffed, with knowledge-graph node counts by type when both snapshots have a graph | Knowledge changes (new ADRs, patterns, exceptions, lessons) are not part of the delta; named counts such as *Domain Models 501 → 510* and *Controllers 82 → 84* come from extraction output and are not persisted, so they cannot be diffed yet (the graph's generic types are `CLASS`, `API`, …) |
 | 6 | **Knowledge-aware reviewing** | Partial (model-mediated) | `verify_against_spec` receives the entries that apply to the changed files; the rubric and reviewer persona say an *accepted* exception is not a defect and a change contradicting an *accepted* decision is a finding | The deterministic checks (`check_diff_quality`, mechanical passes) do not consult knowledge; regression against accepted patterns is judged by the model, not detected |
@@ -656,16 +691,14 @@ The layer has been implemented and validated in a real repository run. That firs
 
 **Suggested order, and why**
 
-1. **Health report (3)**: deterministic, builds directly on what `load_project_knowledge` already computes, and makes knowledge debt visible, which motivates everything else.
-2. **Auto-scaffold with starter templates (1)**: removes the adoption friction; default stays off for auto-creation.
-3. **Suggestion engine (2)**: needs a record of lookups that matched nothing; its output feeds the health report's "repeatedly investigated" list.
-4. **Release intelligence (5)**: persist extraction counts in the snapshot and add knowledge changes to the delta.
-5. **Deterministic knowledge in review (6)**: let accepted exceptions annotate or downgrade the mechanical findings they explain, with the reason shown.
-6. **Semantic retrieval (4)**: last, and in stages (see below), because it is the only item that cannot stay fully deterministic.
+1. ~~Health report (3)~~, ~~auto-scaffold with templates (1)~~ and ~~suggestion engine (2)~~: done in 4.1.0.
+2. **Release intelligence (5)**: persist extraction counts in the snapshot and add knowledge changes to the delta.
+3. **Deterministic knowledge in review (6)**: let accepted exceptions annotate or downgrade the mechanical findings they explain, with the reason shown.
+4. **Semantic retrieval (4)**: last, and in stages (see below), because it is the only item that cannot stay fully deterministic.
 
 **Design constraints and open questions**
 
-- *Coverage (3)* must be defined before it is shown. A candidate: the share of services, topics and golden rules in the project spec that at least one `accepted` entry refers to. A percentage with no stated definition would be exactly the unverified claim this project avoids.
+- *Coverage (3)* is defined and shown as documented vs discovered counts. A percentage with no stated definition would be exactly the unverified claim this project avoids.
 - *Auto-scaffold (1)* creates structure and templates only. It must never invent knowledge; entries stay `proposed` until a person accepts them.
 - *The suggestion engine (2)* needs somewhere to keep lookup history (local working state, not committed) and a threshold for "repeated".
 - *Semantic retrieval (4)* options, in order of cost: explicit `aliases` in entry frontmatter (deterministic); query expansion by the client model when sampling is available (cached); embeddings (adds a dependency and non-determinism). The first is a natural start.

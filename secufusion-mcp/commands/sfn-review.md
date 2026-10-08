@@ -613,7 +613,7 @@ It reads `.gitattributes`, `.editorconfig`, prettier/eslint config and the file'
 A correct implementation with a noisy diff is not a fully reviewed change.
 
 **Project knowledge applies here too.** Before reporting a naming or convention finding, check `get_project_knowledge` for the touched files: an `accepted` known exception or
-terminology entry means it is intentional, not a defect (note it under ASSUMPTIONS). A change that contradicts an `accepted` decision, or repeats a recorded lesson, is a finding.
+terminology entry means it is intentional, not a defect (note it under ASSUMPTIONS). If a lookup reports repeated investigation, offer to record the verified answer as project knowledge. A change that contradicts an `accepted` decision, or repeats a recorded lesson, is a finding.
 
 **Rules for you (the reviewer):**
 1. **Existing style is the expected style.** Consistent CRLF is not a problem. Consistent LF is not a problem. Do not ask for

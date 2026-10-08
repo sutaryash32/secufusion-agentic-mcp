@@ -5,8 +5,9 @@ import { z } from "zod";
 import { gitTop } from "./diff_quality.js";
 import {
   CATEGORIES, CATEGORY_PURPOSE, STATUSES, KNOWLEDGE_DIR, loadKnowledge, queryKnowledge, renderEntry,
-  createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd,
+  createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd, autoScaffoldEnabled,
 } from "./project_knowledge.js";
+import { buildHealth, renderHealth, renderSuggestions, readLookups, recordLookup, findRepeated, significantTerms } from "./knowledge_health.js";
 
 /** The directory that owns .mcp/: the nearest ancestor that already has one, else the git root, else the given directory. */
 export function knowledgeRoot(start: string): string {
@@ -19,6 +20,17 @@ export function knowledgeRoot(start: string): string {
   }
   return gitTop(start) ?? path.resolve(start);
 }
+
+function readJsonLoose(p: string): any | null {
+  try { return JSON.parse(fs.readFileSync(p, "utf-8").replace(/^\uFEFF/, "")); } catch { return null; }
+}
+const loadSpec = (root: string) => readJsonLoose(path.join(root, ".secufusion-project-spec.json"));
+const loadDna = (root: string) => readJsonLoose(path.join(root, ".secufusion", "dna.json"));
+
+const WHY_LAYER =
+  "Why it matters: the code explains WHAT the system does; `.mcp/` records WHY (decisions, intentional exceptions, terminology traps, lessons), " +
+  "version-controlled with the code so it survives engineer turnover, MCP upgrades and prompt changes. Without it every new engineer or agent " +
+  "rediscovers the same traps. Scaffolding creates structure and templates only: it never invents knowledge.";
 
 const text = (t: string, isError = false) => ({ ...(isError ? { isError: true } : {}), content: [{ type: "text", text: t }] });
 
@@ -36,15 +48,27 @@ export function registerKnowledgeTools(server: any): void {
       try {
         const root = knowledgeRoot(workspace_root);
         let created: string[] = [];
-        if (scaffold) created = scaffoldKnowledge(root);
+        const auto = autoScaffoldEnabled(root);
+        const wasMissing = !fs.existsSync(path.join(root, KNOWLEDGE_DIR));
+        if (scaffold || (wasMissing && auto.enabled)) created = scaffoldKnowledge(root);
         const m = loadKnowledge(root);
         const agents = inspectAgentsMd(root);
         if (!m.exists) {
           return text(
-            `📚 No Project Intelligence Layer found at ${path.join(root, KNOWLEDGE_DIR).split(path.sep).join("/")}.\n` +
-            `Project knowledge currently lives only in agent files and people's heads. Run load_project_knowledge with scaffold=true to create it, ` +
-            `then record what the project already knows with record_project_knowledge.\n` +
+            `📚 No Project Intelligence Layer found at ${path.join(root, KNOWLEDGE_DIR).split(path.sep).join("/")}.\n\n${WHY_LAYER}\n\n` +
+            `Next: run load_project_knowledge with scaffold=true to create .mcp/ (folders, README and a template per category), then record what the project already knows with record_project_knowledge. ` +
+            `To create it automatically on every /sfn-init, set _meta.auto_scaffold_knowledge to true in .secufusion-project-spec.json (or SECUFUSION_AUTO_SCAFFOLD=1). It is off by default.\n` +
             (agents.warning ? `\n⚠️ ${agents.warning}\n` : "")
+          );
+        }
+        if (wasMissing && created.length) {
+          // just created: say so, and say why, without pretending there is knowledge yet
+          return text(
+            `📚 Created the Project Intelligence Layer at ${path.join(root, KNOWLEDGE_DIR).split(path.sep).join("/")}` + (auto.enabled && !scaffold ? ` (automatically, via ${auto.via})` : "") + `.\n\n${WHY_LAYER}\n\n` +
+            `Created: ${created.join(", ")}\n\nIt is empty, so nothing has been claimed yet. ` +
+            `Use the templates in .mcp/templates/ or record_project_knowledge to add entries (saved as proposed until a person accepts them). ` +
+            `Run get_knowledge_health to see what the project spec says exists but is not yet documented.` +
+            (agents.warning ? `\n\n⚠️ ${agents.warning}` : "")
           );
         }
         const byCat = (c: string) => m.entries.filter((e) => e.category === c);
@@ -62,6 +86,11 @@ export function registerKnowledgeTools(server: any): void {
         if (unreviewed.length) lines.push(`\n⚠️ ${unreviewed.length} proposed (unreviewed) entr${unreviewed.length === 1 ? "y" : "ies"}: treat as hints until a person accepts them (set_knowledge_status).`);
         if (m.problems.length) lines.push(`\n⛔ ${m.problems.length} problem(s) in the knowledge files:\n${m.problems.slice(0, 20).map((p) => `- ${p.file}: ${p.code}: ${p.message}`).join("\n")}`);
         if (agents.file) lines.push(`\nagents file: ${agents.file} (${agents.lines} lines)` + (agents.warning ? `\n⚠️ ${agents.warning}` : " — lightweight, as intended."));
+        try {
+          const health = buildHealth({ spec: loadSpec(root), dna: loadDna(root), model: m, workspaceRoot: root, events: readLookups(root) });
+          lines.push(`\n${renderHealth(health)}`);
+          if (health.suggestions.length) lines.push(`\n${renderSuggestions(health.suggestions, 3)}\n(call suggest_project_knowledge for the full list)`);
+        } catch { /* the index is still valid without the health report */ }
         lines.push(`\nNext: when working on a task, call get_project_knowledge with the task's terms and the files involved. Do not read every entry.`);
         return text(lines.join("\n"));
       } catch (e: any) { return text(`Error: ${e.message}`, true); }
@@ -88,8 +117,19 @@ export function registerKnowledgeTools(server: any): void {
         const m = loadKnowledge(root);
         if (!m.exists) return text("No Project Intelligence Layer (.mcp/) in this project. Nothing to consult; run load_project_knowledge with scaffold=true to create it.");
         const hits = queryKnowledge(m.entries, { terms, files, categories, tags, include_inactive, limit });
-        if (!hits.length) return text(`No project knowledge matches (${m.entries.length} entries searched). That is not evidence that nothing is intentional here: if you find a trap or exception, record it with record_project_knowledge.`);
-        return text(`📚 ${hits.length} relevant entr${hits.length === 1 ? "y" : "ies"} of ${m.entries.length}:\n\n` + hits.map((h) => renderEntry(h)).join("\n\n---\n\n"));
+        // Remember what was looked up and whether accepted knowledge answered it: that is how repeated investigation is noticed.
+        recordLookup(root, {
+          ts: new Date().toISOString(), kind: "knowledge", terms: terms ?? [], files: files ?? [],
+          matched: hits.map((h) => h.entry.id), accepted_matched: hits.some((h) => h.entry.status === "accepted"),
+        });
+        const repeats = findRepeated(readLookups(root), m.entries, 3)
+          .filter((r) => significantTerms(terms ?? []).some((t) => r.terms.includes(t)));
+        const nudge = repeats.length
+          ? `\n\n💡 Repeated investigation detected: "${repeats[0].terms.slice(0, 4).join(", ")}" has been looked up ${repeats[0].count} times (${repeats[0].first.slice(0, 10)} to ${repeats[0].last.slice(0, 10)}) without accepted project knowledge answering it. ` +
+            `Consider recording what you verified as project knowledge (record_project_knowledge, or suggest_project_knowledge for a prefilled suggestion).`
+          : "";
+        if (!hits.length) return text(`No project knowledge matches (${m.entries.length} entries searched). That is not evidence that nothing is intentional here: if you find a trap or exception, record it with record_project_knowledge.${nudge}`);
+        return text(`📚 ${hits.length} relevant entr${hits.length === 1 ? "y" : "ies"} of ${m.entries.length}:\n\n` + hits.map((h) => renderEntry(h)).join("\n\n---\n\n") + nudge);
       } catch (e: any) { return text(`Error: ${e.message}`, true); }
     }
   );
@@ -143,6 +183,47 @@ export function registerKnowledgeTools(server: any): void {
         const file = setStatus(knowledgeRoot(workspace_root), id, status);
         return text(`✅ ${id} is now ${status.toUpperCase()} (${file}).`);
       } catch (e: any) { return text(`⛔ ${e.message}`, true); }
+    }
+  );
+
+  server.tool(
+    "get_knowledge_health",
+    "Project intelligence health: documented vs discovered entities (services, topics, golden rules, domain concepts, platform decisions, anomalies), per dimension, with the undocumented ones listed. " +
+    "Also lists project-specific sections still sitting in the agent file and areas investigated repeatedly without accepted knowledge. Coverage is a ratio of counts, defined in the output; it is not a score.",
+    {
+      workspace_root: z.string().describe("A directory inside the project"),
+      detail: z.boolean().optional().describe("List every undocumented entity instead of a short sample."),
+    },
+    async ({ workspace_root, detail }) => {
+      try {
+        const root = knowledgeRoot(workspace_root);
+        const m = loadKnowledge(root);
+        if (!m.exists) return text(`No Project Intelligence Layer yet, so nothing is documented. ${WHY_LAYER}\nRun load_project_knowledge with scaffold=true.`);
+        const spec = loadSpec(root);
+        if (!spec) return text("No .secufusion-project-spec.json found, so there is nothing to compare the knowledge against. Run /sfn-init first.", true);
+        const h = buildHealth({ spec, dna: loadDna(root), model: m, workspaceRoot: root, events: readLookups(root) });
+        return text(renderHealth(h, { detail }));
+      } catch (e: any) { return text(`Error: ${e.message}`, true); }
+    }
+  );
+
+  server.tool(
+    "suggest_project_knowledge",
+    "Recommends knowledge worth recording, with evidence: topics investigated repeatedly without accepted knowledge, discovered entities and anomalies the project spec records but .mcp does not describe, and project-specific sections that belong out of the agent file. " +
+    "Each suggestion says why, and gives a prefilled record_project_knowledge call WITHOUT a body: record only what has been verified. Nothing is created by this tool.",
+    {
+      workspace_root: z.string().describe("A directory inside the project"),
+      limit: z.number().int().min(1).max(30).optional(),
+      min_repeats: z.number().int().min(2).max(20).optional().describe("Lookups of the same topic before it counts as repeated (default 3)."),
+    },
+    async ({ workspace_root, limit, min_repeats }) => {
+      try {
+        const root = knowledgeRoot(workspace_root);
+        const m = loadKnowledge(root);
+        if (!m.exists) return text(`No Project Intelligence Layer yet. ${WHY_LAYER}\nRun load_project_knowledge with scaffold=true, then ask again.`);
+        const h = buildHealth({ spec: loadSpec(root), dna: loadDna(root), model: m, workspaceRoot: root, events: readLookups(root), minRepeat: min_repeats });
+        return text(renderSuggestions(h.suggestions, limit ?? 8));
+      } catch (e: any) { return text(`Error: ${e.message}`, true); }
     }
   );
 }

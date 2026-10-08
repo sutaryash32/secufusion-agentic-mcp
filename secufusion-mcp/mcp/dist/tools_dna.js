@@ -6,6 +6,9 @@ import { inspectWorkspaceRepositories, getWorkspaceConfig, getEvidenceCompletene
 import { parseExternalEnv } from "./parsers/config.js";
 import chokidar from "chokidar";
 import { getWorkspaceRoot, getEcosystemRoot, getDnaPath, ensureDnaFile, writeDna, VALID_EXTENSIONS, performFullExtraction } from "./shared.js";
+import { knowledgeRoot } from "./tools_knowledge.js";
+import { loadKnowledge, queryKnowledge } from "./project_knowledge.js";
+import { recordLookup, readLookups, findRepeated, significantTerms } from "./knowledge_health.js";
 let watcher = null;
 export function registerDnaTools(server) {
     server.tool("scan_repository_stack", "Analyzes the ecosystem root to identify the framework and infrastructure", {
@@ -144,7 +147,21 @@ export function registerDnaTools(server) {
             if (!graph)
                 return { content: [{ type: "text", text: "No graph in DNA." }] };
             const res = investigateEntity(graph, entity_name);
-            return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+            // Remember that this was investigated; the same entity investigated again and again, with no accepted knowledge, is knowledge debt.
+            const content = [{ type: "text", text: JSON.stringify(res, null, 2) }];
+            try {
+                const kroot = knowledgeRoot(workspace_root);
+                const model = loadKnowledge(kroot);
+                if (model.exists) {
+                    const answered = queryKnowledge(model.entries, { terms: [entity_name], limit: 3 }).filter((h) => h.entry.status === "accepted");
+                    recordLookup(kroot, { ts: new Date().toISOString(), kind: "investigate", terms: [entity_name], files: [], matched: answered.map((h) => h.entry.id), accepted_matched: answered.length > 0 });
+                    const rep = findRepeated(readLookups(kroot), model.entries, 3).find((r) => significantTerms([entity_name]).some((t) => r.terms.includes(t)));
+                    if (rep)
+                        content.push({ type: "text", text: `💡 Repeated investigation detected: "${rep.terms.slice(0, 4).join(", ")}" has been investigated ${rep.count} times without accepted project knowledge. Consider recording what you verified as project knowledge (record_project_knowledge, or suggest_project_knowledge).` });
+                }
+            }
+            catch { /* the investigation result stands without the nudge */ }
+            return { content };
         }
         catch (e) {
             return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

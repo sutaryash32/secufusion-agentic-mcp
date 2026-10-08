@@ -1,6 +1,6 @@
 {
   "name": "secufusion-mcp",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "type": "module",
   "description": "Project-level spec driven AI workflow tooling for SecuFusion, MCP server - developer workflow tooling with guardrails",
   "main": "mcp/dist/server.js",
@@ -32,7 +32,7 @@
     "start": "node mcp/dist/server.js",
     "dev": "tsc --project mcp/tsconfig.json && node mcp/dist/server.js",
     "postinstall": "node -e \"try { require('fs').chmodSync('hooks/knowledge-drift.sh', 0o755) } catch(e) {}\"",
-    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node mcp/dist/benchmark_diff_quality.js && node mcp/dist/benchmark_work_item_identity.js && node mcp/dist/benchmark_release_notes.js && node mcp/dist/benchmark_project_knowledge.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs && node tests/e2e-identity.mjs && node tests/e2e-release.mjs && node tests/e2e-knowledge.mjs && node tests/docs-consistency.mjs"
+    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node mcp/dist/benchmark_diff_quality.js && node mcp/dist/benchmark_work_item_identity.js && node mcp/dist/benchmark_release_notes.js && node mcp/dist/benchmark_project_knowledge.js && node mcp/dist/benchmark_knowledge_health.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs && node tests/e2e-identity.mjs && node tests/e2e-release.mjs && node tests/e2e-knowledge.mjs && node tests/docs-consistency.mjs"
   },
   "keywords": [
     "mcp",
