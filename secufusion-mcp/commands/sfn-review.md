@@ -579,6 +579,47 @@ Rules for suggestions:
 
 ---
 
+### PASS 10 — Diff Quality & Repository Consistency ("When in Rome")
+
+**Trigger: always, when the target is a git working tree.** A correct change can still be a bad diff: a 3-line change that
+lands as 1,100 changed lines because the file was silently converted CRLF→LF hides the real change, inflates merge-conflict
+risk, and costs the reviewer's trust. This pass finds that, deterministically.
+
+**Call `check_diff_quality(workspace_root)`** (add `files` to narrow it). It needs no judgment from you: it measures the diff that
+*would be committed* (honouring `core.autocrlf` / `.gitattributes`), separates the real change from the noise, and explains the gap.
+It reads `.gitattributes`, `.editorconfig`, prettier/eslint config and the file's own history to learn the convention.
+
+**What it reports** (each file is classified `CODE_CHANGE`, `LINE_ENDING_CHANGE`, `MIXED_LINE_ENDINGS`,
+`REPOSITORY_CONFIGURATION_ISSUE`, `NORMAL`, plus `WHITESPACE_CHANGE`, `FORMAT_REWRITE`, `ENCODING_CHANGE`, `FILE_MODE_CHANGE`):
+
+| Finding | Meaning |
+|---|---|
+| `LINE_ENDING_CHANGE` | Line endings flipped; churn far larger than the real change (HIGH), or pure EOL change (MEDIUM) |
+| `MIXED_LINE_ENDINGS` | CRLF and LF in one file. Introduced by this change (MEDIUM/HIGH) vs. already there (LOW) |
+| `WHITESPACE_CHURN` / `FORMAT_REWRITE` | Re-indent, trailing-space strip, or re-wrapped code with the same tokens |
+| `ENCODING_CHANGE`, `EOF_NEWLINE_CHANGE`, `FILE_MODE_CHANGE` | BOM/encoding, final newline, exec bit |
+| `SHEBANG_WITH_CRLF` | A script with a shebang in CRLF: a real defect |
+| `CONFIG_DISAGREES_WITH_FILE_HISTORY`, `CONVENTION_SOURCES_DISAGREE` | The repository's own settings conflict with its files or each other: **report, do not resolve** |
+
+**Rules for you (the reviewer):**
+1. **Existing style is the expected style.** Consistent CRLF is not a problem. Consistent LF is not a problem. Do not ask for
+   normalization because you would prefer another style. Mixed endings, unexplained churn, and deviation from the file's or
+   repository's convention are the problems.
+2. **Explain each finding:** what the existing convention was, what the change introduced, whether it violates the convention,
+   whether it creates diff noise, and the minimal fix. For churn the minimal fix is:
+   *"Restore the original file style/line endings and reapply only the intended changes."*
+3. **Distinguish** intentional formatting change (it comes with a formatting-config change; INFO, keep it in its own commit) from
+   accidental change, normalization, mixed endings, and a legitimate repository convention.
+4. **Config conflicts are reported, not silently decided.** One finding covers all files a single configuration problem explains.
+5. Render the tool's blocks as-is (`FINDING 10A — LINE_ENDING: …`). Severity maps `HIGH→BLOCKER`, `MEDIUM→WARNING`, `LOW→SUGGESTION`,
+   `INFO→note`. Pre-existing mixed endings in code the developer did not write are SUGGESTIONS, not BLOCKERS.
+6. A `HIGH` finding **blocks approval** in `verify_against_spec` no matter what verdict you give. Only the user can accept it
+   (`acknowledge_diff_quality`, with their own words). Never acknowledge on their behalf.
+
+If the directory is not a git repository the tool says so and checks file state only; do not claim a diff-noise result you could not measure.
+
+---
+
 ## STEP 4 — Write the full review report
 
 After all passes are complete, produce the final report in this exact format:

@@ -150,6 +150,31 @@ These cause environment bleed and security leaks.
 
 ---
 
+## When in Rome, do as the Romans do
+
+Follow the codebase's existing conventions. Do not impose your own preferred style.
+
+Before judging a change, read the actual file and its neighbours and learn its conventions: indentation, spacing, brace style,
+ordering, naming, comments, import order, quote style, blank-line habits, **line endings (CRLF/LF)**, and general formatting.
+The existing file style is the default expectation unless repository-level configuration explicitly sets another.
+
+- Do **not** recommend formatting changes because another style is cleaner or more modern.
+- **CRLF vs LF:** consistent CRLF is not a defect; consistent LF is not a defect; mixed endings in one file are suspicious.
+  A line-ending change is a problem only when it conflicts with the file/repository convention or creates needless diff noise.
+- **Diff noise:** when a small functional change produces a disproportionately large formatting-only diff (5 lines intended, 800
+  changed, cause: CRLF→LF), say so, and recommend: *"Restore the original file style/line endings and reapply only the intended
+  changes."* The deterministic evidence comes from `check_diff_quality` (PASS 10); you interpret it, you do not guess it.
+- Distinguish **intentional formatting change**, **accidental formatting change**, **line-ending normalization**, **mixed line endings**,
+  and **a legitimate repository convention**.
+- Never demand normalization just to make files match your taste. If repository configuration conflicts with the existing file
+  style, report the conflict rather than silently choosing one.
+- Every style finding states: what the existing convention was, what the change introduced, whether it violates the repository/file
+  convention, whether it creates unnecessary diff noise, and the minimal corrective action.
+
+Preserve local style first. Detect inconsistency second. Recommend normalization only when there is evidence it is required.
+
+---
+
 ## Review conventions
 
 ### How to reference a finding in the report

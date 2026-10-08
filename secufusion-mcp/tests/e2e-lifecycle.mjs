@@ -2,6 +2,7 @@ import { fileURLToPath } from "url";
 import nodePath from "path";
 const PKG = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), "..").split(nodePath.sep).join("/");
 import fs from "fs";
+import { execFileSync } from "child_process";
 import os from "os";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -25,8 +26,16 @@ function makeWorkspace() {
         golden_rules: ["tenantId on every query"],
     }));
     fs.writeFileSync(path.join(dir, "package.json"), "{}");
+    // A real git repo with a CRLF source file, so the diff-quality gate has something to measure.
+    fs.writeFileSync(path.join(dir, "big.ts"), bigFile(CRLF, -1));
+    const g = (...args) => execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+    g("init", "-q", "-b", "main"); g("config", "user.name", "t"); g("config", "user.email", "t@t"); g("config", "core.autocrlf", "false");
+    g("add", "-A"); g("commit", "-q", "-m", "base");
     return dir;
 }
+const CRLF = String.fromCharCode(13, 10);
+const LF = String.fromCharCode(10);
+const bigFile = (eol, editedLine) => Array.from({ length: 300 }, (_, i) => `const v${i} = ${i === editedLine ? "'changed'" : i};`).join(eol) + eol;
 
 async function connect(dir, { sampling } = {}) {
     const client = new Client({ name: "e2e", version: "1" }, { capabilities: sampling ? { sampling: {} } : {} });
@@ -116,8 +125,16 @@ const SAMPLING = V;
     check("MET without evidence rejected", r.err && r.text.includes("evidence"), r.text);
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: { ...V.review, criteria: [{ criterion: "something else", status: "MET", evidence: ["x"] }] } });
     check("review must cover every criterion", r.text.includes("CHANGES REQUIRED") && r.text.includes("AC1"), r.text);
+    // The client's scenario: a small change that is committed as a whole-file CRLF -> LF rewrite.
+    fs.writeFileSync(path.join(dir, "big.ts"), bigFile(LF, 5));
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review });
-    check("review approved", r.text.includes("APPROVED"), r.text);
+    check("model APPROVED is overridden by deterministic HIGH diff noise", r.text.includes("CHANGES REQUIRED") && r.text.includes("DIFF QUALITY") && r.text.includes("LINE_ENDING_CHANGE"), r.text.slice(0, 500));
+    r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review, acknowledge_diff_quality: [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: " " }] });
+    check("acknowledgement without the user's words is ignored", r.text.includes("CHANGES REQUIRED"), r.text.slice(0, 300));
+    r = await call(c, "manage_task", { action: "complete", work_item_id: id });
+    check("task cannot complete while the review gate is failed", r.err && r.text.includes("review"), r.text.slice(0, 300));
+    r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review, acknowledge_diff_quality: [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: "Yes, we are deliberately normalizing this file to LF" }] });
+    check("review approved once the user accepts the noise", r.text.includes("APPROVED") && !r.text.includes("CHANGES REQUIRED"), r.text.slice(0, 400));
 
     r = await call(c, "spec_status", { work_item_id: id });
     check("spec_status: all gates passed", r.text.includes("All gates passed"), r.text);

@@ -28,7 +28,7 @@
     "start": "node mcp/dist/server.js",
     "dev": "tsc --project mcp/tsconfig.json && node mcp/dist/server.js",
     "postinstall": "node -e \"try { require('fs').chmodSync('hooks/knowledge-drift.sh', 0o755) } catch(e) {}\"",
-    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs"
+    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node mcp/dist/benchmark_diff_quality.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs"
   },
   "keywords": [
     "mcp",

@@ -13,6 +13,7 @@ import { generateTestObligations, aggregateValidation } from "./validation_engin
 import { recordExperience, loadExperience, getEngineeringExperience, validateExperience, getExperienceContext, findExperienceConflicts, findRepeatedOutcomes, markExperienceStale, retireExperience, linkExperience, getLearningFeedback } from "./experience_manager.js";
 import { loadRequirement } from "./requirement_manager.js";
 import { explorationSummary } from "./exploration.js";
+import { analyzeDiffQuality, applyAcknowledgements, blockingFindings } from "./diff_quality.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { investigateEntity, investigateRelationship } from "./investigation_engine.js";
 import { loadSnapshot, saveSnapshot, getRegressionContext, recordRegressionObservation, compareRepositorySnapshots, detectArchitectureDrift, detectRequirementDrift, detectTraceabilityDrift, getChangeHistoryContext, findRegressionTests, analyzeRegressionRisk } from "./regression_engine.js";
@@ -507,9 +508,14 @@ server.tool(
     workspace_root: z.string().describe("Root directory of the workspace"),
     work_item_id: z.string().describe("Work item / requirement id the change implements."),
     diff_summary: z.string().optional().describe("Optional: summary or excerpt of the diff, in addition to the git diff stat the server collects."),
+    acknowledge_diff_quality: z.array(z.object({
+      file: z.string().describe("File path from the finding (or '*' for all files with that finding)"),
+      finding: z.string().describe("Finding name, e.g. LINE_ENDING_CHANGE"),
+      user_statement: z.string().describe("The user's own words accepting this diff noise (e.g. a deliberate normalization). Required."),
+    })).optional().describe("Accept HIGH diff-quality findings the USER says are intentional. Without their words a HIGH finding blocks APPROVED."),
     judgment: judgmentParam
   },
-  async ({ workspace_root, work_item_id, diff_summary, judgment }) => {
+  async ({ workspace_root, work_item_id, diff_summary, acknowledge_diff_quality, judgment }) => {
     try {
         const wsRoot = getWorkspaceRoot();
         const ecosystemRoot = getEcosystemRoot(workspace_root);
@@ -541,6 +547,11 @@ server.tool(
             return textResult(`⛔ No acceptance criteria found for ${work_item_id} (requirement or task spec). A change cannot be verified against an empty spec.`, true);
         }
 
+        // Deterministic repository-consistency evidence: the model weighs it, and HIGH findings also block below.
+        const dq = analyzeDiffQuality(wsRoot);
+        applyAcknowledgements(dq.findings, acknowledge_diff_quality);
+        const dqBlocking = blockingFindings(dq.findings);
+
         const outcome = await judge(server, wsRoot, {
             kind: "review",
             subject: work_item_id,
@@ -552,6 +563,12 @@ server.tool(
                 plan,
                 files_touched: filesTouched,
                 git_diff_stat: gitStat,
+                diff_quality: {
+                    base: dq.base, base_reason: dq.base_reason, notes: dq.notes, max_severity: dq.max_severity,
+                    findings: dq.findings,
+                    churn_by_file: dq.files.filter((f) => f.churn).map((f) => ({ file: f.file, ...f.churn, classes: f.classifications })),
+                    guidance: "Deterministic. Existing file/repo style is the expected style; consistent CRLF or LF is not a defect. Report these findings; do not demand normalization to your own taste.",
+                },
                 diff_summary: diff_summary ?? null,
                 test_results: loadTestResults(ecosystemRoot),
                 project: specEvidence(wsRoot),
@@ -568,9 +585,12 @@ server.tool(
         // The judgment must cover every criterion the spec has, not a convenient subset.
         const judged = new Set(rv.criteria.map((c) => c.criterion.trim().toLowerCase()));
         const unjudged = criteria.filter((c) => !judged.has(c.trim().toLowerCase()));
-        const passed = rv.verdict === "APPROVED" && unjudged.length === 0;
+        // A deterministic HIGH diff-quality finding cannot be approved away by the model; only the user can accept it.
+        const passed = rv.verdict === "APPROVED" && unjudged.length === 0 && dqBlocking.length === 0;
         recordGate(wsRoot, work_item_id, "review", passed, outcome.source,
-            passed ? rv.summary : unjudged.length ? `${unjudged.length} criteria not judged` : rv.summary);
+            passed ? rv.summary
+            : dqBlocking.length ? `diff noise: ${dqBlocking.map((f) => `${f.finding} in ${f.file}`).join("; ")}`
+            : unjudged.length ? `${unjudged.length} criteria not judged` : rv.summary);
 
         return textResult(
             `${passed ? "✅" : "⛔"} Review ${passed ? "APPROVED" : "CHANGES REQUIRED"} — ${work_item_id} (judged by ${outcome.source})\n${rv.summary}\n\n` +
@@ -578,6 +598,10 @@ server.tool(
             (unjudged.length ? `\n\n⚠️ Criteria missing from the judgment (copy them verbatim):\n${unjudged.map((c) => `- ${c}`).join("\n")}` : "") +
             (rv.out_of_scope_changes.length ? `\n\nOut-of-scope changes:\n${rv.out_of_scope_changes.map((c) => `- ${c}`).join("\n")}` : "") +
             (rv.guardrail_violations.length ? `\n\nGuardrail violations:\n${rv.guardrail_violations.map((c) => `- ${c}`).join("\n")}` : "") +
+            (dqBlocking.length
+                ? `\n\n⛔ DIFF QUALITY (deterministic) blocks approval:\n${dqBlocking.map((f) => `- ${f.finding} in ${f.file}: ${f.evidence}\n    ${f.recommendation}`).join("\n")}` +
+                  `\nFix the diff, or — only if the user says it is intentional — re-run with acknowledge_diff_quality containing their words.`
+                : "") +
             (passed ? `\n\nNext: manage_task action=complete.` : `\n\nFix the gaps, then run verify_against_spec again.`)
         );
     } catch (e: any) {

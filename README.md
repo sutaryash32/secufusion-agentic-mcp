@@ -202,6 +202,19 @@ Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP
 
 ---
 
+## Diff quality & line endings (PASS 10)
+
+A change can be functionally right and still be a bad diff: three edited lines that land as 1,100 changed lines because the file was silently converted CRLF→LF. `check_diff_quality` (also `/sfn-review` PASS 10, and evidence inside `verify_against_spec`) catches that deterministically, with no LLM.
+
+- **Measures the diff that would be committed** (honouring `core.autocrlf` and `.gitattributes`) against the real change, then attributes the gap: line endings, trailing whitespace, re-indentation, blank lines, re-wrapped code (same tokens, different layout), BOM/encoding, end-of-file newline, file mode, and CRLF in shebang scripts.
+- **"When in Rome":** the file's and repository's existing convention is the expected style. Consistent CRLF and consistent LF are both fine; mixed endings, unexplained churn, and deviation from convention are not. Convention is read from `.gitattributes`, `.editorconfig` (nested, sections), prettier/eslint config, then the file's own history, then tracked siblings. If these sources disagree it **reports the conflict instead of choosing**, once, not per file.
+- **Severity** `HIGH/MEDIUM/LOW/INFO` maps to review `BLOCKER/WARNING/SUGGESTION/note`. Pre-existing mixed endings are LOW; churn tied to a formatting-config change is INFO ("keep it in its own commit").
+- **It gates the review.** A HIGH finding makes `verify_against_spec` refuse `APPROVED` whatever the model says. Only the user can accept it, via `acknowledge_diff_quality` with their own words.
+- **Skipped, and said so:** binary, vendor/dist/build, lockfiles, `@generated`, `-text`/`linguist-generated` paths, files over 2 MB, and the MCP's own `.secufusion/` output. Outside a git repo it checks file state only and says it cannot measure churn.
+- Thresholds live in `THRESHOLDS` in `diff_quality.ts`: ≥50 committed lines and ≤20% of them real = disproportionate.
+
+---
+
 ## Installation
 
 [![Claude Marketplace](https://img.shields.io/badge/Download_from-Claude_Marketplace-blue?logo=anthropic)](https://claude.ai/marketplace/secufusion-mcp)

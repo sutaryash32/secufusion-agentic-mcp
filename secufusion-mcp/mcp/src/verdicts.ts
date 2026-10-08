@@ -133,4 +133,7 @@ export const ReviewRubric = [
     "exploration.user_decisions must be reflected in the implementation; an implementation that contradicts a recorded user decision is a guardrail violation.",
     "If exploration.ui_reference is CONFIRMED, check the production UI follows its intent (terminology, structure, states). Do not require pixel-perfect matching; report divergence from the approved intent.",
     "A UI reference is NOT_IMPLEMENTED until production code and a test exist; never count the static reference as evidence of implementation.",
+    "diff_quality is deterministic evidence. Existing file/repo style is the expected style: consistent CRLF or LF is not a defect, and you must not ask for normalization to your own taste.",
+    "Report every diff_quality finding that is not acknowledged. Churn far larger than the real change (e.g. a 3-line change committed as 1,100 lines) means the change is not ready; recommend restoring the original style/line endings and reapplying only the intended edits.",
+    "Config conflicts (diff_quality REPOSITORY_CONFIGURATION_ISSUE) are reported, not resolved. Never acknowledge diff noise on the user's behalf.",
 ];
