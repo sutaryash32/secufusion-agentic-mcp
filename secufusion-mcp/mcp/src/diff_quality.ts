@@ -107,7 +107,7 @@ export interface DiffQualityReport {
 
 // ── git plumbing (execFile only; no shell) ──────────────────────────────────
 
-function git(cwd: string, args: string[], asBuffer = false): any | null {
+export function git(cwd: string, args: string[], asBuffer = false): any | null {
     try {
         const out = execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 256 * 1024 * 1024 });
         return asBuffer ? out : out.toString("utf-8");
@@ -116,7 +116,7 @@ function git(cwd: string, args: string[], asBuffer = false): any | null {
     }
 }
 
-function gitTop(cwd: string): string | null {
+export function gitTop(cwd: string): string | null {
     const out = git(cwd, ["rev-parse", "--show-toplevel"]);
     return out ? path.resolve(out.trim()) : null;
 }

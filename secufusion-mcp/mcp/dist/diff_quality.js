@@ -31,7 +31,7 @@ export const THRESHOLDS = {
 export const REVIEW_SEVERITY = { INFO: "NOTE", LOW: "SUGGESTION", MEDIUM: "WARNING", HIGH: "BLOCKER" };
 const SEV_RANK = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
 // ── git plumbing (execFile only; no shell) ──────────────────────────────────
-function git(cwd, args, asBuffer = false) {
+export function git(cwd, args, asBuffer = false) {
     try {
         const out = execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 256 * 1024 * 1024 });
         return asBuffer ? out : out.toString("utf-8");
@@ -40,7 +40,7 @@ function git(cwd, args, asBuffer = false) {
         return null;
     }
 }
-function gitTop(cwd) {
+export function gitTop(cwd) {
     const out = git(cwd, ["rev-parse", "--show-toplevel"]);
     return out ? path.resolve(out.trim()) : null;
 }

@@ -136,6 +136,16 @@ const SAMPLING = V;
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review, acknowledge_diff_quality: [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: "Yes, we are deliberately normalizing this file to LF" }] });
     check("review approved once the user accepts the noise", r.text.includes("APPROVED") && !r.text.includes("CHANGES REQUIRED"), r.text.slice(0, 400));
 
+    // normalize_line_endings: the file was CRLF at base and is now LF; the helper restores its own style.
+    r = await call(c, "normalize_line_endings", { workspace_root: dir, files: ["big.ts"] });
+    check("normalize preview names the file's own style and writes nothing", r.text.includes("would convert") && r.text.includes("CRLF") && fs.readFileSync(path.join(dir, "big.ts"), "utf8").indexOf(CRLF) === -1, r.text);
+    r = await call(c, "normalize_line_endings", { workspace_root: dir, files: ["big.ts"], apply: true });
+    check("normalize apply without the user's words is refused", r.err && r.text.includes("user_statement"), r.text);
+    r = await call(c, "normalize_line_endings", { workspace_root: dir, files: ["big.ts"], apply: true, user_statement: "yes, put big.ts back to CRLF" });
+    check("normalize apply with the user's words converts the file", r.text.includes("converted") && fs.readFileSync(path.join(dir, "big.ts"), "utf8").includes(CRLF), r.text);
+    r = await call(c, "check_diff_quality", { workspace_root: dir });
+    check("after the fix the diff is clean", r.text.includes("no diff-quality findings") || !r.text.includes("LINE_ENDING_CHANGE"), r.text.slice(0, 400));
+
     r = await call(c, "spec_status", { work_item_id: id });
     check("spec_status: all gates passed", r.text.includes("All gates passed"), r.text);
     r = await call(c, "manage_task", { action: "complete", work_item_id: id });

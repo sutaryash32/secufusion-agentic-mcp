@@ -616,6 +616,12 @@ It reads `.gitattributes`, `.editorconfig`, prettier/eslint config and the file'
 6. A `HIGH` finding **blocks approval** in `verify_against_spec` no matter what verdict you give. Only the user can accept it
    (`acknowledge_diff_quality`, with their own words). Never acknowledge on their behalf.
 
+7. **Fixing line endings.** For `MIXED_LINE_ENDINGS` / `LINE_ENDING_CHANGE`, offer `normalize_line_endings(files)`. It converts a file back to
+   *its own* style (repo config, else its style at the base commit), changes only the line terminators, and refuses to guess.
+   **Never apply on your own initiative:** preview first, show the user, and call it with `apply=true` only after the user asks,
+   passing their words as `user_statement`. Then re-run `check_diff_quality` to confirm the finding is gone. It will not touch
+   binary/generated/vendor files, symlinks, files with lone CRs, or anything outside the repository.
+
 If the directory is not a git repository the tool says so and checks file state only; do not claim a diff-noise result you could not measure.
 
 ---

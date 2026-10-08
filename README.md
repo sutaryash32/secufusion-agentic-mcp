@@ -211,6 +211,7 @@ A change can be functionally right and still be a bad diff: three edited lines t
 - **Severity** `HIGH/MEDIUM/LOW/INFO` maps to review `BLOCKER/WARNING/SUGGESTION/note`. Pre-existing mixed endings are LOW; churn tied to a formatting-config change is INFO ("keep it in its own commit").
 - **It gates the review.** A HIGH finding makes `verify_against_spec` refuse `APPROVED` whatever the model says. Only the user can accept it, via `acknowledge_diff_quality` with their own words.
 - **Skipped, and said so:** binary, vendor/dist/build, lockfiles, `@generated`, `-text`/`linguist-generated` paths, files over 2 MB, and the MCP's own `.secufusion/` output. Outside a git repo it checks file state only and says it cannot measure churn.
+- **Fixing it:** `normalize_line_endings` converts a file back to *its own* style (e.g. a CRLF file that picked up LF insertions goes back to CRLF). It changes only line terminators (content, BOM, and final-newline state are preserved and verified), takes the target from repo config or the file's style at the base commit and refuses to guess, and defaults to a **preview**. Writing needs `apply=true` plus `user_statement` (the user's own words). It refuses binary/generated/vendor files, symlinks, lone-CR files, `.git`, and paths outside the repo.
 - Thresholds live in `THRESHOLDS` in `diff_quality.ts`: ≥50 committed lines and ≤20% of them real = disproportionate.
 
 ---

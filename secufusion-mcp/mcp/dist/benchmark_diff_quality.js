@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { analyzeDiffQuality, detectLineEndings, applyAcknowledgements, blockingFindings, renderFindingBlocks, } from "./diff_quality.js";
+import { fixLineEndings } from "./line_ending_fix.js";
 /**
  * Deterministic tests for diff quality / line-ending awareness. Every scenario builds a real
  * temporary git repository so .gitattributes, autocrlf and rename detection behave as in production.
@@ -291,6 +292,68 @@ const names = (r) => r.findings.map((f) => f.finding).join(",") || "none";
     check("an acknowledgement without the user's words does nothing", blockingFindings(r.findings).length === 1);
     applyAcknowledgements(r.findings, [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: "Yes, we are normalizing on purpose" }]);
     check("acknowledged with the user's words: no longer blocking, still reported", blockingFindings(r.findings).length === 0 && r.findings[0].acknowledged === true);
+}
+// ── convert back to the file's own style ────────────────────────────────────
+{
+    const stripCr = (b) => Buffer.from(b.filter((x) => x !== 13));
+    const d = repo();
+    put(d, "a.ts", lines(80, "\r\n"));
+    commit(d);
+    const mixed = lines(80, "\r\n").replace(/\r\n/g, (m, off) => (off === 0 ? m : m)) + "// inserted by an LF editor\n// and another\n";
+    put(d, "a.ts", mixed);
+    check("scenario: CRLF file + LF insertions is detected as mixed", !!find(run(d), "MIXED_LINE_ENDINGS"));
+    const before = fs.readFileSync(path.join(d, "a.ts"));
+    const preview = fixLineEndings(d, "a.ts");
+    check("preview: would convert 2 LF lines to CRLF using the file's own style, writes nothing", preview.ok && !preview.applied && preview.lines_changed === 2 && preview.target === "crlf" && /base|HEAD|\w/.test(preview.target_source ?? "") && fs.readFileSync(path.join(d, "a.ts")).equals(before), JSON.stringify(preview));
+    check("target came from the file's history, not a guess", (preview.target_source ?? "").startsWith("file's style at"), preview.target_source);
+    const done = fixLineEndings(d, "a.ts", { apply: true });
+    const after = fs.readFileSync(path.join(d, "a.ts"));
+    check("apply: file is now consistent CRLF", done.applied && detectLineEndings(after).state === "CRLF", JSON.stringify(done));
+    check("only line terminators changed (content identical ignoring CR)", stripCr(after).equals(stripCr(before)));
+    check("the diff-quality finding is gone after the fix", run(d).findings.length === 0, names(run(d)));
+    check("running it again is a no-op", fixLineEndings(d, "a.ts", { apply: true }).applied === false);
+    // BOM and missing final newline are preserved
+    const d2 = repo();
+    const body = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("a\r\nb\r\nc\nd")]);
+    put(d2, ".gitattributes", "*.txt eol=crlf\n");
+    put(d2, "x.txt", body);
+    commit(d2);
+    const r2 = fixLineEndings(d2, "x.txt", { apply: true });
+    const out2 = fs.readFileSync(path.join(d2, "x.txt"));
+    check("BOM and the absence of a final newline are preserved", r2.applied && out2.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) && out2.toString("utf-8").endsWith("c\r\nd") && !out2.toString("utf-8").endsWith("\n"), JSON.stringify(out2.toString("utf-8")));
+    // repo configuration outranks history
+    const d3 = repo();
+    put(d3, ".editorconfig", "root = true\n[*]\nend_of_line = lf\n");
+    put(d3, "m.ts", "a\r\nb\nc\n");
+    commit(d3);
+    const r3 = fixLineEndings(d3, "m.ts");
+    check("repo config (.editorconfig lf) decides the target", r3.target === "lf" && (r3.target_source ?? "").includes(".editorconfig"), JSON.stringify(r3));
+    // refuses to guess
+    const d4 = repo();
+    put(d4, "seed.txt", "x\n");
+    commit(d4);
+    put(d4, "new.ts", "a\r\nb\nc\r\n");
+    const r4 = fixLineEndings(d4, "new.ts");
+    check("no convention anywhere: refuses and asks for an explicit target", !r4.ok && /pass target explicitly/.test(r4.reason ?? ""), JSON.stringify(r4));
+    check("explicit target works", fixLineEndings(d4, "new.ts", { target: "crlf", apply: true }).applied && detectLineEndings(fs.readFileSync(path.join(d4, "new.ts"))).state === "CRLF");
+    const d5 = repo();
+    put(d5, ".editorconfig", "root = true\n[*]\nend_of_line = lf\n");
+    put(d5, ".gitattributes", "*.ts eol=crlf\n");
+    put(d5, "m.ts", "a\r\nb\nc\n");
+    commit(d5);
+    check("conflicting repo config: refuses instead of choosing", !fixLineEndings(d5, "m.ts").ok && fixLineEndings(d5, "m.ts", { target: "lf" }).ok);
+    // safety refusals
+    const d6 = repo();
+    put(d6, "dist/o.js", "a\r\nb\n");
+    put(d6, "p.png", Buffer.from([0, 1, 2]));
+    put(d6, "cr.txt", "a\rb\rc\n");
+    put(d6, "ok.ts", "a\r\nb\n");
+    commit(d6);
+    check("path traversal is refused", fixLineEndings(d6, "../outside.ts", { target: "lf", apply: true }).reason === "path is outside the repository");
+    check(".git is refused", !fixLineEndings(d6, ".git/config", { target: "lf", apply: true }).ok);
+    check("generated/vendor and binary files are refused", !fixLineEndings(d6, "dist/o.js", { target: "lf" }).ok && !fixLineEndings(d6, "p.png", { target: "lf" }).ok);
+    check("lone-CR files are refused rather than reinterpreted", /lone CR/.test(fixLineEndings(d6, "cr.txt", { target: "lf" }).reason ?? ""));
+    check("missing file is refused", !fixLineEndings(d6, "nope.ts", { target: "lf" }).ok);
 }
 for (const d of tmpDirs)
     fs.rmSync(d, { recursive: true, force: true });
