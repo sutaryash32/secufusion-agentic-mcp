@@ -32,7 +32,8 @@ It does not just answer questions about your code. It runs a **workflow** (under
 20. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
 21. [Development](#development)
 22. [Status and Known Limitations](#status-and-known-limitations)
-23. [Long-Term Vision](#long-term-vision)
+23. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+24. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -636,6 +637,39 @@ Conventions for contributors:
 - **Migration of project knowledge out of `AGENTS.md` is gradual.** Device vs Machine is migrated; other project-specific sections (migration guardrails, platform and service architecture) are candidates.
 - **Phase 7 regression functions** exist as library code but are not exposed as tools; regression context is assembled from blast radius, traceability gaps, experience and test results.
 - **Licence:** ISC (see `package.json`).
+
+---
+
+## Roadmap: Next Evolution of the Project Intelligence Layer
+
+The layer has been implemented and validated in a real repository run. That first run produced seven evolution areas. They are future work, recorded here (and as a proposed ADR in `.mcp/adr/`) so the plan travels with the project. "Status" is checked against the code, not aspirational.
+
+| # | Area | Status today | What exists | What is missing |
+|---|---|---|---|---|
+| 1 | **Auto-scaffold** project intelligence | Partial | `/sfn-init` detects a missing `.mcp/`, explains why it matters and offers `scaffold=true`; it never creates knowledge the project has not stated | An opt-in setting to auto-create the structure; starter templates and example entries; a clearer benefits summary in the init report |
+| 2 | **Knowledge suggestion engine** | Not started (prompt nudge only) | `/sfn-init`, `/sfn-spec` and `/sfn-review` tell the agent to offer `record_project_knowledge` when a trap or exception comes up | Detecting *repeated* investigation; a record of lookups that found nothing; the "Consider recording this as project knowledge" prompt driven by evidence |
+| 3 | **Project intelligence health report** | Partial | Per-category counts, accepted vs proposed, validation problems and `agents.md` size are reported at `/sfn-init` | A coverage measure (with a stated definition), knowledge-gap detection, tribal-knowledge candidates, repeatedly-investigated areas |
+| 4 | **Semantic retrieval** | Not started | Keyword, tag and path-glob matching with generic-word filtering; `applies_to` lets authors add terms by hand | Conceptual matches (*endpoint* → *machine*, *browser installation* → *device*, *tenant authorization* → *impersonation*) without exact wording |
+| 5 | **Release intelligence** | Partial | Notes are change-driven: services, topics, rules, terminology, configuration, migrations and risks are diffed, with knowledge-graph node counts by type when both snapshots have a graph | Knowledge changes (new ADRs, patterns, exceptions, lessons) are not part of the delta; named counts such as *Domain Models 501 → 510* and *Controllers 82 → 84* come from extraction output and are not persisted, so they cannot be diffed yet (the graph's generic types are `CLASS`, `API`, …) |
+| 6 | **Knowledge-aware reviewing** | Partial (model-mediated) | `verify_against_spec` receives the entries that apply to the changed files; the rubric and reviewer persona say an *accepted* exception is not a defect and a change contradicting an *accepted* decision is a finding | The deterministic checks (`check_diff_quality`, mechanical passes) do not consult knowledge; regression against accepted patterns is judged by the model, not detected |
+| 7 | **Project-owned intelligence** | Structure in place | Knowledge lives in `.mcp/`, is version-controlled, is plain markdown, carries source and trust level, and is loaded by `/sfn-init` | Adoption: a fresh `.mcp/` is empty, so "clone, run `/sfn-init`, inherit years of decisions" only holds once the repository has recorded them. Items 1-3 are what close this gap |
+
+**Suggested order, and why**
+
+1. **Health report (3)**: deterministic, builds directly on what `load_project_knowledge` already computes, and makes knowledge debt visible, which motivates everything else.
+2. **Auto-scaffold with starter templates (1)**: removes the adoption friction; default stays off for auto-creation.
+3. **Suggestion engine (2)**: needs a record of lookups that matched nothing; its output feeds the health report's "repeatedly investigated" list.
+4. **Release intelligence (5)**: persist extraction counts in the snapshot and add knowledge changes to the delta.
+5. **Deterministic knowledge in review (6)**: let accepted exceptions annotate or downgrade the mechanical findings they explain, with the reason shown.
+6. **Semantic retrieval (4)**: last, and in stages (see below), because it is the only item that cannot stay fully deterministic.
+
+**Design constraints and open questions**
+
+- *Coverage (3)* must be defined before it is shown. A candidate: the share of services, topics and golden rules in the project spec that at least one `accepted` entry refers to. A percentage with no stated definition would be exactly the unverified claim this project avoids.
+- *Auto-scaffold (1)* creates structure and templates only. It must never invent knowledge; entries stay `proposed` until a person accepts them.
+- *The suggestion engine (2)* needs somewhere to keep lookup history (local working state, not committed) and a threshold for "repeated".
+- *Semantic retrieval (4)* options, in order of cost: explicit `aliases` in entry frontmatter (deterministic); query expansion by the client model when sampling is available (cached); embeddings (adds a dependency and non-determinism). The first is a natural start.
+- *Everything stays honest:* a coverage score, a suggestion or a semantic match must say why it exists, and "no match" must never be presented as "nothing intentional."
 
 ---
 
