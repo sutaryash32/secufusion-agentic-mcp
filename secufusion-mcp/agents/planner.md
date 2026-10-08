@@ -163,6 +163,21 @@ Coordination required before proceeding.
 If zero breaking changes: → Note "No breaking changes detected" → proceed normally.
 
 ---
+### WORK-ITEM IDENTITY IS METADATA (STRICT RULE)
+
+A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230` or `EPIC-1230` is identity, not decoration. It must stay
+identical in Azure Boards, task folders, intent files, branch names, commit messages, PR titles and every reference you write.
+
+- **Preserve the type exactly as the user wrote it** (`BUG-1230` stays `BUG-1230`; never `task-1230`, `Task-1230`, `Feature-1230`, `US-1230`).
+- **Never replace a known type with a generic default** such as "task", and never derive the type from the classification's `task_type`
+  (that describes the kind of work, not the ticket). If the type is uncertain, keep the prefix you were given; do not infer a new one.
+- **Pass the reference to every tool exactly as given** (`work_item_id: "BUG-1230"`, not `"1230"`). If the user gave only a number, ask
+  which type it is, or keep the bare number; do not guess.
+- **Do not free-hand names.** Call `resolve_work_item_ref(work_item, title)` and use its `ref`, `branch_suffix`, `commit_prefix` and
+  `pr_title_prefix` verbatim (e.g. branch `…/BUG-1230-tenant-deletion-fails`, commit `BUG-1230: fix tenant deletion status`).
+- If a tool reports an `IDENTITY CONFLICT` (the same ticket number registered under a different type), stop and tell the user. Do not
+  pick one yourself.
+
 ### NO TICKET IDS IN CODE COMMENTS (STRICT RULE)
 
 Work item IDs (e.g. "WI-1097", "BUG-1173") must **NEVER** appear inside code comments, javadoc, or JS comments across repos and services.

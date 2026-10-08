@@ -1,6 +1,6 @@
 ---
 description: Execute the approved implementation plan. Switches to the Coder Persona and writes code precisely as planned, using rejected-pattern memory to avoid past mistakes.
-argument-hint: <ticket-id>  e.g. WI-123
+argument-hint: <ticket-ref, exactly as written>  e.g. BUG-1230
 ---
 
 You are executing the **sfn-code** command for the SecuFusion spec-driven SDLC.

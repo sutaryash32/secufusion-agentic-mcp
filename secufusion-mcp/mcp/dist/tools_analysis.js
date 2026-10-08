@@ -5,6 +5,7 @@ import { judge, judgmentParam } from "./judge.js";
 import { recordGate, requireGates } from "./gates.js";
 import { PhilosophyVerdict, PhilosophyHint, PhilosophyRubric, ClassificationVerdict, ClassificationHint, ClassificationRubric, } from "./verdicts.js";
 import { REJECTED_FILE, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, appendTelemetry, specEvidence, textResult, readRegistry, extractSymptomWords, levenshteinClose, buildScopeText } from "./shared.js";
+import { folderMatches, WORK_ITEM_ID_DESC } from "./work_item_ref.js";
 export function registerAnalysisTools(server) {
     // --- Tool 9: philosophy_check -------------------------------------------------
     server.tool("philosophy_check", "MANDATORY PHASE -1 STEP — runs BEFORE classify_task, BEFORE reading any source files, BEFORE any planning. " +
@@ -12,7 +13,7 @@ export function registerAnalysisTools(server) {
         "Returns PHILOSOPHY_PASS, PHILOSOPHY_ADVISORY, PHILOSOPHY_FAIL, or PHILOSOPHY_BLOCKED. " +
         "A FAIL or BLOCKED verdict completely stops all implementation — classify_task MUST NOT be called until this returns PASS or ADVISORY. " +
         "Applies to ALL task types including bugs and hotfixes (though sensing is slightly relaxed for defects).", {
-        work_item_id: z.string().describe("Azure DevOps work item ID. e.g. 'WI-2847'"),
+        work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
         title: z.string().describe("Full story/task title from Azure DevOps."),
         description: z.string().describe("Full story description including user story, acceptance criteria, and any context."),
         task_type: z
@@ -107,7 +108,7 @@ export function registerAnalysisTools(server) {
         "Returns a structured classification result that determines what the AI is allowed to do next. " +
         "MUST be called BEFORE reading the codebase, BEFORE planning, BEFORE writing any code. " +
         "No exceptions. No shortcuts.", {
-        work_item_id: z.string().describe("Azure DevOps work item ID, e.g. 'BUG-1140' or '2847'."),
+        work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
         title: z.string().describe("Full task title from Azure DevOps."),
         description: z.string().describe("Full task description / problem statement. Paste everything from the work item."),
         task_type: z
@@ -1049,7 +1050,7 @@ export function registerAnalysisTools(server) {
             const tasksBase = resolve(".secufusion/tasks");
             if (fs.existsSync(tasksBase)) {
                 const folders = fs.readdirSync(tasksBase);
-                const match = folders.find(f => f.startsWith(work_item_id) || f.includes(work_item_id.replace(/^WI-/, "")));
+                const match = folders.find(f => folderMatches(f, work_item_id));
                 if (match)
                     taskDir = path.join(tasksBase, match);
             }

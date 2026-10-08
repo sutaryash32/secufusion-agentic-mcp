@@ -7,6 +7,8 @@ You are executing the **sfn-plan** command for the SecuFusion spec-driven SDLC.
 
 Task / Ticket: **$ARGUMENTS**
 
+> **Identity:** keep the ticket reference exactly as given (e.g. `BUG-1230`) in every tool call, branch name, commit and PR reference. Use `resolve_work_item_ref` for names; never retype or default the work-item type (see the work-item identity rule in `.agents/planner.md`).
+
 **You are in the PLANNING phase. Do NOT write any implementation code in this phase.**
 
 ---

@@ -202,6 +202,17 @@ Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP
 
 ---
 
+## Work-item identity
+
+A ticket reference (`BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`, `EPIC-1230`, `WI-2847`, a Jira key) is metadata that must read the same in Azure Boards, task folders, intent files, branches, commits and PRs.
+
+- **The type you give is kept verbatim** (case included; only the separator is normalized, `Bug 1230` → `Bug-1230`). It is never replaced by a default like "task" and never overridden by the classification's `task_type`. If no type was given, none is invented: a bare `1230` stays `1230-…` and the tool says how to supply the real reference.
+- **Names are not free-handed.** `resolve_work_item_ref(work_item, title)` returns the canonical `ref`, task-folder name, `branch_suffix`, `commit_prefix` (`BUG-1230: `) and PR-title prefix, to be used verbatim.
+- **Conflicts are refused, not resolved.** Ticket numbers are unique, so registering `TASK-1230` when `BUG-1230` exists returns `IDENTITY CONFLICT` instead of silently changing the type.
+- Task folders are `BUG-1230-tenant-deletion-fails`, intent files `0001-BUG-1230-…` (no more `WI-BUG-1230`). Folders and intents written by older versions (`Task-1230-…`, `0001-WI-…`) are still found.
+
+---
+
 ## Diff quality & line endings (PASS 10)
 
 A change can be functionally right and still be a bad diff: three edited lines that land as 1,100 changed lines because the file was silently converted CRLF→LF. `check_diff_quality` (also `/sfn-review` PASS 10, and evidence inside `verify_against_spec`) catches that deterministically, with no LLM.

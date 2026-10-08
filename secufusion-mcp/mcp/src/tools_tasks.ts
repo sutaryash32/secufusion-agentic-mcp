@@ -40,8 +40,28 @@ import {
   ReviewVerdict, ReviewHint, ReviewRubric,
 } from "./verdicts.js";
 import { STATE_FILE, REJECTED_FILE, TOKEN_FILE, argv, rootFlag, ROOT, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, getCurrentBranch, loadMigrationSpec, getMigrationContextForService, getNextMigrationVersion, getMigrationGaps, findFilesRecursive, compressCode, appendTelemetry, specEvidence, textResult, INTENTS_DIR, TASKS_DIR, CLASSIFICATIONS_DIR, REGISTRY_FILE, slugify, nextIntentNumber, parseIntentFrontmatter, resolveTaskFolder, generateNewTaskFolder, readRegistry, writeRegistry, upsertRegistry, STOP_WORDS, extractSymptomWords, levenshteinClose, buildScopeText, getEcosystemRoot, getDnaPath, ensureDnaFile, readDna, writeDna, VALID_EXTENSIONS, getAllSourceFiles, getPolyRepoSourceFiles, generateMigrationSpec, performFullExtraction } from "./shared.js";
+import { displayRef, intentFileMatches, findRegistryConflict, identityConflictMessage, identityBundle, WORK_ITEM_ID_DESC } from "./work_item_ref.js";
 
 export function registerTasksTools(server: any): void {
+server.tool(
+  "resolve_work_item_ref",
+  "Returns the canonical identity strings for a ticket: reference, task-folder name, branch suffix, commit prefix and PR-title prefix. " +
+  "ALWAYS use these verbatim for branch names, commit messages, PR titles and references. The type the user wrote (BUG, TASK, STORY, FEATURE, EPIC, ...) is preserved exactly and never replaced by a default; if no type was given, none is invented.",
+  {
+    work_item: z.string().describe(WORK_ITEM_ID_DESC),
+    title: z.string().optional().describe("Ticket title, used only for the readable slug."),
+  },
+  async ({ work_item, title }) => {
+    const b = identityBundle(work_item, title ?? "");
+    const clash = findRegistryConflict(readRegistry(), work_item);
+    return { content: [{ type: "text", text: JSON.stringify({
+      ...b,
+      identity_conflict: clash ? identityConflictMessage(work_item, clash) : null,
+      rule: "Use `ref` verbatim everywhere (branch, commit subject, PR title, comments). Do not shorten, re-case or retype it.",
+    }, null, 2) }] };
+  }
+);
+
 
 
 // ─── Tool 2: log_rejected_pattern ────────────────────────────────────────────
@@ -379,7 +399,7 @@ server.tool(
   "spec_create_intent",
   "Creates a structured Markdown intent file in .secufusion/intents/ for a work item. This captures the WHY behind the code: business goal, PM sign-off, acceptance criteria, risk, and polyglot service map. Complements manage_task (which captures the HOW). Call immediately after manage_task action=initialize.",
   {
-    work_item_id:   z.string().describe("Azure DevOps work item ID, e.g. '2847'."),
+    work_item_id:   z.string().describe(WORK_ITEM_ID_DESC),
     title:          z.string().describe("Short feature/bug title."),
     business_goal:  z.string().describe("1–3 sentences: why is this being built? What user or business problem does it solve?"),
     pm_owner:       z.string().optional().describe("Product Manager name or alias responsible for this feature."),
@@ -403,7 +423,7 @@ server.tool(
     }
     const num = nextIntentNumber();
     const slug = slugify(title);
-    const filename = `${num}-WI-${work_item_id}-${slug}.md`;
+    const filename = `${num}-${displayRef(work_item_id)}-${slug}.md`;
     const intentsRoot = resolve(INTENTS_DIR);
     const filePath = path.join(intentsRoot, filename);
 
@@ -433,7 +453,7 @@ risk: ${risk || "TBD"}
 created_at: ${now}
 ---
 
-# [WI-${work_item_id}] ${title}
+# [${displayRef(work_item_id)}] ${title}
 
 ## 🎯 Business Goal
 
@@ -498,10 +518,10 @@ server.tool(
     }
 
     const files = fs.readdirSync(intentsRoot).filter(f => f.endsWith(".md"));
-    const match = files.find(f => f.includes(`WI-${work_item_id}`));
+    const match = files.find(f => intentFileMatches(f, work_item_id));
 
     if (!match) {
-      return appendTelemetry({ isError: true, content: [{ type: "text", text: `No intent file found for WI-${work_item_id} in ${intentsRoot}.\nCreate one with spec_create_intent.` }] }, inputChars);
+      return appendTelemetry({ isError: true, content: [{ type: "text", text: `No intent file found for ${displayRef(work_item_id)} in ${intentsRoot}.\nCreate one with spec_create_intent.` }] }, inputChars);
     }
 
     const filePath = path.join(intentsRoot, match);
@@ -550,7 +570,7 @@ server.tool(
     return appendTelemetry({
       content: [{
         type: "text",
-        text: `## Intent: WI-${work_item_id}\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\`\n\n---\n### Full Intent Document\n\n${raw}`
+        text: `## Intent: ${displayRef(work_item_id)}\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\`\n\n---\n### Full Intent Document\n\n${raw}`
       }]
     }, inputChars);
   }
@@ -560,12 +580,12 @@ server.tool(
 // ─── Tool 5: manage_task ─────────────────────────────────────────────────────
 server.tool(
   "manage_task",
-  "Manages structured task records in .secufusion/tasks/WI-{id}/. Each task gets its own folder with spec, progress, decisions, files-touched, and scenarios files. Use this instead of manage_branch_state for all new work items.",
+  "Manages structured task records in .secufusion/tasks/<ticket-ref>-<title>/ (e.g. BUG-1230-short-title, type kept exactly). Each task gets its own folder with spec, progress, decisions, files-touched, and scenarios files. Use this instead of manage_branch_state for all new work items.",
   {
     action: z
       .enum(["initialize", "read", "update_spec", "add_scenario", "log_file_touched", "log_decision", "complete", "read_summary"])
       .describe("Action: initialize (create task folder + files), read (full task data), update_spec (edit spec fields), add_scenario (append test scenario), log_file_touched (record modified file), log_decision (record architectural decision), complete (mark done + generate PR summary), read_summary (token-efficient summary)."),
-    work_item_id: z.string().describe("Azure DevOps work item ID, e.g. '2847'. Used to name the task folder WI-{id}."),
+    work_item_id: z.string().describe(WORK_ITEM_ID_DESC + " Used to name the task folder, e.g. BUG-1230-short-title."),
     title: z.string().optional().describe("Task title. Required for 'initialize'."),
     description: z.string().optional().describe("Task description. Used with 'initialize' or 'update_spec'."),
     acceptance_criteria: z.array(z.string()).optional().describe("Array of AC strings. Used with 'initialize' or 'update_spec'."),
@@ -590,6 +610,8 @@ server.tool(
     scenario_type?: "unit" | "integration" | "e2e" | "manual";
   }) => {
     const inputChars = JSON.stringify({ action, work_item_id, title, description, acceptance_criteria, pending_acs, completed_acs, next_step, tags, task_type, file_path, change_summary, decision, rationale, scenario, scenario_type }).length;
+    const identityClash = findRegistryConflict(readRegistry(), work_item_id);
+    if (identityClash) return appendTelemetry({ isError: true, content: [{ type: "text", text: identityConflictMessage(work_item_id, identityClash) }] }, inputChars);
     const tasksRoot = resolve(TASKS_DIR);
     let dir = resolveTaskFolder(work_item_id, tasksRoot);
 
@@ -607,7 +629,7 @@ server.tool(
     }
     
     if (!dir && action !== "initialize") {
-      return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task WI-${work_item_id} not found in ${tasksRoot}. Has it been initialized?` }] }, inputChars);
+      return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task ${displayRef(work_item_id)} not found in ${tasksRoot}. Has it been initialized?` }] }, inputChars);
     }
     
     const specPath      = path.join(dir!, "spec.json");
@@ -630,11 +652,11 @@ server.tool(
         writeFile(scenariosPath, JSON.stringify([], null, 2));
       }
       upsertRegistry({ work_item_id, title, status: "active", created_at: now, tags: tags || [], task_type: task_type || "unknown", folder: path.basename(dir!) });
-      return appendTelemetry({ content: [{ type: "text", text: `✅ Task WI-${work_item_id} initialized.\n\n**Folder:** ${dir}\n**Title:** ${title}\n**Type:** ${task_type || "unknown"}\n**ACs:** ${(acceptance_criteria || []).length}\n\n${JSON.stringify(spec, null, 2)}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ Task ${displayRef(work_item_id)} initialized.\n\n**Folder:** ${dir}\n**Title:** ${title}\n**Type:** ${task_type || "unknown"}\n**ACs:** ${(acceptance_criteria || []).length}\n\n${JSON.stringify(spec, null, 2)}` }] }, inputChars);
     }
     
     if (!fs.existsSync(specPath)) {
-      return appendTelemetry({ isError: true, content: [{ type: "text", text: `ERROR: Task WI-${work_item_id} not found. Call action=initialize first.\n\nExpected folder: ${dir}` }] }, inputChars);
+      return appendTelemetry({ isError: true, content: [{ type: "text", text: `ERROR: Task ${displayRef(work_item_id)} not found. Call action=initialize first.\n\nExpected folder: ${dir}` }] }, inputChars);
     }
 
     if (action === "read") {
@@ -680,7 +702,7 @@ server.tool(
       progress["next_step"] = next_step;
       progress["last_updated"] = now;
       writeFile(progressPath, JSON.stringify(progress, null, 2));
-      return appendTelemetry({ content: [{ type: "text", text: `✅ Task WI-${work_item_id} updated.\n\n> **Next step:** ${next_step}\n\n**Progress:**\n${JSON.stringify(progress, null, 2)}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ Task ${displayRef(work_item_id)} updated.\n\n> **Next step:** ${next_step}\n\n**Progress:**\n${JSON.stringify(progress, null, 2)}` }] }, inputChars);
     }
 
     if (action === "log_file_touched") {
@@ -690,7 +712,7 @@ server.tool(
       const entry: Record<string, unknown> = { file_path, change_summary: change_summary || "", logged_at: new Date().toISOString() };
       if (existing === -1) files.push(entry); else files[existing] = entry;
       writeFile(filesPath, JSON.stringify(files, null, 2));
-      return appendTelemetry({ content: [{ type: "text", text: `✅ File logged for WI-${work_item_id}:\n\`${file_path}\` — ${change_summary || "(no summary)"}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ File logged for ${displayRef(work_item_id)}:\n\`${file_path}\` — ${change_summary || "(no summary)"}` }] }, inputChars);
     }
 
     if (action === "log_decision") {
@@ -698,7 +720,7 @@ server.tool(
       const decisions = (readJson(decisionsPath) as Record<string, unknown>[]) || [];
       decisions.push({ id: decisions.length + 1, decision, rationale: rationale || "", logged_at: new Date().toISOString() });
       writeFile(decisionsPath, JSON.stringify(decisions, null, 2));
-      return appendTelemetry({ content: [{ type: "text", text: `✅ Decision #${decisions.length} logged for WI-${work_item_id}:\n**Decision:** ${decision}\n**Rationale:** ${rationale || "(none)"}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ Decision #${decisions.length} logged for ${displayRef(work_item_id)}:\n**Decision:** ${decision}\n**Rationale:** ${rationale || "(none)"}` }] }, inputChars);
     }
 
     if (action === "add_scenario") {
@@ -706,7 +728,7 @@ server.tool(
       const scenarios = (readJson(scenariosPath) as Record<string, unknown>[]) || [];
       scenarios.push({ id: scenarios.length + 1, type: scenario_type || "manual", scenario, added_at: new Date().toISOString() });
       writeFile(scenariosPath, JSON.stringify(scenarios, null, 2));
-      return appendTelemetry({ content: [{ type: "text", text: `✅ Scenario #${scenarios.length} added to WI-${work_item_id}:\n[${scenario_type || "manual"}] ${scenario}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ Scenario #${scenarios.length} added to ${displayRef(work_item_id)}:\n[${scenario_type || "manual"}] ${scenario}` }] }, inputChars);
     }
 
     if (action === "complete") {
@@ -721,7 +743,7 @@ server.tool(
       writeFile(progressPath, JSON.stringify(progress, null, 2));
       upsertRegistry({ work_item_id, status: "complete" });
       const prSummary = [
-        `# PR Summary — WI-${work_item_id}: ${spec["title"] || ""}`,
+        `# PR Summary — ${displayRef(work_item_id)}: ${spec["title"] || ""}`,
         ``, `**Status:** Complete  `, `**Completed:** ${progress["completed_at"]}`, ``,
         `## Acceptance Criteria`,
         ...((progress["completed_acs"] as string[]) || []).map(ac => `- ✅ ${ac}`),
@@ -828,7 +850,7 @@ server.tool(
         console.warn("Auto-retrospective failed:", err);
       }
 
-      return appendTelemetry({ content: [{ type: "text", text: `✅ Task WI-${work_item_id} marked complete.\n\n**PR summary generated:** ${prSummaryPath}\n\n${prSummary}\n${retroMessage}` }] }, inputChars);
+      return appendTelemetry({ content: [{ type: "text", text: `✅ Task ${displayRef(work_item_id)} marked complete.\n\n**PR summary generated:** ${prSummaryPath}\n\n${prSummary}\n${retroMessage}` }] }, inputChars);
     }
 
     return appendTelemetry({ content: [{ type: "text", text: "Invalid action." }] }, inputChars);
@@ -846,7 +868,7 @@ server.tool(
     const tasksRoot = resolve(TASKS_DIR);
     const dir = resolveTaskFolder(work_item_id, tasksRoot);
     if (!dir) {
-      return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task WI-${work_item_id} not found in ${tasksRoot}. Has it been initialized? Run manage_task action=initialize first.` }] }, inputChars);
+      return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task ${displayRef(work_item_id)} not found in ${tasksRoot}. Has it been initialized? Run manage_task action=initialize first.` }] }, inputChars);
     }
     const history = {
       spec: readJson(path.join(dir, "spec.json")),
@@ -909,7 +931,7 @@ server.tool(
     const inputChars = JSON.stringify({ work_item_id }).length;
     const tasksRoot = resolve(TASKS_DIR);
     const dir = resolveTaskFolder(work_item_id, tasksRoot);
-    if (!dir) return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task WI-${work_item_id} not found. Cannot extract patterns.` }] }, inputChars);
+    if (!dir) return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task ${displayRef(work_item_id)} not found. Cannot extract patterns.` }] }, inputChars);
     const spec      = (readJson(path.join(dir, "spec.json")) as Record<string, unknown>) || {};
     const decisions = (readJson(path.join(dir, "decisions.json")) as Record<string, unknown>[]) || [];
     const files     = (readJson(path.join(dir, "files-touched.json")) as Record<string, unknown>[]) || [];
@@ -921,7 +943,7 @@ server.tool(
       test_patterns: scenarios.map(s => ({ type: s["type"], scenario: s["scenario"] })),
       tags: spec["tags"] || [],
     };
-    return appendTelemetry({ content: [{ type: "text", text: `**Patterns from WI-${work_item_id}: ${spec["title"] || ""}**\n\n${JSON.stringify(patterns, null, 2)}` }] }, inputChars);
+    return appendTelemetry({ content: [{ type: "text", text: `**Patterns from ${displayRef(work_item_id)}: ${spec["title"] || ""}**\n\n${JSON.stringify(patterns, null, 2)}` }] }, inputChars);
   }
 );
 
@@ -960,7 +982,7 @@ server.tool(
     
     const tasksRoot = resolve(TASKS_DIR);
     const dir = resolveTaskFolder(work_item_id, tasksRoot);
-    if (!dir) return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task WI-${work_item_id} not found.` }] }, inputChars);
+    if (!dir) return appendTelemetry({ isError: true, content: [{ type: "text", text: `Task ${displayRef(work_item_id)} not found.` }] }, inputChars);
 
     const spec = (readJson(path.join(dir, "spec.json")) as Record<string, unknown>) || {};
     const progress = (readJson(path.join(dir, "progress.json")) as Record<string, unknown>) || {};

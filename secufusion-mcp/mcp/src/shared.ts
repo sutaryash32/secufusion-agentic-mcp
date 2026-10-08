@@ -34,6 +34,7 @@ import { parseConfig, parseExternalEnv, ConfigurationFile } from "./parsers/conf
 import chokidar from "chokidar";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
+import { parseWorkItemRef, sameTicket, folderMatches, folderName, findRegistryConflict, identityConflictMessage } from "./work_item_ref.js";
 import {
   PhilosophyVerdict, PhilosophyHint, PhilosophyRubric,
   ClassificationVerdict, ClassificationHint, ClassificationRubric,
@@ -327,64 +328,35 @@ export function parseIntentFrontmatter(raw: string): Record<string, string> {
 
 export function resolveTaskFolder(workItemId: string, tasksRoot: string, registryData?: Record<string, unknown>[]): string | null {
   const registry = registryData || readRegistry();
-  const entry = registry.find(t => t["work_item_id"] === workItemId);
-  
-  // 1. Try registry first
+  const entry = registry.find(t => t["work_item_id"] === workItemId)
+    ?? registry.find(t => sameTicket(String(t["work_item_id"] ?? ""), workItemId));
+
+  // 1. Registry first
   if (entry && entry["folder"]) {
     const folderPath = path.join(tasksRoot, entry["folder"] as string);
     if (fs.existsSync(folderPath)) return folderPath;
   }
-  
-  // 2. Fallback: scan directory
+
+  // 2. Scan: case-insensitive, and tolerant of folders written by older versions (Task-1230-, Bug-1230-)
   if (fs.existsSync(tasksRoot)) {
-    const taskFolders = fs.readdirSync(tasksRoot);
-    const match = taskFolders.find(f => f.startsWith(workItemId + "-") || f === workItemId || f === `WI-${workItemId}`);
+    const match = fs.readdirSync(tasksRoot).find(f => folderMatches(f, workItemId));
     if (match) return path.join(tasksRoot, match);
   }
-  
+
   // 3. Not found
   return null;
 }
 
 
+/**
+ * Folder for a new task. The ticket's own type prefix is kept verbatim (BUG-1230 -> BUG-1230-title).
+ * It is never replaced by a default ("Task") and never overridden by the classification's task_type,
+ * which describes the kind of work, not the ticket's identity.
+ */
 export function generateNewTaskFolder(workItemId: string, title: string, tasksRoot: string): string {
-  // Strip potential leading ID prefix from the title (e.g. "BUG-1173: " or "1173: ")
-  const strippedTitle = title.replace(/^[a-zA-Z]*[-]?\d+[:\s]*/i, '');
-  const slug = strippedTitle.toLowerCase()
-    .replace(/[:\s]+/g, '-')
-    .replace(/[^a-z0-9-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 50)
-    .replace(/-+$/, '');
-
-  // Determine standard prefix (e.g., bug-1173, story-1097)
-  let numericId = workItemId.replace(/\D/g, ''); // Extract just the digits
-  if (!numericId) numericId = workItemId; // fallback
-
-  let taskTypeStr = "Task";
-  
-  // Try to load the classification to get the true task_type
-  const classifPath = path.join(tasksRoot, '..', 'classifications', `${workItemId}.json`);
-  const classif = readJson(classifPath) as Record<string, unknown> | null;
-  if (classif && typeof classif.task_type === 'string') {
-    const rawType = classif.task_type.toLowerCase();
-    if (rawType === 'user_story') taskTypeStr = 'US';
-    else if (rawType === 'bug') taskTypeStr = 'Bug';
-    else taskTypeStr = rawType.charAt(0).toUpperCase() + rawType.slice(1);
-  } else {
-    // Fallback: guess from the workItemId string itself if passed as "BUG-1173"
-    const prefixMatch = workItemId.match(/^([a-zA-Z]+)-/);
-    if (prefixMatch) {
-      const lowerPrefix = prefixMatch[1].toLowerCase();
-      if (lowerPrefix === 'wi') taskTypeStr = 'Task';
-      else if (lowerPrefix === 'bug') taskTypeStr = 'Bug';
-      else if (lowerPrefix === 'us') taskTypeStr = 'US';
-      else taskTypeStr = lowerPrefix.charAt(0).toUpperCase() + lowerPrefix.slice(1);
-    }
-  }
-
-  return path.join(tasksRoot, `${taskTypeStr}-${numericId}-${slug}`);
+  const conflict = findRegistryConflict(readRegistry(), workItemId);
+  if (conflict) throw new Error(identityConflictMessage(workItemId, conflict));
+  return path.join(tasksRoot, folderName(workItemId, title));
 }
 
 

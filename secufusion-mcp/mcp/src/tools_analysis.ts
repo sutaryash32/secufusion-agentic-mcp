@@ -40,6 +40,7 @@ import {
   ReviewVerdict, ReviewHint, ReviewRubric,
 } from "./verdicts.js";
 import { STATE_FILE, REJECTED_FILE, TOKEN_FILE, argv, rootFlag, ROOT, getWorkspaceRoot, resolve, readFileSafe, readJson, loadProjectSpec, writeFile, getCurrentBranch, loadMigrationSpec, getMigrationContextForService, getNextMigrationVersion, getMigrationGaps, findFilesRecursive, compressCode, appendTelemetry, specEvidence, textResult, INTENTS_DIR, TASKS_DIR, CLASSIFICATIONS_DIR, REGISTRY_FILE, slugify, nextIntentNumber, parseIntentFrontmatter, resolveTaskFolder, generateNewTaskFolder, readRegistry, writeRegistry, upsertRegistry, STOP_WORDS, extractSymptomWords, levenshteinClose, buildScopeText, getEcosystemRoot, getDnaPath, ensureDnaFile, readDna, writeDna, VALID_EXTENSIONS, getAllSourceFiles, getPolyRepoSourceFiles, generateMigrationSpec, performFullExtraction } from "./shared.js";
+import { folderMatches, WORK_ITEM_ID_DESC } from "./work_item_ref.js";
 
 export function registerAnalysisTools(server: any): void {
 
@@ -53,7 +54,7 @@ server.tool(
     "A FAIL or BLOCKED verdict completely stops all implementation — classify_task MUST NOT be called until this returns PASS or ADVISORY. " +
     "Applies to ALL task types including bugs and hotfixes (though sensing is slightly relaxed for defects).",
     {
-        work_item_id: z.string().describe("Azure DevOps work item ID. e.g. 'WI-2847'"),
+        work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
         title: z.string().describe("Full story/task title from Azure DevOps."),
         description: z.string().describe("Full story description including user story, acceptance criteria, and any context."),
         task_type: z
@@ -147,7 +148,7 @@ server.tool(
     "MUST be called BEFORE reading the codebase, BEFORE planning, BEFORE writing any code. " +
     "No exceptions. No shortcuts.",
     {
-        work_item_id: z.string().describe("Azure DevOps work item ID, e.g. 'BUG-1140' or '2847'."),
+        work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
         title: z.string().describe("Full task title from Azure DevOps."),
         description: z.string().describe("Full task description / problem statement. Paste everything from the work item."),
         task_type: z
@@ -1164,7 +1165,7 @@ server.tool(
             const tasksBase = resolve(".secufusion/tasks");
             if (fs.existsSync(tasksBase)) {
                 const folders = fs.readdirSync(tasksBase);
-                const match = folders.find(f => f.startsWith(work_item_id) || f.includes(work_item_id.replace(/^WI-/, "")));
+                const match = folders.find(f => folderMatches(f, work_item_id));
                 if (match) taskDir = path.join(tasksBase, match);
             }
         }
