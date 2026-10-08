@@ -123,7 +123,7 @@ function checkAttr(root, rel, names) {
     return res;
 }
 // ── convention resolution ───────────────────────────────────────────────────
-function globToRe(g) {
+export function globToRe(g) {
     let re = "";
     let brace = 0;
     for (let i = 0; i < g.length; i++) {

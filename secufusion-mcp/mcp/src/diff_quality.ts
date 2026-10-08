@@ -184,7 +184,7 @@ function checkAttr(root: string, rel: string, names: string[]): Record<string, s
 
 // ── convention resolution ───────────────────────────────────────────────────
 
-function globToRe(g: string): RegExp {
+export function globToRe(g: string): RegExp {
     let re = "";
     let brace = 0;
     for (let i = 0; i < g.length; i++) {

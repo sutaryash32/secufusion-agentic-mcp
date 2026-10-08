@@ -53,6 +53,7 @@ Priority 1: .secufusion-project-spec.json  (workspace root)
 Priority 2: .secufusion-migrations.json    (workspace root)
 Priority 3: .agents/AGENTS.md              (repo root)
 Priority 4: .agents/reviewer.md            (repo root — read fully for persona and rules)
+Priority 5: get_project_knowledge(files, terms)  (decisions, intentional exceptions and lessons that apply to these files)
 Priority 5: .secufusion/tasks/{WI-ID}-*/   (task folder if WI-ID given)
             spec.json, decisions.json, scenarios.json, progress.json, files-touched.json
 ```
@@ -610,6 +611,9 @@ It reads `.gitattributes`, `.editorconfig`, prettier/eslint config and the file'
 - **Change traceability:** every changed file should trace to an acceptance criterion or a necessary consequence (test, rename). Untraceable changes are out-of-scope changes.
 
 A correct implementation with a noisy diff is not a fully reviewed change.
+
+**Project knowledge applies here too.** Before reporting a naming or convention finding, check `get_project_knowledge` for the touched files: an `accepted` known exception or
+terminology entry means it is intentional, not a defect (note it under ASSUMPTIONS). A change that contradicts an `accepted` decision, or repeats a recorded lesson, is a finding.
 
 **Rules for you (the reviewer):**
 1. **Existing style is the expected style.** Consistent CRLF is not a problem. Consistent LF is not a problem. Do not ask for

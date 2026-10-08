@@ -410,7 +410,13 @@ export function renderReleaseNotes(i) {
     ].filter(Boolean).join("\n");
 }
 // ── snapshots on disk ───────────────────────────────────────────────────────
-const snapDir = (root) => path.join(root, ".secufusion", "releases", "snapshots");
+/** Release history belongs with the project (.mcp/release-history) when that layer exists; otherwise the legacy runtime folder. */
+export function releasesDir(root) {
+    return fs.existsSync(path.join(root, ".mcp")) ? path.join(root, ".mcp", "release-history") : path.join(root, ".secufusion", "releases");
+}
+const legacyDir = (root) => path.join(root, ".secufusion", "releases");
+const snapDir = (root) => path.join(releasesDir(root), "snapshots");
+const snapDirs = (root) => [...new Set([snapDir(root), path.join(legacyDir(root), "snapshots")])];
 export function saveSnapshot(root, snap) {
     fs.mkdirSync(snapDir(root), { recursive: true });
     const p = path.join(snapDir(root), `v${snap.version.replace(/^v/, "")}.json`);
@@ -418,12 +424,13 @@ export function saveSnapshot(root, snap) {
     return p;
 }
 export function loadSnapshot(root, version) {
-    try {
-        return JSON.parse(fs.readFileSync(path.join(snapDir(root), `v${version.replace(/^v/, "")}.json`), "utf-8"));
+    for (const d of snapDirs(root)) {
+        try {
+            return JSON.parse(fs.readFileSync(path.join(d, `v${version.replace(/^v/, "")}.json`), "utf-8"));
+        }
+        catch { /* try the next location */ }
     }
-    catch {
-        return null;
-    }
+    return null;
 }
 const semver = (v) => v.replace(/^v/, "").split(/[.\-+]/).map((p) => (/^\d+$/.test(p) ? Number(p) : 0));
 export function compareVersions(a, b) {
@@ -437,9 +444,8 @@ export function compareVersions(a, b) {
 }
 /** The newest stored snapshot strictly older than `version`. */
 export function findPreviousSnapshot(root, version) {
-    if (!fs.existsSync(snapDir(root)))
-        return null;
-    const versions = fs.readdirSync(snapDir(root)).filter((f) => f.endsWith(".json")).map((f) => f.replace(/^v|\.json$/g, ""))
+    const all = snapDirs(root).filter((d) => fs.existsSync(d)).flatMap((d) => fs.readdirSync(d));
+    const versions = [...new Set(all.filter((f) => f.endsWith(".json")).map((f) => f.replace(/^v|\.json$/g, "")))]
         .filter((v) => compareVersions(v, version) < 0).sort(compareVersions);
     const last = versions[versions.length - 1];
     return last ? loadSnapshot(root, last) : null;

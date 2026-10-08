@@ -226,6 +226,40 @@ Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP
 
 ---
 
+## Project Intelligence Layer (`.mcp/`)
+
+Project knowledge belongs to the repository, not to an agent prompt, an MCP instance or an engineer's memory. The code explains WHAT the system does; `.mcp/` explains WHY it is that way, which decisions are intentional, which inconsistencies are legacy, and which mistakes were already made. It is version-controlled with the code.
+
+```
+.mcp/
+  agents.md            (optional) lightweight: workflow rules and engineering philosophy only
+  architecture/        system design, service relationships, domain terminology, entity ownership, data flow
+  adr/                 decisions made, alternatives rejected, reasoning, constraints, tradeoffs
+  patterns/            coding conventions, API / Kafka / repository patterns, naming standards
+  known-exceptions/    intentional inconsistencies, legacy constraints, accepted debt
+  lessons-learned/     incidents, review findings, historical bugs, common false positives
+  operational/         deployment constraints, migration knowledge, environment behaviour, risk areas
+  release-history/     change-driven release notes + the snapshots they compare against
+```
+
+Each entry is one markdown file with a small frontmatter block (`id`, `title`, `category`, `status`, `tags`, `applies_to`, `source`, `date`, `supersedes`).
+
+| Tool | Role |
+|---|---|
+| `load_project_knowledge` | `/sfn-init` builds the unified memory model: compact index per category, validation problems, unreviewed entries, and a warning if `agents.md` has become a knowledge dump. `scaffold=true` creates the structure. |
+| `get_project_knowledge` | Returns what **applies** to a task, ranked by ticket terms, touched files and tags, with the reason each matched. No match means "nothing recorded", never "nothing intentional". |
+| `record_project_knowledge` | Adds one entry (a terminology trap, decision, exception, lesson). A `source` is mandatory. |
+| `set_knowledge_status` | Accept, deprecate or supersede an entry. |
+
+- **Trust is explicit.** New entries are `proposed` (shown, labelled *unreviewed*, never grounds for a blocker). Only a person makes one `accepted`, via `user_statement`. `superseded`/`deprecated` entries are hidden unless asked for.
+- **Where it is used.** `/sfn-init` loads it; `/sfn-spec` consults it before investigating (a naming inconsistency is not a bug until it is checked against recorded exceptions); `/sfn-review` and `verify_against_spec` receive the entries that apply to the changed files, so an *accepted* exception is not flagged as a defect and a change that contradicts an *accepted* decision is a finding.
+- **Easy to add.** One file, or one tool call. Found a trap? Say so and it is recorded with its source, ready to commit.
+- **Validated.** Missing fields, wrong folder, bad status, duplicate ids, dangling `supersedes`, empty bodies are reported, never silently ignored.
+- **Migrated so far:** *Device vs Machine* (moved out of `AGENTS.md`, which dropped 27 lines and now points to `.mcp/architecture/terminology-device-vs-machine.md`) and the *3-line change / 1,100-line diff* lesson. `AGENTS.md` still holds other project-specific sections (migration guardrails, platform and service architecture) that are candidates to move the same way.
+- Release notes and their snapshots are written to `.mcp/release-history/` when the layer exists.
+
+---
+
 ## Release notes: a changelog, not a repository scan
 
 `generate_release_notes` (called by `/sfn-init` after a spec merge) answers "what changed in this release?" first. It snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release, and renders the delta before any metadata:

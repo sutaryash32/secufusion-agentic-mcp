@@ -14,6 +14,8 @@ import { recordExperience, loadExperience, getEngineeringExperience, validateExp
 import { loadRequirement } from "./requirement_manager.js";
 import { explorationSummary } from "./exploration.js";
 import { renderSpecDocument } from "./spec_document.js";
+import { loadKnowledge, queryKnowledge } from "./project_knowledge.js";
+import { knowledgeRoot } from "./tools_knowledge.js";
 import { displayRef, WORK_ITEM_ID_DESC } from "./work_item_ref.js";
 import { analyzeDiffQuality, applyAcknowledgements, blockingFindings, checkScope } from "./diff_quality.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
@@ -601,6 +603,16 @@ server.tool(
         const dqBlocking = blockingFindings(dq.findings);
         const scope = checkScope(dq, plan?.affected_files ?? []);
 
+        // Project Intelligence Layer: the decisions, exceptions and lessons that apply to the files and terms in this change.
+        const km = loadKnowledge(knowledgeRoot(wsRoot));
+        const projectKnowledge = km.exists
+            ? {
+                note: "Accepted entries are project decisions. Do not flag an intentional exception as a defect; a change that violates an accepted decision IS a finding. Proposed entries are unreviewed hints.",
+                entries: queryKnowledge(km.entries, { files: scope.changed, terms: [req?.title ?? "", String((taskSpec as any)?.title ?? ""), ...(req?.facts ?? []).slice(0, 5)], limit: 6 })
+                    .map((h) => ({ id: h.entry.id, title: h.entry.title, category: h.entry.category, status: h.entry.status, matched: h.why, text: h.entry.body.slice(0, 1200) })),
+            }
+            : null;
+
         const outcome = await judge(server, wsRoot, {
             kind: "review",
             subject: work_item_id,
@@ -622,6 +634,7 @@ server.tool(
                     ...scope,
                     guidance: "outside_plan = changed files the specification never mentioned (check each is a necessary consequence, e.g. a test or a rename); planned_untouched = specified files with no change. Report unjustified scope growth as out_of_scope_changes.",
                 },
+                project_knowledge: projectKnowledge,
                 diff_summary: diff_summary ?? null,
                 test_results: loadTestResults(ecosystemRoot),
                 project: specEvidence(wsRoot),

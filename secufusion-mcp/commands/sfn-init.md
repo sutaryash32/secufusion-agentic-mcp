@@ -463,6 +463,23 @@ Write `.secufusion/dna.json` with the combined scan output:
 
 ---
 
+## PHASE 4.5 — Build project understanding (Project Intelligence Layer)
+
+`/sfn-init` is not only metadata loading: it constructs the project's understanding. Project knowledge (architecture, ADRs, patterns, intentional exceptions,
+lessons learned, operational constraints) belongs to the **repository**, under `.mcp/`, not to this agent file or to anyone's memory.
+
+1. Call `load_project_knowledge(workspace_root)`. It builds the unified memory model and returns a compact index per category, validation problems, and whether
+   the agents file has grown into a knowledge dump. Read the index; do **not** read every entry. Entries are pulled on demand with `get_project_knowledge`.
+2. If `.mcp/` does not exist, say so and offer `load_project_knowledge(scaffold: true)`. Never create knowledge the project has not stated.
+3. Report: entries per category, how many are `proposed` (unreviewed hints) versus `accepted` (project decisions), any problems, and any `agents.md` warning.
+4. **Keep agents.md lightweight.** It teaches how to think (workflow, investigation and review philosophy, engineering principles). If the tool warns it is large,
+   list the project-specific sections that should move into `.mcp/` and offer to do it with `record_project_knowledge`; do not move anything silently.
+
+Adding knowledge must be easy. Whenever a terminology trap, a decision, an intentional exception, a lesson or an operational constraint comes up during any command, offer
+to record it with `record_project_knowledge` (saved as `proposed` with its `source`; a person accepts it with `set_knowledge_status`).
+
+---
+
 ## PHASE 5 — Update session state
 
 Update `.agents/claude.md` MEMORY block:

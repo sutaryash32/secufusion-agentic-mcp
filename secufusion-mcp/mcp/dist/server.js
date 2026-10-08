@@ -15,6 +15,7 @@ import { registerDnaTools } from "./tools_dna.js";
 import { registerExploreTools } from "./tools_explore.js";
 import { registerReviewTools } from "./tools_review.js";
 import { registerReleaseTools } from "./tools_release.js";
+import { registerKnowledgeTools } from "./tools_knowledge.js";
 import { registerPrompts } from "./prompts.js";
 const server = new McpServer({
     name: "secufusion-mcp",
@@ -29,6 +30,7 @@ registerDnaTools(server);
 registerExploreTools(server);
 registerReviewTools(server);
 registerReleaseTools(server);
+registerKnowledgeTools(server);
 registerPrompts(server);
 const transport = new StdioServerTransport();
 await server.connect(transport);

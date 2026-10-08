@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
-import { extractSnapshot, computeDelta, renderReleaseNotes, saveSnapshot, loadSnapshot, findPreviousSnapshot, } from "./release_notes.js";
+import { extractSnapshot, computeDelta, renderReleaseNotes, saveSnapshot, loadSnapshot, findPreviousSnapshot, releasesDir, } from "./release_notes.js";
 function readJsonFile(p) {
     try {
         return JSON.parse(fs.readFileSync(p, "utf-8").replace(/^﻿/, ""));
@@ -31,7 +31,7 @@ export function registerReleaseTools(server) {
     server.tool("generate_release_notes", "Generates CHANGE-DRIVEN release notes: a changelog, not a repository scan. It snapshots the recorded state (project spec, migrations, DNA counts), diffs it against the previous release, and leads with the delta: " +
         "Executive Summary, Added, Changed, Fixed, Removed/Deprecated, Risks, Repository Intelligence Updates, Rule Changes, then an optional Detailed Snapshot last. " +
         "Detected changes are computed, never invented; sections with no change say so; an unchanged release says 'No significant changes'. " +
-        "Supply the parts code cannot know (why the release exists, fixes, deprecations, notable discoveries); they appear labelled as author notes. Writes .secufusion/releases/v<version>.md and a snapshot for the next release to compare against.", {
+        "Supply the parts code cannot know (why the release exists, fixes, deprecations, notable discoveries); they appear labelled as author notes. Writes v<version>.md and a snapshot for the next release to compare against, to .mcp/release-history/ when the Project Intelligence Layer exists (version-controlled with the code), else .secufusion/releases/.", {
         workspace_root: z.string().describe("A directory inside the workspace containing .secufusion-project-spec.json"),
         version: z.string().describe("The version being released, e.g. 2.2.6"),
         previous_version: z.string().optional().describe("Previous release to compare against. Default: the newest stored snapshot older than `version`."),
@@ -88,7 +88,7 @@ export function registerReleaseTools(server) {
             });
             let written = "";
             if (!a.dry_run) {
-                const out = path.join(root, ".secufusion", "releases", `v${version}.md`);
+                const out = path.join(releasesDir(root), `v${version}.md`);
                 fs.mkdirSync(path.dirname(out), { recursive: true });
                 fs.writeFileSync(out, md, "utf-8");
                 saveSnapshot(root, current);

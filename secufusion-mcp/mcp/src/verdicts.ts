@@ -137,6 +137,7 @@ export const ReviewRubric = [
     "diff_quality is deterministic evidence. Existing file/repo style is the expected style: consistent CRLF or LF is not a defect, and you must not ask for normalization to your own taste.",
     "diff_scope.outside_plan lists changed files the specification never mentioned. Each needs a justification (a required test, a necessary rename); unjustified scope growth is an out_of_scope_change. A large total_churn_lines for a small specification is itself a finding.",
     "Check naming consistency and repository conventions in the changed code (names, import order, structure) against the surrounding code. Cite file:line. Do not invent a style; the existing code is the reference.",
+    "project_knowledge holds the project's own recorded decisions, intentional exceptions and lessons that apply to these files. An ACCEPTED entry that explains something (legacy naming, an intentional inconsistency) means it is NOT a defect; do not report it. A change that contradicts an accepted decision or repeats a recorded lesson is a guardrail violation. PROPOSED entries are unreviewed hints only.",
     "Report every diff_quality finding that is not acknowledged. Churn far larger than the real change (e.g. a 3-line change committed as 1,100 lines) means the change is not ready; recommend restoring the original style/line endings and reapplying only the intended edits.",
     "Config conflicts (diff_quality REPOSITORY_CONFIGURATION_ISSUE) are reported, not resolved. Never acknowledge diff noise on the user's behalf.",
 ];

@@ -189,6 +189,14 @@ If you are not sure whether something is a real issue:
 - Ask in Step 2.
 - Do not guess and do not stay silent.
 
+### How to use project knowledge
+
+The repository records its own intentional decisions, exceptions and lessons under `.mcp/`. Before you call something a defect, check `get_project_knowledge` for the files and terms involved.
+- An `accepted` entry that explains it (legacy naming, an intentional inconsistency) means it is **not a finding**; mention it under ASSUMPTIONS.
+- A change that contradicts an `accepted` decision, or repeats a recorded lesson, **is** a finding.
+- `proposed` entries are unreviewed hints: use them to look harder, never as grounds for a blocker.
+- If you find a trap or exception that is not recorded, offer to record it (`record_project_knowledge`).
+
 ### How to handle legacy code
 
 If a file has clearly been in the codebase for a long time and the developer only touched a small part:

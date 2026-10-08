@@ -140,6 +140,10 @@ const SAMPLING = V;
     check("review must cover every criterion", r.text.includes("CHANGES REQUIRED") && r.text.includes("AC1"), r.text);
     // The client's scenario: a small change that is committed as a whole-file CRLF -> LF rewrite.
     fs.writeFileSync(path.join(dir, "big.ts"), bigFile(LF, 5));
+    // Project Intelligence Layer: an accepted exception that applies to the changed file reaches the reviewer as evidence.
+    r = await call(c, "record_project_knowledge", { workspace_root: dir, category: "known-exceptions", title: "big.ts is intentionally flat", body: "big.ts stays one flat file by design; do not split it.", source: "design review", applies_to: ["big.ts"], status: "accepted", user_statement: "yes, intentional" });
+    r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id });
+    check("the review judgment request carries the applicable project knowledge as evidence", r.text.includes("project_knowledge") && r.text.includes("big-ts-is-intentionally-flat") && r.text.includes("do not split it"), r.text.slice(0, 600));
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review });
     check("model APPROVED is overridden by deterministic HIGH diff noise", r.text.includes("CHANGES REQUIRED") && r.text.includes("DIFF QUALITY") && r.text.includes("LINE_ENDING_CHANGE"), r.text.slice(0, 500));
     r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review, acknowledge_diff_quality: [{ file: "big.ts", finding: "LINE_ENDING_CHANGE", user_statement: " " }] });

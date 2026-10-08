@@ -63,9 +63,11 @@ Read `.agents/claude.md` and check `<MEMORY>`. If `DNA_LOADED` is `false` or mis
 
 ## Step 3 — Investigate the real repository
 
+0. **Consult the project's own knowledge first:** `get_project_knowledge` with the ticket's terms (entity, service and domain words) and the files you expect to touch. It surfaces terminology traps, intentional exceptions and past lessons (for example Device vs Machine). Treat `accepted` entries as project decisions; `proposed` ones as unreviewed hints. A naming inconsistency is not a bug until you have checked it is not a recorded exception. Cite the entries you relied on.
 1. Load context: `prime_session(work_item_id)`, and read `.secufusion-project-spec.json` (`microservices`, `api_endpoints`, `kafka_topics`, `db_entities`, `frontend_components`, `chrome_extension`, `security_context`).
 2. Establish what exists: `investigate_entity`, `investigate_relationship`, `get_engineering_experience`, `find_traceability_gaps`, `calculate_blast_radius` for shared contracts, and *read the source, tests and localization files involved*.
 3. **Root cause.** For a bug, find where the fix lives and prove it with `file:line` evidence. A guess is not a root cause.
+   If you uncover a trap, decision or exception the project had not written down, offer to record it (`record_project_knowledge`) so the next engineer does not rediscover it.
 4. Record it: `manage_requirement action=update status=INVESTIGATING` with `facts`, `root_cause`, `inferences`, `assumptions`, `unknowns`, `conflicts`, `blockers`.
 5. **Show the evidence first**: present the FACTs with file references before any conclusion or recommendation.
 6. Call `classify_task`. **YIELD**: show the result and ask whether it looks right.

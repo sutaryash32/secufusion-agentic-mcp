@@ -83,6 +83,11 @@ const plugin = JSON.parse(read(".claude-plugin/plugin.json"));
 check("plugin.json describes the init -> spec -> code -> review workflow", /sfn-spec/.test(plugin.description) && /sfn-code/.test(plugin.description) && /sfn-review/.test(plugin.description));
 check("generate_spec_document is registered", tools.has("generate_spec_document"));
 
+
+check("/sfn-init builds project understanding from .mcp/ and keeps agents.md lightweight", /load_project_knowledge\(/.test(cmds["sfn-init.md"]) && /agents\.md lightweight|Keep agents\.md lightweight/i.test(cmds["sfn-init.md"]) && /record_project_knowledge/.test(cmds["sfn-init.md"]));
+check("/sfn-spec consults project knowledge before investigating", /get_project_knowledge/.test(cmds["sfn-spec.md"]) && /terminology trap|intentional exception/i.test(cmds["sfn-spec.md"]));
+check("/sfn-review and the reviewer persona check recorded exceptions before flagging", /get_project_knowledge/.test(cmds["sfn-review.md"]) && /get_project_knowledge/.test(read("agents/reviewer.md")) && /known exception|intentional/i.test(read("agents/reviewer.md")));
+check("project-specific terminology no longer lives in AGENTS.md (it points to .mcp/)", !/Naming inconsistency ≠ bug/.test(read("agents/AGENTS.md")) && !/\| \*\*Device\*\* \| A \*\*browser installation\*\*/.test(read("agents/AGENTS.md")) && /\.mcp\/architecture\/terminology-device-vs-machine\.md/.test(read("agents/AGENTS.md")));
 const init = cmds["sfn-init.md"];
 check("/sfn-init builds release notes with generate_release_notes (change-driven), not by free-writing", tools.has("generate_release_notes") && /generate_release_notes\(/.test(init) && /changelog, not a repository scan/.test(init) && /previous_spec_path/.test(init) && /Do not paste inventories/.test(init));
 
