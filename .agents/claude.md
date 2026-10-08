@@ -17,14 +17,9 @@ You must strictly execute these commands in the prescribed order by calling the 
 2. Generate the architectural map and configuration extracts.
 3. Update the `<MEMORY>` block in this file with a summary of the architecture and set `DNA_LOADED = true`.
 
-### 2. `sfn:plan [task_id]`
-**Purpose:** Architect the solution based on the loaded DNA and initialize the task workspace.
-**Execution Sequence:**
-1. Verify `DNA_LOADED == true` in the `<MEMORY>` block. If false, abort and tell the user to run `sfn:init`.
-2. Call `manage_task(action: "initialize", work_item_id: [task_id])` to create the dedicated task folder (`.secufusion/tasks/[task_id]`) and track progress.
-3. Call `prime_session` to load the DNA state efficiently.
-4. Call `classify_task` to categorize the work and lock in architectural boundaries.
-5. Route to `planner.md` to generate the strict implementation plan.
+### 2. `sfn:spec [ticket-ref]`
+**Purpose:** Think before building: investigate, analyze and design as one phase, ending in a complete Implementation Specification.
+**Execution Sequence:** follow `commands/sfn-spec.md` exactly (understand, investigate, analyze with the user, design, `generate_spec_document`). Never write production code in this phase, and never invent a decision.
 
 ### 3. `sfn:review`
 **Purpose:** Validate the code against zero-tolerance architectural rules.

@@ -54,7 +54,7 @@ The SecuFusion MCP has been completely rebuilt from the ground up as a determini
 
 - **Dynamic Stack Analysis:** Identifies Java/Spring, Node, Docker, and other frameworks on the fly.
 - **Automated Dependency Mapping:** Generates cross-service dependency maps and evaluates the blast radius of potential changes.
-- **Interactive Commands:** Use `/sfn-init` to map your entire workspace and launch the watcher, and `/sfn-explore` on-demand to render Mermaid architecture graphs or analyze component blast radius.
+- **Interactive Commands:** Use `/sfn-init` to map your entire workspace (it renders the Mermaid architecture diagram) and launch the watcher; `/sfn-spec` runs blast-radius analysis (`calculate_blast_radius`) as part of investigating a ticket.
 
 ---
 
@@ -154,7 +154,7 @@ Version 2.2.0 removes the legacy, rigid TypeScript tools (`run_pre_pr_checks`) a
  load context    think         build         verify
 ```
 
-The point is clear separation of responsibilities, not many commands. Investigation and planning almost always run back to back and are one engineering thought process, so `/sfn-explore` + `/sfn-spec` are now a single **`/sfn-spec`** (the old names remain as thin aliases that redirect to it).
+The point is clear separation of responsibilities, not many commands. Investigation and planning almost always run back to back and are one engineering thought process, so they are a single **`/sfn-spec`** command.
 
 | Command | Purpose | Mental model | Ends with |
 |---|---|---|---|
@@ -167,7 +167,7 @@ The point is clear separation of responsibilities, not many commands. Investigat
 
 **`/sfn-review`** treats a noisy diff as a failed review even when the logic is right (a three-line change that lands as 1,100 lines because of a CRLF→LF conversion was the lesson). It checks functional, architectural and repository consistency, diff cleanliness, change traceability and convention preservation; see *Diff quality & line endings* below.
 
-`/sfn-explore map` and `/sfn-explore impact <component>` remain as architecture utilities.
+The architecture map is produced by `/sfn-init` (safe to re-run any time); blast radius is part of `/sfn-spec`'s investigation and available directly as the `calculate_blast_radius` tool.
 
 ---
 
@@ -1067,7 +1067,7 @@ If any of these are physically missing from your local workspace folder, a `[WAR
 
 ## ⚡ End-to-End Slash Command Workflow
 
-All commands are natively registered as Claude Plugins and appear directly in the Claude IDE `/` command picker. The workflow is streamlined into **5 core commands** with zero redundancy:
+All commands are natively registered as Claude Plugins and appear directly in the Claude IDE `/` command picker. The workflow is streamlined into **4 core commands** with zero redundancy:
 
 | # | Command | Persona / Role | When to run | What it does |
 |---|---|---|---|---|
@@ -1075,19 +1075,16 @@ All commands are natively registered as Claude Plugins and appear directly in th
 | **2** | `/sfn-spec <ticket-id or desc>` | `planner.md` | When starting any story, chore, feature, bug, or hotfix | Evaluates Phase -1 Philosophy gate (WHY/WHO/WHAT/RISK), creates Markdown business intent (`spec_create_intent`), primes session AST context (`prime_session`), classifies task boundaries (`classify_task`), enforces **Rule 5 STRICT YIELD** for your green light, then generates structured `plan.md`. |
 | **3** | `/sfn-code` | `coder.md` | After you approve the plan | Implements strictly according to the approved plan. Enforces zero-trust standards: mandatory tenant isolation on DB operations, proper `@Transactional` scoping, DTO mapping rules, and logs anti-patterns to `.rejected-patterns.json`. |
 | **4** | `/sfn-review` | `reviewer.md` | After coding is done, before opening a PR | Adversarial PR gate running 3 tiers in a single pass: (1) Mechanical AST guardrails (tenant isolation, N+1 queries, hardcoded endpoints), (2) AI file-by-file code review, (3) Context-aware task evaluation against spec. Blocks PR if Tier 1 violations exist. |
-| **5** | `/sfn-explore [map \| <component>]` | Architecture Explorer | On-demand for cross-service impact & system maps | Dual-mode architecture query: `/sfn-explore map` renders the full cross-service Mermaid architecture diagram; `/sfn-explore <component-or-path>` calculates blast radius and affected downstream consumers before making breaking changes. |
 
 ---
 
-### 📊 The 5-Command SDLC Flow at a Glance
+### 📊 The 4-Command SDLC Flow at a Glance
 
 ```
 Morning / First Setup
   │
   ▼
 /sfn-init                    ← Scans workspace, writes dna.json, draws Mermaid diagram, starts watcher
-  │
-  ├─► /sfn-explore map        (Optional on-demand: view ecosystem graph)
   │
 Ticket Arrives (Feature / Bug / Hotfix)
   │
@@ -1098,8 +1095,6 @@ Ticket Arrives (Feature / Bug / Hotfix)
   │
   ▼
 /sfn-code                    ← Implement approved plan with zero-trust guardrails
-  │
-  ├─► /sfn-explore <comp>    (Optional: verify blast radius if touching shared interfaces)
   │
   ▼
 /sfn-review                  ← 3-Tier PR Gate: mechanical AST checks + AI review + spec matching

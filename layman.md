@@ -52,7 +52,7 @@ We have streamlined the entire development lifecycle into 4 simple commands. Jus
 **When to use:** The very first time you clone the repo, or if the architecture has drastically changed.
 **What happens under the hood:** The AI calls the DNA Discovery engine to scan the entire codebase. It maps out all microservices, Kafka endpoints, database entities, and configurations. It saves this "DNA" so it never has to guess how the project works.
 
-### 2. `sfn:spec [Task Description or Jira Ticket]` (investigation + planning in one step; replaces `sfn:plan` and `sfn:explore`)
+### 2. `sfn:spec [Task Description or Jira Ticket]` (investigation + planning in one step)
 **When to use:** When you are starting a new feature or bug fix.
 **What happens under the hood:** 
 - The AI provisions a dedicated workspace folder for your task (`manage_task`).

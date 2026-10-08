@@ -1,5 +1,5 @@
 ---
-description: Think before building. Investigates the ticket against the real repository, analyzes architecture and root cause, resolves every open decision with YOU, and produces one complete, validated Implementation Specification (scope, risks, strategy, acceptance criteria, expected file changes, assumptions and unknowns). Replaces /sfn-explore + /sfn-plan.
+description: Think before building. Investigates the ticket against the real repository, analyzes architecture and root cause, resolves every open decision with YOU, and produces one complete, validated Implementation Specification (scope, risks, strategy, acceptance criteria, expected file changes, assumptions and unknowns).
 argument-hint: <ticket reference exactly as written, e.g. BUG-1230> [short description]
 ---
 

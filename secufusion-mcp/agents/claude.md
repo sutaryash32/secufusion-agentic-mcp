@@ -32,7 +32,7 @@ You must strictly execute these commands in the prescribed order by calling the 
 2. Generate the architectural map and configuration extracts.
 3. Update the `<MEMORY>` block in this file with a summary of the architecture and set `DNA_LOADED = true`.
 
-### 2. `sfn:spec [ticket-ref]`  (replaces `sfn:explore` + `sfn:plan`)
+### 2. `sfn:spec [ticket-ref]`
 **Purpose:** Think before building. Investigation and design are one engineering thought process, and the deliverable is a complete Implementation Specification.
 **Execution Sequence:** follow `commands/sfn-spec.md` exactly. In short:
 1. Verify `DNA_LOADED == true` in the `<MEMORY>` block. If false, abort and tell the user to run `sfn:init`.
@@ -51,9 +51,6 @@ You must strictly execute these commands in the prescribed order by calling the 
 **Purpose:** Verify correctness AND change quality. A correct implementation with a noisy diff is not a fully reviewed change.
 **Execution Sequence:** follow `commands/sfn-review.md` (PASS 0-10, including PASS 10 diff quality via `check_diff_quality`), then record the verdict with `verify_against_spec`.
 That tool refuses `APPROVED` while a HIGH diff-quality finding is unacknowledged by the user. Route to `reviewer.md` for the final PR hand-off.
-
-### Utilities
-- `sfn:explore map` / `sfn:explore impact <component>`: architecture map and blast radius (ticket investigation now lives in `sfn:spec`).
 
 ### 5. `sfn:watch`
 **Purpose:** Enable continuous background learning.

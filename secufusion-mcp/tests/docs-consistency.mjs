@@ -63,8 +63,10 @@ check("/sfn-spec forbids production code and invented decisions", /Do NOT write 
 check("/sfn-spec orders philosophy before spec_create_intent before manage_task initialize (the server gate order)", spec.indexOf("philosophy_check") < spec.indexOf("spec_create_intent") && spec.indexOf("spec_create_intent") < spec.indexOf("manage_task action=initialize"));
 check("/sfn-spec ends by yielding to the user and handing off to /sfn-code", /YIELD/.test(spec) && /\/sfn-code/.test(spec));
 
-check("/sfn-plan is a thin redirect to /sfn-spec", /sfn-spec/.test(cmds["sfn-plan.md"]) && cmds["sfn-plan.md"].length < 1500 && !/manage_requirement/.test(cmds["sfn-plan.md"]));
-check("/sfn-explore ticket mode redirects to /sfn-spec; map and impact remain", /sfn-spec/.test(cmds["sfn-explore.md"]) && /Mode A/.test(cmds["sfn-explore.md"]) && /Mode B/.test(cmds["sfn-explore.md"]) && !/ask_user_decision/.test(cmds["sfn-explore.md"]));
+check("exactly the four pipeline commands exist (the retired /sfn-plan and /sfn-explore are gone)", JSON.stringify(Object.keys(cmds).sort()) === JSON.stringify(["sfn-code.md", "sfn-init.md", "sfn-review.md", "sfn-spec.md"]), Object.keys(cmds).join());
+const RETIRED = new RegExp(["sfn-plan", "sfn:plan", "sfn-explore", "sfn:explore"].join("|"));
+const mentioning = [...docs, "../README.md", "../layman.md", ".claude-plugin/plugin.json", "../.agents/claude.md"].filter((f) => RETIRED.test(read(f)));
+check("no document, README or plugin manifest still names a retired command", mentioning.length === 0, mentioning.join(", "));
 
 const code = cmds["sfn-code.md"];
 check("/sfn-code requires the specification and refuses to improvise one", /spec\.md/.test(code) && /\/sfn-spec/.test(code) && !/run `\/sfn-plan/.test(code));
