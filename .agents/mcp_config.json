@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "secufusion-mcp": {
+      "command": "node",
+      "args": [
+        "c:/Users/Yash/Desktop/mcp/secufusion-mcp/index.js"
+      ]
+    }
+  }
+}

@@ -1,0 +1,395 @@
+﻿{
+  "meta": {
+    "generated_at": "2026-09-23T02:17:00+05:30",
+    "generated_from": "workspace scan - all files read, no values invented",
+    "workspace_root": "C:/Users/Yash/Desktop/secufi_full",
+    "tool": "secufusion-mcp migration scanner",
+    "next_update": "run /sfn:refresh to update"
+  },
+
+  "migration_tool": {
+    "type": "manual_scripts",
+    "tool_name": "none - Flyway-style naming convention used, but NOT executed by Flyway on boot",
+    "note": "Scripts follow V{n}__{description}.sql naming compatible with Flyway but applied MANUALLY. No spring.flyway.* config found in any application.properties. Scripts explicitly state: migrations are applied MANUALLY in this project - nothing applies on startup.",
+    "how_applied": "manually - developer runs SQL directly against target PostgreSQL database via psql or DB client",
+    "applied_by": "not_documented - inferred: developer or DBA per deploy",
+    "tracking_mechanism": "not_documented - no flyway_schema_history table, no spreadsheet found; version numbers in filenames serve as the only ordering record",
+    "database": "PostgreSQL (confirmed from pg_dump headers in local/schema.sql and local/seed.sql)"
+  },
+
+  "services": {
+
+    "sfn-events-api": {
+      "repo": "sfn-events-api",
+      "has_migrations": true,
+
+      "migration_locations": [
+        {
+          "path": "src/main/resources/db/migration",
+          "type": "migration_scripts",
+          "file_count": 39,
+          "description": "All versioned DDL migration scripts for the events database. Contains CREATE TABLE, ALTER TABLE, CREATE VIEW, CREATE INDEX, and data-fix DML. Flat folder, no subfolders."
+        }
+      ],
+
+      "other_sql_locations": [],
+
+      "naming_convention": {
+        "pattern": "V{n}__{snake_case_description}.sql",
+        "example": "V1__create_devices_table.sql",
+        "examples_spread": [
+          "V1__create_devices_table.sql",
+          "V3__create_aggregation_views.sql",
+          "V5__add_composite_indexes.sql",
+          "V21__backfill_event_device_user_links.sql",
+          "V39__purge_legacy_device_keyed_ai_inventory.sql"
+        ],
+        "has_version_prefix": true,
+        "version_format": "V{integer}__ (capital V, integer, double underscore)",
+        "separator": "__ (double underscore between version and description)",
+        "case": "snake_case",
+        "date_component": false,
+        "inferred": false
+      },
+
+      "content_conventions": {
+        "one_change_per_file": false,
+        "note_on_one_change": "Files group related DDL - CREATE TABLE commonly followed by its indexes in the same file. Some files have multiple ALTER TABLE statements.",
+        "has_comments": true,
+        "comment_style": "header block with -- dashes banner then inline -- comments per section",
+        "has_transaction_wrapper": false,
+        "uses_if_not_exists": true,
+        "index_in_same_file": true,
+        "constraint_naming": "chk_{table}_{field} for CHECK; idx_{abbrev_table}_{column} for indexes",
+        "column_naming": "snake_case",
+        "has_rollback_section": false,
+        "content_types_found": ["CREATE TABLE", "ALTER TABLE", "CREATE OR REPLACE VIEW", "CREATE INDEX", "UPDATE", "DELETE", "SELECT (preview block in V39)"],
+        "inferred": false
+      },
+
+      "organization": {
+        "structure": "flat",
+        "ordering_mechanism": "numeric_prefix",
+        "subfolders": [],
+        "notes": "V39 comment documents: V38 is the highest at time of writing; renumber at merge if another change has claimed V39",
+        "inferred": false
+      },
+
+      "current_state": {
+        "total_script_count": 39,
+        "highest_version_number": 39,
+        "version_sequence": "V1-V39, fully contiguous, no gaps",
+        "next_suggested": "V40__{description}.sql",
+        "most_recent_script": "V39__purge_legacy_device_keyed_ai_inventory.sql",
+        "most_recent_path": "src/main/resources/db/migration/V39__purge_legacy_device_keyed_ai_inventory.sql"
+      },
+
+      "docs": {
+        "migration_guide_exists": false,
+        "migration_guide_path": "",
+        "key_rules_from_docs": [
+          "Numbering note in V39 comment: verify highest version at time of writing and renumber at merge if claimed",
+          "V39 includes a PREVIEW (read-only SELECT) block as pre-check, then DELETE in one transaction"
+        ]
+      }
+    },
+
+    "sfn-iam-api": {
+      "repo": "sfn-iam-api",
+      "has_migrations": true,
+
+      "migration_locations": [
+        {
+          "path": "src/main/resources/db/migration",
+          "type": "migration_scripts",
+          "file_count": 49,
+          "description": "Versioned DDL and seed-data migration scripts for the IAM database. Schema creation, package/feature/scope seeding, data normalization. Flat folder, no subfolders."
+        }
+      ],
+
+      "other_sql_locations": [
+        {
+          "path": "scripts/cleanup-default-group-memberships.sql",
+          "type": "one_time_ops_script",
+          "description": "Standalone one-time cleanup script. Deletes stale default-group membership rows. Detailed header comment. NOT in the migration folder."
+        }
+      ],
+
+      "naming_convention": {
+        "pattern": "V{n}__{snake_case_description}.sql",
+        "example": "V1__create_login_audit_event_table.sql",
+        "examples_spread": [
+          "V1__create_login_audit_event_table.sql",
+          "V13__seed_feature_groups.sql",
+          "V34__fix_scope_catalog.sql",
+          "V38__seed_base_scope_catalog.sql",
+          "V57__normalize_user_email_and_username_lowercase.sql"
+        ],
+        "has_version_prefix": true,
+        "version_format": "V{integer}__ (capital V, integer, double underscore)",
+        "separator": "__ (double underscore between version and description)",
+        "case": "snake_case",
+        "date_component": false,
+        "inferred": false
+      },
+
+      "content_conventions": {
+        "one_change_per_file": false,
+        "note_on_one_change": "Files range from single ALTER TABLE to large seed blobs (V16 is 35KB, V38 is 62KB). Seed migrations use NOT EXISTS guards for idempotency.",
+        "has_comments": true,
+        "comment_style": "-- comment header with V# reference and WHY context. Later scripts (V38+) have extensive multi-paragraph problem/fix/safety comment blocks",
+        "has_transaction_wrapper": false,
+        "uses_if_not_exists": true,
+        "index_in_same_file": true,
+        "constraint_naming": "not_documented",
+        "column_naming": "snake_case",
+        "has_rollback_section": false,
+        "uses_idempotency_guards": true,
+        "note_on_idempotency": "Seed migrations use NOT EXISTS / ON CONFLICT guards. V38 comment: SAFETY (hard constraint) - idempotent + additive",
+        "content_types_found": ["CREATE TABLE", "ALTER TABLE", "INSERT (seed data)", "UPDATE (data normalization)", "CREATE INDEX", "CREATE UNIQUE INDEX", "DO $$ ... $$ (plpgsql blocks)"],
+        "inferred": false
+      },
+
+      "organization": {
+        "structure": "flat",
+        "ordering_mechanism": "numeric_prefix",
+        "subfolders": [],
+        "version_gaps_explanation": "Gaps at V41-V47 and V52 confirmed absent. V48-V51 exist; V53-V57 continue.",
+        "version_gaps": [41, 42, 43, 44, 45, 46, 47, 52],
+        "inferred": false
+      },
+
+      "current_state": {
+        "total_script_count": 49,
+        "highest_version_number": 57,
+        "version_sequence": "V1-V57 with gaps at V41-V47 and V52 (files absent from repo)",
+        "next_suggested": "V58__{description}.sql",
+        "most_recent_script": "V57__normalize_user_email_and_username_lowercase.sql",
+        "most_recent_path": "src/main/resources/db/migration/V57__normalize_user_email_and_username_lowercase.sql"
+      },
+
+      "docs": {
+        "migration_guide_exists": false,
+        "migration_guide_path": "",
+        "migration_related_docs": [
+          {
+            "path": "docs/Groups-Claim-Scope-Migration.md",
+            "type": "keycloak_config_migration_runbook",
+            "note": "NOT a database schema migration. Documents a Keycloak OAuth scope change. Irrelevant to SQL migrations."
+          }
+        ],
+        "key_rules_from_docs": []
+      }
+    },
+
+    "sfn-tenants-api": {
+      "repo": "sfn-tenants-api",
+      "has_migrations": true,
+
+      "migration_locations": [
+        {
+          "path": "src/main/resources/db/migration",
+          "type": "migration_scripts",
+          "file_count": 52,
+          "description": "Versioned DDL and seed-data migration scripts for the tenants database. Largest migration set. Includes schema creation, tenant config columns, extension registry, rules engine bundle seeding (21-52KB files), and policy gates."
+        }
+      ],
+
+      "other_sql_locations": [
+        {
+          "path": "local/schema.sql",
+          "type": "local_dev_schema_dump",
+          "description": "Full pg_dump of tenants DB schema (PostgreSQL 14 to 18). Local dev setup only. NOT a migration. Dated 2026-05-03."
+        },
+        {
+          "path": "local/seed.sql",
+          "type": "local_dev_seed_dump",
+          "description": "Full pg_dump of catalog/reference data for local dev. NOT a migration. Dated 2026-05-03."
+        },
+        {
+          "path": "local/seed-ai-inventory.sql",
+          "type": "local_dev_seed_script",
+          "description": "Manual seed script for AI inventory tables (V37 tables). Must be run after V37 migration. Requires manual ID substitution. Has docker exec psql instructions in header."
+        },
+        {
+          "path": "docs/database-schemas.sql",
+          "type": "reference_schema_doc",
+          "description": "Reference SQL with CREATE TABLE statements. NOT a runnable migration - exists as documentation."
+        }
+      ],
+
+      "naming_convention": {
+        "pattern": "V{n}__{snake_case_description}.sql",
+        "example": "V63__tenant_principal_gate.sql",
+        "examples_spread": [
+          "V1__create_login_audit_event_table.sql",
+          "V4__add_tenant_code.sql",
+          "V34__browser_policy_schema_updates.sql",
+          "V48__create_rules_engine_bundle.sql",
+          "V63__tenant_principal_gate.sql"
+        ],
+        "has_version_prefix": true,
+        "version_format": "V{integer}__ (capital V, integer, double underscore)",
+        "separator": "__ (double underscore between version and description)",
+        "case": "snake_case",
+        "date_component": "sometimes appended after description for sequential bundle updates",
+        "date_component_example": "V53__set_global_default_classify_ai_bundle_20260701.sql - date suffix when same operation repeats on new date",
+        "inferred": false
+      },
+
+      "content_conventions": {
+        "one_change_per_file": false,
+        "note_on_one_change": "Files range from 1-line ALTER (V35: 81 bytes) to 52KB JSON-data seed migrations (V62). Large files contain UPDATE statements with embedded JSON policy bundles.",
+        "has_comments": true,
+        "comment_style": "Multi-line header block with -- dashes, V# tag, WHY section, Context, ADR references, and explicit NOTE about manual application",
+        "has_transaction_wrapper": false,
+        "uses_if_not_exists": true,
+        "index_in_same_file": true,
+        "constraint_naming": "not_documented",
+        "column_naming": "snake_case",
+        "has_rollback_section": false,
+        "content_types_found": ["CREATE TABLE", "ALTER TABLE ADD COLUMN", "ALTER TABLE ALTER COLUMN", "CREATE UNIQUE INDEX", "CREATE INDEX", "INSERT (seed/default data)", "UPDATE (data migrations and policy JSON)", "DO $$ ... $$ (plpgsql blocks)"],
+        "inferred": false
+      },
+
+      "organization": {
+        "structure": "flat",
+        "ordering_mechanism": "numeric_prefix",
+        "subfolders": [],
+        "version_gaps_explanation": "Gaps at V5-V10 and V36-V40 confirmed absent. V11 resumes after V4; V41 resumes after V35.",
+        "version_gaps": [5, 6, 7, 8, 9, 10, 36, 37, 38, 39, 40],
+        "inferred": false
+      },
+
+      "current_state": {
+        "total_script_count": 52,
+        "highest_version_number": 63,
+        "version_sequence": "V1-V63 with gaps at V5-V10 and V36-V40",
+        "next_suggested": "V64__{description}.sql",
+        "most_recent_script": "V63__tenant_principal_gate.sql",
+        "most_recent_path": "src/main/resources/db/migration/V63__tenant_principal_gate.sql"
+      },
+
+      "docs": {
+        "migration_guide_exists": false,
+        "migration_guide_path": "",
+        "migration_related_docs": [
+          {
+            "path": "docs/jwtpull-migration.md",
+            "type": "code_refactor_migration_doc",
+            "note": "NOT a database schema migration. Documents a code-level refactor. Irrelevant to SQL migrations."
+          }
+        ],
+        "key_rules_from_docs": [
+          "seed-ai-inventory.sql: migrations are run manually in this project - nothing applies on startup",
+          "V63 comment: NOTE: migrations are applied MANUALLY (no Flyway on boot). Run BEFORE deploying Package-1 builds"
+        ]
+      }
+    },
+
+    "sfn-auth-api": {
+      "repo": "sfn-auth-api",
+      "has_migrations": false,
+      "note": "Spring Boot service. application.properties has datasource config (DB_URL env var) but no migration folder or SQL files found anywhere.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    },
+
+    "sfn-eureka-api": {
+      "repo": "sfn-eureka-api",
+      "has_migrations": false,
+      "note": "Spring Boot Eureka service discovery server. No database - purely a service registry. No SQL files found.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    },
+
+    "sfn-gateway-api": {
+      "repo": "sfn-gateway-api",
+      "has_migrations": false,
+      "note": "Spring Cloud Gateway (API gateway). No database - stateless routing layer. No SQL files found.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    },
+
+    "sfn-policy-api": {
+      "repo": "sfn-policy-api",
+      "has_migrations": false,
+      "note": "Policy service. Resources contain only application.properties and rules engine JSON schema files. No SQL files found.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    },
+
+    "sfn-web-ui": {
+      "repo": "sfn-web-ui",
+      "has_migrations": false,
+      "note": "React frontend (package.json project). No SQL files found.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    },
+
+    "snf-browser-extn": {
+      "repo": "snf-browser-extn",
+      "has_migrations": false,
+      "note": "Browser extension Chrome/Edge (package.json project). No SQL files found.",
+      "migration_locations": [],
+      "other_sql_locations": []
+    }
+  },
+
+  "workspace_level_sql": {
+    "sfn-seed-sql": {
+      "path": "sfn-seed-sql",
+      "type": "repo_placeholder",
+      "note": "Directory exists at workspace root with only a blank README.md (Azure DevOps default template, all sections say TODO). No SQL files inside. Purpose is undocumented."
+    }
+  },
+
+  "global_conventions": {
+    "consistent_across_services": true,
+    "pattern_used_by": ["sfn-events-api", "sfn-iam-api", "sfn-tenants-api"],
+    "services_without_migrations": ["sfn-auth-api", "sfn-eureka-api", "sfn-gateway-api", "sfn-policy-api", "sfn-web-ui", "snf-browser-extn"],
+    "standard_migration_path": "src/main/resources/db/migration",
+    "note_on_path": "All three services use db/migration (SINGULAR). NOT db/migrations (plural). Confirmed by direct directory inspection.",
+    "differences_between_services": [
+      "sfn-events-api: clean V1-V39, no gaps; includes CREATE VIEW scripts",
+      "sfn-iam-api: V1-V57 with gaps (V41-V47, V52 absent); includes large seed migrations for scope/package catalog",
+      "sfn-tenants-api: V1-V63 with gaps (V5-V10, V36-V40 absent); largest scripts up to 52KB JSON policy bundles; date suffix variant used for sequential bundle updates",
+      "sfn-tenants-api has extra local/ dev SQL and docs/database-schemas.sql reference file",
+      "sfn-iam-api has a scripts/ folder for one-time ops SQL outside the migration folder"
+    ],
+    "recommended_pattern": "V{n}__{snake_case_description}.sql - increment from the highest existing V# in the target service",
+    "recommended_example": "V64__add_column_to_tenants.sql (for sfn-tenants-api next)",
+    "recommended_path": "src/main/resources/db/migration/{filename}.sql"
+  },
+
+  "mcp_guardrails": {
+    "check_existence_before_create": true,
+    "naming_pattern_to_enforce": "^V\\d+__[a-z][a-z0-9_]*\\.sql$",
+    "naming_pattern_description": "Capital V, one or more digits, double underscore, snake_case description starting with lowercase letter, .sql extension",
+    "naming_valid_examples": [
+      "V40__create_audit_log_table.sql",
+      "V58__add_policy_column.sql",
+      "V64__tenant_principal_domains.sql"
+    ],
+    "naming_invalid_examples": [
+      "v40__create_table.sql (lowercase v)",
+      "V40_create_table.sql (single underscore)",
+      "V40__CreateTable.sql (camelCase)",
+      "V40__create-table.sql (hyphen in description)",
+      "40__create_table.sql (no V prefix)",
+      "create_table.sql (no version prefix at all)"
+    ],
+    "required_for_entity_change": true,
+    "required_for_column_add": true,
+    "required_for_index_change": true,
+    "required_for_data_migration": true,
+    "not_required_for": ["local/seed.sql updates", "docs/database-schemas.sql", "scripts/ one-time ops files"],
+    "per_service_next_versions": {
+      "sfn-events-api": { "next": "V40", "example": "V40__{description}.sql" },
+      "sfn-iam-api": { "next": "V58", "example": "V58__{description}.sql" },
+      "sfn-tenants-api": { "next": "V64", "example": "V64__{description}.sql" }
+    },
+    "gap_warning": "sfn-iam-api gaps: V41-V47, V52. sfn-tenants-api gaps: V5-V10, V36-V40. These are confirmed absent from repo - do NOT reuse these numbers.",
+    "application_reminder": "NO Flyway on boot. Scripts MUST be run manually against PostgreSQL before or during deployment of code that depends on them."
+  }
+}

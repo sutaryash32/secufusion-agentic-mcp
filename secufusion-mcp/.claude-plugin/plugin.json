@@ -1,0 +1,10 @@
+{
+  "name": "secufusion-mcp",
+  "description": "SecuFusion MSSP platform dev agent — project-level spec driven, tenant-isolation enforced, zero-trust guardrails. 5 Core Slash Commands: /sfn-init (dynamic DNA + architecture diagram + watcher), /sfn-plan (philosophy check + intent WHY + classify + plan), /sfn-code (spec-driven implementation), /sfn-review (zero-tolerance 3-tier PR gate), /sfn-explore (on-demand service graph or blast-radius analysis).",
+  "version": "3.3.1",
+  "author": {
+    "name": "Motivity Labs"
+  },
+  "homepage": "https://github.com/MLMCPS/secufusion-mcp",
+  "license": "ISC"
+}

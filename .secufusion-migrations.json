@@ -1,0 +1,9 @@
+{
+  "mcp_guardrails": {
+    "naming_pattern_to_enforce": "^V\\d+__[a-z][a-z0-9_]*\\.sql$",
+    "version_must_be_next_in_sequence": true,
+    "no_gap_reuse_allowed": true,
+    "apply_manually_to": "postgresql"
+  },
+  "microservices": {}
+}

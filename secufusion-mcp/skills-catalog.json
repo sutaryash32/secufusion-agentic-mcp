@@ -1,0 +1,28 @@
+{
+  "skills": [
+    {
+      "name": "kafka-patterns",
+      "description": "Rules for Kafka listener thread unblocking and payload validation.",
+      "tags": ["kafka", "events", "messaging", "async"],
+      "path": "C:\\Users\\Yash\\Desktop\\mcp\\.agents\\skills\\kafka-patterns.md"
+    },
+    {
+      "name": "tenant-isolation",
+      "description": "Rules for scoping DB queries to tenantId for multi-tenant MSSP compliance.",
+      "tags": ["tenant", "isolation", "security", "database", "sql"],
+      "path": "C:\\Users\\Yash\\Desktop\\mcp\\.agents\\skills\\tenant-isolation.md"
+    },
+    {
+      "name": "react-ui-patterns",
+      "description": "Frontend standards for the SecuFusion dashboard.",
+      "tags": ["react", "ui", "frontend", "dashboard"],
+      "path": "C:\\Users\\Yash\\Desktop\\mcp\\.agents\\skills\\react-ui-patterns.md"
+    },
+    {
+      "name": "spring-boot-best-practices",
+      "description": "General Spring Boot best practices like transactional readonly.",
+      "tags": ["spring", "backend", "java", "performance"],
+      "path": "C:\\Users\\Yash\\Desktop\\mcp\\.agents\\skills\\spring-boot-best-practices.md"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "skills": [
+    {
+      "id": "kafka-patterns",
+      "name": "Kafka Event Streaming Patterns",
+      "description": "Rules for synchronous and asynchronous Kafka producers and consumers.",
+      "file": "skills/kafka-patterns.md"
+    },
+    {
+      "id": "tenant-isolation",
+      "name": "Multi-Tenant Data Isolation",
+      "description": "Enforces tenantId filtering on all repository queries.",
+      "file": "skills/tenant-isolation.md"
+    },
+    {
+      "id": "database-migrations",
+      "name": "Flyway DB Migrations",
+      "description": "Rules for safe, non-breaking database schema changes.",
+      "file": "skills/database-migrations.md"
+    },
+    {
+      "id": "inferred-coding-patterns",
+      "name": "Dynamically Inferred Coding Patterns",
+      "description": "Auto-discovered architectural conventions, code styles, and anti-patterns derived directly from the codebase via the DNA Discovery engine.",
+      "file": "../.secufusion/dna.json#/inferred_patterns"
+    },
+    {
+      "id": "api-contracts",
+      "name": "API & DTO Standards",
+      "description": "Rules for versioning, error handling, and strict DTO mapping.",
+      "file": "skills/api-contracts.md"
+    },
+    {
+      "id": "rbac-security",
+      "name": "Role-Based Access Control",
+      "description": "Rules for @PreAuthorize, OAuth scopes, JWT validation, and RBAC patterns.",
+      "file": "skills/rbac-security.md"
+    },
+    {
+      "id": "resiliency-patterns",
+      "name": "Resiliency & Timeouts",
+      "description": "Rules for Circuit Breakers, Retry logic, and HTTP timeout configurations.",
+      "file": "skills/resiliency-patterns.md"
+    },
+    {
+      "id": "testing-standards",
+      "name": "Testing Standards",
+      "description": "Rules for mocking, required test coverage, and testcontainer usage.",
+      "file": "skills/testing-standards.md"
+    },
+    {
+      "id": "caching-rules",
+      "name": "Caching Strategies",
+      "description": "Rules for Redis usage, cache eviction, and @Cacheable annotations.",
+      "file": "skills/caching-rules.md"
+    },
+    {
+      "id": "project-golden-rules",
+      "name": "Project Golden Rules & Style",
+      "description": "The definitive, hardcoded architectural rules and coding standards defined for the entire project.",
+      "file": "../secufusion-mcp/.secufusion-project-spec.json#/golden_rules"
+    }
+  ]
+}

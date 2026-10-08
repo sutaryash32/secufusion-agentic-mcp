@@ -1,0 +1,25 @@
+{
+  "microservices": {
+    "sfn-iam-api": {
+      "calls_services": [
+        "sfn-events-api"
+      ],
+      "owns_tables": [
+        "users",
+        "tenant_mapping",
+        "user_groups"
+      ],
+      "kafka_consumes": []
+    },
+    "sfn-events-api": {
+      "calls_services": [],
+      "owns_tables": [
+        "events",
+        "audit_records"
+      ],
+      "kafka_consumes": [
+        "user-deleted"
+      ]
+    }
+  }
+}

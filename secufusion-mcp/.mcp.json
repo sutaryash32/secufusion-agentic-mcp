@@ -1,0 +1,19 @@
+{
+  "//": "MCP server bundled WITH the plugin. ${CLAUDE_PLUGIN_ROOT}",
+  "//1": "resolves wherever plugin is installed — no absolute paths,",
+  "//2": "no per-machine configuration, works on fresh clone.",
+  "//3": "",
+  "//4": "--root . means server reads whichever repo session is in.",
+  "//5": "This replaces the npx -y hack and claude_desktop_config",
+  "//6": "absolute path entries. One install, works everywhere.",
+  "mcpServers": {
+    "secufusion-mcp": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/dist/server.js",
+        "--root",
+        "."
+      ]
+    }
+  }
+}

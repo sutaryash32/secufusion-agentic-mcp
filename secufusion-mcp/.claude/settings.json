@@ -1,0 +1,9 @@
+{
+  "//": "Committed plugin settings for Claude Code.",
+  "//1": "Applies to every teammate on install.",
+  "//2": "Personal overrides: .claude/settings.local.json",
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
+}

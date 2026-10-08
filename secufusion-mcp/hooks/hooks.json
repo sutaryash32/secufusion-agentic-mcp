@@ -1,0 +1,17 @@
+{
+  "//": "Hooks active on plugin install. Universal,",
+  "//1": "fast, project-agnostic only. Project-specific",
+  "//2": "hooks (lint, test, format) stay opt-in.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/knowledge-drift.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

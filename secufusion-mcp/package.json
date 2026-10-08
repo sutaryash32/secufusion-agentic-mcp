@@ -1,0 +1,48 @@
+{
+  "name": "secufusion-mcp",
+  "version": "3.3.1",
+  "type": "module",
+  "description": "Project-level spec driven AI workflow tooling for SecuFusion, MCP server - developer workflow tooling with guardrails",
+  "main": "mcp/dist/server.js",
+  "files": [
+    ".claude-plugin",
+    ".mcp.json",
+    ".claude",
+    "agents",
+    "commands",
+    "hooks",
+    "mcp/dist",
+    "scripts",
+    "README.md"
+  ],
+  "bin": {
+    "secufusion-mcp": "mcp/dist/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc --project mcp/tsconfig.json",
+    "prepublishOnly": "copy ..\\README.md README.md && npm run build",
+    "postpublish": "del README.md",
+    "start": "node mcp/dist/server.js",
+    "dev": "tsc --project mcp/tsconfig.json && node mcp/dist/server.js",
+    "postinstall": "node -e \"try { require('fs').chmodSync('hooks/knowledge-drift.sh', 0o755) } catch(e) {}\""
+  },
+  "keywords": [
+    "mcp",
+    "secufusion",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8",
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  }
+}
