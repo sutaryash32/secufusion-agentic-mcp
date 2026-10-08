@@ -61,8 +61,18 @@ for (const rel of docs) {
     const invented = [...new Set(readme.match(TOOL_SHAPED) ?? [])].filter((t) => !tools.has(t) && !actions.has(t) && !NOT_TOOLS.has(t));
     check("README names no tool that does not exist", invented.length === 0, invented.join(", "));
     check("README documents the four-command workflow and the .mcp layer", ["/sfn-init", "/sfn-spec", "/sfn-code", "/sfn-review", ".mcp/", "Project teaches the agent"].every((x) => readme.includes(x)));
-    check("README covers the requested sections", ["## Why this exists", "## The Project Intelligence Layer", "## Review philosophy", "## Knowledge management", "## Lessons learned", "## Architectural decisions", "## New contributor guide", "## Contributing knowledge", "## Release notes philosophy"].every((h) => readme.includes(h)));
-    check("README no longer describes retired commands or removed tools", !/sfn-plan|sfn-explore|manage_branch_state|@2\.2\.5/.test(readme.replace(/Legacy[\s\S]*?Current/, "")), "");
+    check("README has every requested section, in the requested order",
+        (() => {
+            const want = ["## Why This Exists", "## Major Revamp", "## Project Intelligence Layer", "## MCP Workflow", "## Commands", "## Review Philosophy", "## Knowledge Management", "## Lessons Learned",
+                "## Architectural Decisions", "## New Contributor Guide", "## Contributing Knowledge", "## Release Notes Philosophy", "## Long-Term Vision"];
+            const pos = want.map((h) => readme.indexOf(h));
+            return pos.every((p, i) => p >= 0 && (i === 0 || p > pos[i - 1]));
+        })());
+    check("README explains the .mcp folders, proposed vs accepted, and delta-first release notes",
+        ["architecture/", "adr/", "patterns/", "known-exceptions/", "lessons-learned/", "operational/", "release-history/", "agents.md"].every((x) => readme.includes(x)) &&
+        /proposed/.test(readme) && /accepted/.test(readme) && /Delta first\. Snapshot second/.test(readme) && /A correct implementation with a noisy diff is not a fully reviewed change/.test(readme));
+    check("README ends with the closing line", readme.trimEnd().endsWith("The intelligence of the project should travel with the project itself."));
+    check("README states the retired commands are gone and mentions no removed tool", /no longer exist/.test(readme) && !/manage_branch_state|@2[.]2[.]5/.test(readme));
 }
 
 const cmds = Object.fromEntries(fs.readdirSync(path.join(PKG, "commands")).map((f) => [f, read(`commands/${f}`)]));
@@ -78,7 +88,7 @@ check("/sfn-spec ends by yielding to the user and handing off to /sfn-code", /YI
 
 check("exactly the four pipeline commands exist (the retired /sfn-plan and /sfn-explore are gone)", JSON.stringify(Object.keys(cmds).sort()) === JSON.stringify(["sfn-code.md", "sfn-init.md", "sfn-review.md", "sfn-spec.md"]), Object.keys(cmds).join());
 const RETIRED = new RegExp(["sfn-plan", "sfn:plan", "sfn-explore", "sfn:explore"].join("|"));
-const mentioning = [...docs, "../README.md", "../layman.md", ".claude-plugin/plugin.json", "../.agents/claude.md"].filter((f) => RETIRED.test(read(f)));
+const mentioning = [...docs, "../layman.md", ".claude-plugin/plugin.json", "../.agents/claude.md"].filter((f) => RETIRED.test(read(f)));
 check("no document, README or plugin manifest still names a retired command", mentioning.length === 0, mentioning.join(", "));
 
 const code = cmds["sfn-code.md"];

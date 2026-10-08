@@ -8,30 +8,31 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 ## Contents
 
-1. [Core philosophy](#core-philosophy)
-2. [Why this exists](#why-this-exists)
-3. [The revamp: from agent memory to project-owned intelligence](#the-revamp-from-agent-memory-to-project-owned-intelligence)
-4. [The Project Intelligence Layer (`.mcp/`)](#the-project-intelligence-layer-mcp)
-5. [The workflow](#the-workflow)
+1. [Core Philosophy](#core-philosophy)
+2. [Why This Exists](#why-this-exists)
+3. [Major Revamp: Project Intelligence Layer](#major-revamp-project-intelligence-layer)
+4. [Project Intelligence Layer](#project-intelligence-layer)
+5. [MCP Workflow](#mcp-workflow)
 6. [Commands](#commands)
-7. [How the MCP thinks](#how-the-mcp-thinks)
-8. [Review philosophy](#review-philosophy)
-9. [Knowledge management](#knowledge-management)
-10. [Lessons learned](#lessons-learned)
-11. [Architectural decisions (ADRs)](#architectural-decisions-adrs)
-12. [Work-item identity](#work-item-identity)
-13. [Release notes philosophy](#release-notes-philosophy)
-14. [Getting started](#getting-started)
-15. [New contributor guide](#new-contributor-guide)
-16. [Contributing knowledge](#contributing-knowledge)
-17. [Tool reference](#tool-reference)
-18. [Repository layout and where state lives](#repository-layout-and-where-state-lives)
+7. [How the MCP Thinks](#how-the-mcp-thinks)
+8. [Review Philosophy](#review-philosophy)
+9. [Knowledge Management](#knowledge-management)
+10. [Lessons Learned](#lessons-learned)
+11. [Architectural Decisions](#architectural-decisions)
+12. [Work-Item Identity](#work-item-identity)
+13. [Getting Started](#getting-started)
+14. [New Contributor Guide](#new-contributor-guide)
+15. [Contributing Knowledge](#contributing-knowledge)
+16. [Release Notes Philosophy](#release-notes-philosophy)
+17. [Tool Reference](#tool-reference)
+18. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
 19. [Development](#development)
-20. [Status and known limitations](#status-and-known-limitations)
+20. [Status and Known Limitations](#status-and-known-limitations)
+21. [Long-Term Vision](#long-term-vision)
 
 ---
 
-## Core philosophy
+## Core Philosophy
 
 - **Understand before acting.** Load the project's context before touching anything.
 - **Investigate before designing.** Read the real code, tests and config. Cite `file:line`. Never fabricate evidence.
@@ -43,7 +44,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 ---
 
-## Why this exists
+## Why This Exists
 
 | Problem | What it costs | How the MCP addresses it |
 |---|---|---|
@@ -56,7 +57,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 ---
 
-## The revamp: from agent memory to project-owned intelligence
+## Major Revamp: Project Intelligence Layer
 
 | | Before | Now |
 |---|---|---|
@@ -73,7 +74,7 @@ Knowledge belongs to the project, not to a specific engineer or MCP instance. Th
 
 ---
 
-## The Project Intelligence Layer (`.mcp/`)
+## Project Intelligence Layer
 
 ```
 .mcp/
@@ -120,16 +121,21 @@ Entries are validated on load: missing fields, a wrong folder, a bad status, dup
 
 ---
 
-## The workflow
+## MCP Workflow
 
 ```
    /sfn-init   ──►   /sfn-spec   ──►   /sfn-code   ──►   /sfn-review
    Load context      Think             Build             Verify
 ```
 
-| Legacy | Current |
-|---|---|
-| `explore` → `plan` → `code` → `review` | `init` → `spec` → `code` → `review` |
+| | Legacy | Current |
+|---|---|---|
+| 1 | `/explore` | `/init` |
+| 2 | `/plan` | `/spec` |
+| 3 | `/code` | `/code` |
+| 4 | `/review` | `/review` |
+
+Short names are used in prose; the commands you type carry the plugin prefix: `/sfn-init`, `/sfn-spec`, `/sfn-code`, `/sfn-review`. The legacy `/sfn-explore` and `/sfn-plan` no longer exist.
 
 **Why `explore` and `plan` were merged.** In practice they almost always ran back to back: exploration finds the current state, the root cause and the affected areas, and planning immediately uses those findings to define the approach, scope, risks and acceptance criteria. They are one engineering thought process, so they are now one **specification phase** (`/sfn-spec`) that keeps the same analytical depth behind a single command. The old command names no longer exist.
 
@@ -202,7 +208,7 @@ A tool called before its prerequisites have passed returns `⛔ SPEC GATE` and s
 
 ---
 
-## How the MCP thinks
+## How the MCP Thinks
 
 The server and the model have different jobs, and the split is deliberate.
 
@@ -218,7 +224,7 @@ The server and the model have different jobs, and the split is deliberate.
 
 ---
 
-## Review philosophy
+## Review Philosophy
 
 A real review once exposed a gap. A client reported that **a three-line change showed up as a 1,100-line diff** because of an unintended CRLF → LF conversion. The functionality was correct, but the change was unreviewable: the real edit was buried, merge-conflict risk went up, and reviewer trust went down. The review process had checked correctness and missed repository consistency.
 
@@ -253,7 +259,7 @@ Generated, vendor, binary and lock files are excluded, files over 2 MB are skipp
 
 ---
 
-## Knowledge management
+## Knowledge Management
 
 The MCP must not turn its own assumptions into architectural truth. Every piece of project knowledge carries its trust level and its origin.
 
@@ -269,9 +275,22 @@ The MCP must not turn its own assumptions into architectural truth. Every piece 
 - **No match is not "nothing intentional".** If retrieval finds nothing, it says nothing is *recorded*, and invites you to record what you discover.
 - **Knowledge is easy to add** (see [Contributing knowledge](#contributing-knowledge)) and **validated** when loaded.
 
+### How project knowledge is preserved over time
+
+Knowledge that is recorded but not kept alive rots. The design makes it durable:
+
+- **It lives in git.** Entries have history, blame and pull-request review, exactly like code. A wrong entry is a reviewable diff, not a lost conversation.
+- **Supersede, don't rewrite history.** A changed decision is a new entry that `supersedes` the old one. The old entry is marked superseded and stays readable, so the reasoning chain survives.
+- **Trust and origin travel with the text.** Every entry keeps its `status`, `source` and `date`, so a future reader knows how far to trust it and where to verify it.
+- **Rot is detected.** Loading validates the layer: dangling `supersedes`, duplicate ids, missing sources and unreviewed (`proposed`) entries are reported at `/sfn-init`.
+- **It is used, which keeps it honest.** Relevant entries are pulled into `/sfn-spec` and `/sfn-review` automatically, so stale or wrong knowledge gets noticed by the people it affects.
+- **History is versioned too.** Release notes and the snapshots they compare against live in `.mcp/release-history/`, so the evolution of the project is itself recorded.
+- **It is independent of any tool.** Entries are plain markdown with frontmatter, readable without this MCP. A different MCP instance, a different AI tool or a new engineer can read them unchanged.
+- **The agent file stays thin.** Because `AGENTS.md` holds only how to think, project history is never trapped in a prompt that can be replaced.
+
 ---
 
-## Lessons learned
+## Lessons Learned
 
 Lessons from production incidents, reviews, investigations and historical discoveries are stored in `.mcp/lessons-learned/`, so the next engineer (or agent) does not pay for them again.
 
@@ -290,7 +309,7 @@ A good lesson states what happened, what it taught, what to do differently, and 
 
 ---
 
-## Architectural decisions (ADRs)
+## Architectural Decisions
 
 Important architectural decisions belong in `.mcp/adr/`, **not** in `AGENTS.md`. An ADR answers four questions:
 
@@ -303,7 +322,7 @@ ADR ids are numbered automatically (`adr-0001-…`, `adr-0002-…`). When a deci
 
 ---
 
-## Work-item identity
+## Work-Item Identity
 
 A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230` or `EPIC-1230` is metadata. It must read the same in Azure Boards, task folders, intent files, branches, commits and PRs.
 
@@ -313,34 +332,7 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 
 ---
 
-## Release notes philosophy
-
-**A release is a changelog, not a repository scan.** The most important question a reader has is *what changed in this release?* Release notes therefore lead with the delta from the previous version and put the state of the repository last.
-
-`generate_release_notes` snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release's snapshot, and renders:
-
-```
-# Version X.Y.Z
-## Executive Summary                 why the release exists + a quantified, itemised delta
-## Added                             new rules, terminology, mappings, configuration
-## Changed                           behavioural, topology, configuration changes
-## Fixed                             resolved ambiguities and author-reported fixes
-## Removed / Deprecated              services, topics, rules, mappings that no longer apply
-## Risks                             introduced vs resolved
-## Repository Intelligence Updates   new services, topics, relationships, table ownership
-## Rule Changes                      added / modified (before → after) / removed / unchanged
-## Detailed Snapshot                 optional, compact, last, labelled "not a list of changes"
-```
-
-- **Detected, not written.** Everything code can know is computed from the two snapshots. The author supplies only what code cannot (`why` the release exists, fixes, deprecations, discoveries); those appear as labelled *Author notes*. A missing rationale is shown as "not stated", never guessed.
-- **Honest about nothing.** An unchanged release says *No significant changes since vX*, and empty sections say "None". A first release is a baseline and claims no delta.
-- **One event, one place.** A fixed ambiguity appears once, not three times.
-- **Quantified.** Section headings carry counts; the summary says *what* changed, not just how many things.
-- **Version-controlled.** Notes and the snapshots they compare against are written to `.mcp/release-history/` when the layer exists.
-
----
-
-## Getting started
+## Getting Started
 
 **Requirements:** Node.js ≥ 18, and an MCP-capable client (Claude Code / Claude Desktop, Cursor, Cline, …).
 
@@ -383,7 +375,7 @@ A published package (`npx -y secufusion-mcp`) is also supported where it is avai
 
 ---
 
-## New contributor guide
+## New Contributor Guide
 
 1. **Clone the repository** and open it in your MCP-enabled client.
 2. **Run initialization:** `/sfn-init`. It builds or merges the project spec and knowledge graph.
@@ -398,7 +390,7 @@ A published package (`npx -y secufusion-mcp`) is also supported where it is avai
 
 ---
 
-## Contributing knowledge
+## Contributing Knowledge
 
 Knowledge is only valuable if it is easy to add and stays with the repository. Contribute whenever you find:
 
@@ -422,7 +414,45 @@ Good entries say what is true, why, and **what must not be "fixed"**; cite `file
 
 ---
 
-## Tool reference
+## Release Notes Philosophy
+
+**Delta first. Snapshot second.** A release is a changelog, not a repository scan. Release notes exist to answer a short list of questions, in this order:
+
+1. **What changed?**
+2. **What was added?**
+3. **What was fixed?**
+4. **What was removed?**
+5. **What risks changed?**
+
+They tell the story of the version (why it exists, what moved, why it matters) instead of dumping repository metadata. A reader should understand what changed within the first few sections; the current state of the repository comes last, for reference.
+
+
+The most important question a reader has is *what changed in this release?* so notes lead with the delta from the previous version and put the state of the repository last.
+
+`generate_release_notes` snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release's snapshot, and renders:
+
+```
+# Version X.Y.Z
+## Executive Summary                 why the release exists + a quantified, itemised delta
+## Added                             new rules, terminology, mappings, configuration
+## Changed                           behavioural, topology, configuration changes
+## Fixed                             resolved ambiguities and author-reported fixes
+## Removed / Deprecated              services, topics, rules, mappings that no longer apply
+## Risks                             introduced vs resolved
+## Repository Intelligence Updates   new services, topics, relationships, table ownership
+## Rule Changes                      added / modified (before → after) / removed / unchanged
+## Detailed Snapshot                 optional, compact, last, labelled "not a list of changes"
+```
+
+- **Detected, not written.** Everything code can know is computed from the two snapshots. The author supplies only what code cannot (`why` the release exists, fixes, deprecations, discoveries); those appear as labelled *Author notes*. A missing rationale is shown as "not stated", never guessed.
+- **Honest about nothing.** An unchanged release says *No significant changes since vX*, and empty sections say "None". A first release is a baseline and claims no delta.
+- **One event, one place.** A fixed ambiguity appears once, not three times.
+- **Quantified.** Section headings carry counts; the summary says *what* changed, not just how many things.
+- **Version-controlled.** Notes and the snapshots they compare against are written to `.mcp/release-history/` when the layer exists.
+
+---
+
+## Tool Reference
 
 The server exposes the tools below. Most workflow tools record state under `.secufusion/`. Tools that can write anywhere else (your source files or `.mcp/`) are marked **writes**, and each one is guarded: previewed by default, or gated on the user's own words. Detailed parameters are in each tool's description.
 
@@ -493,7 +523,7 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 
 ---
 
-## Repository layout and where state lives
+## Repository Layout and Where State Lives
 
 ```
 .
@@ -542,7 +572,7 @@ Conventions for contributors:
 
 ---
 
-## Status and known limitations
+## Status and Known Limitations
 
 - **Judgments depend on the model.** In clients without MCP sampling, the model that did the work also judges it. Schemas force evidence, but for an independent review use a sampling-capable client or review in a separate session.
 - **`user_statement` cannot prove a quote is genuine.** It stops silent self-approval; review the transcript for destructive decisions.
@@ -552,3 +582,22 @@ Conventions for contributors:
 - **Migration of project knowledge out of `AGENTS.md` is gradual.** Device vs Machine is migrated; other project-specific sections (migration guardrails, platform and service architecture) are candidates.
 - **Phase 7 regression functions** exist as library code but are not exposed as tools; regression context is assembled from blast radius, traceability gaps, experience and test results.
 - **Licence:** ISC (see `package.json`).
+
+---
+
+## Long-Term Vision
+
+The goal is a **self-documenting engineering ecosystem**: one where architecture decisions, lessons learned, implementation patterns, review findings and domain knowledge become **durable project assets** rather than things people remember.
+
+That knowledge should survive:
+
+- **Team changes**
+- **Engineer turnover**
+- **MCP instance replacement**
+- **AI tooling changes**
+
+When any of those happen, nothing needs to be re-explained: the project itself is the source of truth, and a new engineer or a new agent learns the system by reading it.
+
+**Where this stands today.** The structure, validation, relevance-based retrieval, trust model, review integration and release history exist and are tested. Recording a discovery is still prompted by an engineer or the agent; nothing yet captures lessons automatically from every review or incident, and retrieval is keyword-based rather than semantic. Those are the gaps between the current system and the vision, and the Project Intelligence Layer is the foundation both would build on.
+
+The intelligence of the project should travel with the project itself.
