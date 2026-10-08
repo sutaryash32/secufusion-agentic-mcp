@@ -83,5 +83,8 @@ const plugin = JSON.parse(read(".claude-plugin/plugin.json"));
 check("plugin.json describes the init -> spec -> code -> review workflow", /sfn-spec/.test(plugin.description) && /sfn-code/.test(plugin.description) && /sfn-review/.test(plugin.description));
 check("generate_spec_document is registered", tools.has("generate_spec_document"));
 
+const init = cmds["sfn-init.md"];
+check("/sfn-init builds release notes with generate_release_notes (change-driven), not by free-writing", tools.has("generate_release_notes") && /generate_release_notes\(/.test(init) && /changelog, not a repository scan/.test(init) && /previous_spec_path/.test(init) && /Do not paste inventories/.test(init));
+
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);
 process.exit(failures ? 1 : 0);

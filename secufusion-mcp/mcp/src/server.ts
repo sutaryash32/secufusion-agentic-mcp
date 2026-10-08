@@ -14,6 +14,7 @@ import { registerTestsTools } from "./tools_tests.js";
 import { registerDnaTools } from "./tools_dna.js";
 import { registerExploreTools } from "./tools_explore.js";
 import { registerReviewTools } from "./tools_review.js";
+import { registerReleaseTools } from "./tools_release.js";
 import { registerPrompts } from "./prompts.js";
 
 const server = new McpServer({
@@ -29,6 +30,7 @@ registerTestsTools(server);
 registerDnaTools(server);
 registerExploreTools(server);
 registerReviewTools(server);
+registerReleaseTools(server);
 registerPrompts(server);
 
 const transport = new StdioServerTransport();

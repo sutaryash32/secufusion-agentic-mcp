@@ -208,10 +208,31 @@ WORKSPACE-OWNED sections (preserved from scan, updated with new scan results):
    The full history must be preserved so any developer can audit exactly what changed
    on their machine and when.
 
-6. **Generate Human-Readable Release Notes**
-   In addition to appending the JSON changelog, `/sfn-init` MUST generate a Markdown release notes file in a dedicated tracking folder so developers can easily read what changed without parsing JSON.
-   - **Path:** `.secufusion/releases/v{new_version}.md`
-   - **Format:** Write a clean Markdown document summarizing the version bump, new golden rules added, modified terminology, and any workspace topology changes (new services, topics, etc.) discovered during the scan.
+6. **Generate Release Notes (change-driven)**
+   Release notes are a **changelog, not a repository scan**. After the merged spec is written (the next step), call `generate_release_notes` instead of writing the Markdown yourself:
+
+   ```
+   generate_release_notes(
+     workspace_root,
+     version:            "{new_version}",
+     previous_version:   "{old npm version}",
+     previous_spec_path: ".secufusion-project-spec.json.backup-{timestamp}",   # the backup made in step 1
+     why:                "{one or two sentences: why this version exists, from the _changelog entry or the work that prompted it}",
+     fixed:              ["{defects, false positives or wrong mappings corrected, if you know of any}"],
+     removed:            ["{removed or deprecated behaviour the diff cannot show}"],
+     discoveries:        ["{notable things the scan found}"]
+   )
+   ```
+
+   The tool computes the delta against the previous version (services, topics, mappings, rules, terminology, configuration, migrations, risks, knowledge-graph counts)
+   and writes `.secufusion/releases/v{new_version}.md` plus a snapshot the next release will compare against. It leads with the changes (Executive Summary, Added, Changed,
+   Fixed, Removed / Deprecated, Risks, Repository Intelligence Updates, Rule Changes) and puts the Detailed Snapshot last.
+
+   Rules for you:
+   - **Supply `why`** (and only things you actually know for `fixed` / `removed` / `discoveries`). Never pad them; an omitted `why` is shown as "not stated", which is better than a guess.
+   - **Do not write boilerplate** such as "No new Kafka topics discovered": the tool states "None." or "No significant changes" itself when that is true.
+   - **Do not paste inventories** (service lists, topic lists) into the notes; the delta is the story and the snapshot is reference.
+   - On a **fresh install** call it too (without `previous_*`): it records a baseline, so the next merge has something to compare against.
 
 6. **Write merged file**
    Write the final merged JSON to workspace root — with the updated `_changelog` included.

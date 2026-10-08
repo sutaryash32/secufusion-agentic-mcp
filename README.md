@@ -226,6 +226,28 @@ Run everything with `npm test` (Phase 12 scenarios A–F plus two end-to-end MCP
 
 ---
 
+## Release notes: a changelog, not a repository scan
+
+`generate_release_notes` (called by `/sfn-init` after a spec merge) answers "what changed in this release?" first. It snapshots the recorded state (project spec, migrations, knowledge-graph counts), diffs it against the previous release, and renders the delta before any metadata:
+
+```
+# Version X.Y.Z
+## Executive Summary          why the release exists + a quantified, itemised delta ("added: 1 service, 2 topics; changed: ...; 2 resolved, 1 new risk")
+## Added / Changed / Fixed / Removed / Deprecated     each with a count; "None." when empty
+## Risks                      introduced vs resolved (derived from structure: topic with no consumer, table with two owners, unresolved CONFLICT values, manual-review flags)
+## Repository Intelligence Updates    new services, topics, relationships, table ownership, graph growth
+## Rule Changes               added / modified (before → after) / removed / unchanged
+## Detailed Snapshot          optional, compact, last, and labelled "not a list of changes"
+```
+
+- **Detected, not written.** Everything code can know is computed from the two snapshots. The author supplies only what it cannot (`why`, fixes, deprecations, discoveries); those appear as labelled *Author notes* and are counted. An omitted `why` is shown as "not stated", never guessed.
+- **Honest about nothing.** An unchanged release says *"No significant changes since vX"* and each section says "None." A first release is recorded as a baseline and claims no delta.
+- **One event, one place.** A fixed ambiguity (`CONFLICT … → 8081`) appears once, under Fixed; resolved risks live under Risks.
+- **Baseline.** Each release stores `.secufusion/releases/snapshots/vX.json`; the next compares against the newest older one (numeric version order). If none exists, pass the merge's `.secufusion-project-spec.json.backup-*` as `previous_spec_path`.
+- Tolerates both spec shapes in use (object or string `golden_rules`, with or without top-level `kafka_topics`); large inputs are capped ("…and 60 more").
+
+---
+
 ## Work-item identity
 
 A ticket reference (`BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`, `EPIC-1230`, `WI-2847`, a Jira key) is metadata that must read the same in Azure Boards, task folders, intent files, branches, commits and PRs.
