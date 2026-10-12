@@ -109,36 +109,28 @@ Source code changes are the absolute final step. Only after the plan is approved
 
 ---
 
-## ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE
+## ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT
 
-Every file you create must belong somewhere on purpose. Before writing ANY file, classify it into exactly one of three categories and follow that category's rule.
+Before creating any file, decide its type and use that type's single home. Never keep two copies of the same document.
 
-**1. WORK-ITEM ARTIFACTS: `.secufusion/tasks/<ref-folder>/`**
-Anything produced for or about one work item: spec, review notes, ADR, investigation record, PR text, ADO comment, test-run notes, drafts.
-- `<ref-folder>` is the `folder` from `resolve_work_item_ref(work_item, title)`. Never invent or retype a slug.
-- Hand-written files use these names: `adr.md`, `investigation.md`, `review.md`, `ado-comment.md`, `pr-comment.md` (the PR description). A hand-written draft gets a `.draft` suffix (`pr-comment.draft.md`).
-- **NEVER write a file with the name of one an MCP tool generates:** `spec.md` (`generate_spec_document`), `pr-summary.md` (`manage_task`), and `spec.json`, `decisions.json`, `progress.json`, `files-touched.json`, `scenarios.json`. The tool will overwrite you, or you will overwrite its output.
-- DEFAULT for any request to "write a document / summary / ADR / record" with no explicit path: the task folder.
+| Document type | Home | How |
+|---|---|---|
+| ADR / architecture decision, lessons learned, known exception, pattern, operational constraint | `.mcp/<category>/` (`adr`, `architecture`, `patterns`, `known-exceptions`, `lessons-learned`, `operational`) | `record_project_knowledge`; saved as `proposed`; only a person accepts it |
+| Spec, review notes, PR summary, ADO comment, investigation record, test-run notes | `.secufusion/tasks/<ref-folder>/` (`<ref-folder>` is the `folder` from `resolve_work_item_ref`) | MCP generators where they exist; otherwise hand-written with a `.draft` suffix |
+| Source, tests, migrations | The service repo, only those in the spec's "Expected file changes" | Normal edits |
+| Anything else in a repo (docs, config, CI, `.env`, `application.properties`) | **Not** without an explicit user instruction | Ask first |
 
-**2. PROJECT KNOWLEDGE (outlives the work item): `.mcp/` via `record_project_knowledge`** (saved `proposed`). Never hand-write into `.mcp/`.
+**RULES**
 
-**3. REPOSITORY FILES (ship with the code): only these, inside a service repo**
-- a. Source, tests and migrations listed in the spec's expected file changes.
-- b. A document, ONLY if the user names a repo-relative path AND exactly one repo is unambiguous.
-- If the user names a path (for example `docs/architecture/x.md`) and the workspace has more than one repo, or its root is not a repo, **STOP and ask:** "Which repo, or task folder only, or both?" Do not guess, and do not pick a repo because it happens to have a `docs/` folder.
-- Never touch config or environment files (`application.properties`, `.env`, docker-compose, certificates, CI) unless they are in the approved plan.
-
-**PREFLIGHT, before each file write** (say it to the user in one line): `path | category (1/2/3) | why | new or overwrite`.
-- Read an existing file before overwriting it. Never overwrite an MCP-generated file.
-- If the target is inside a git repo, say so: it becomes an uncommitted change.
-- If a repo file is outside the spec's expected file changes: stop, and ask to amend the spec first.
-
-**PROMOTION (task folder to repo): copy, don't move.** The task-folder copy is canonical. Put `Source of record: .secufusion/tasks/<ref-folder>/<file>` as the first line of the repo copy. If you ever move a file, update every reference to it (decision log, project-knowledge entries, spec, PR text) in the same turn.
-
-**BOOKKEEPING, after writing:**
-- Call `manage_task(action: log_file_touched, file_path, change_summary)` for EVERY file you created or changed, including tests and docs, so the generated PR summary is complete.
-- List the task folder and report anything that belongs to this work item but sits outside it.
-- End your message with a table: `path | category | committed? | referenced by`.
+1. **SEARCH BEFORE YOU CREATE.** Call `get_project_knowledge` with the topic's terms and list the task folder. If a document already covers the decision, UPDATE it in place. Never create a second ADR or summary for the same decision. If a decision changes, record a new entry with `supersedes`; do not fork copies.
+2. **ONE SOURCE OF RECORD.** A decision is stated in full in exactly one place (its home above). Everything else links to it by path. Do not paste the same content into the task folder, the repo and the PR text.
+3. **NEVER WRITE A FILE WITH THE NAME OF ONE AN MCP TOOL GENERATES:** `spec.md` (`generate_spec_document`), `pr-summary.md` (`manage_task`), and `spec.json`, `decisions.json`, `progress.json`, `files-touched.json`, `scenarios.json`. Use a `.draft` suffix for hand-written versions (`pr-comment.draft.md`).
+4. **HAND-WRITING INTO `.mcp/`** is for explicit user-directed moves only. When you do it, reuse the existing front matter, change only what is needed, and confirm the MCP can load it (`get_project_knowledge`) before deleting the old copy.
+5. **A USER-GIVEN PATH THAT DOES NOT NAME A REPO** (for example `docs/architecture/x.md`) in a workspace with several repos, or whose root is not a repo: ASK which repo, task folder only, or `.mcp`. Do not guess, and do not pick a repo because it happens to have a `docs/` folder.
+6. **MOVING OR RENAMING A FILE:** update every reference in the same turn (decision log, project-knowledge entries, spec, plan, PR text, files-touched), then search the whole workspace for the old path and report "none left".
+7. **PREFLIGHT,** one line per file before writing: `path | home (from the table) | why | new or overwrite`. Read any existing file before overwriting. Never touch environment or config files unless they are in the approved plan.
+8. **BOOKKEEPING:** after writing, call `manage_task(action: log_file_touched, file_path, change_summary)` for EVERY file created or changed, including tests and docs, so the generated PR summary is complete. List the task folder and report anything that belongs to this work item but sits outside its home.
+9. **END EVERY TURN THAT CREATED FILES WITH A TABLE:** `path | home | committed? | referenced by`.
 
 ---
 

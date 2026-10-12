@@ -189,7 +189,7 @@ If a task folder exists, `files-touched.json` is authoritative. Otherwise determ
 Your list includes every modified source file, every test file for those sources, every SQL migration, and every DTO, model, event or config file changed.
 **Do not start reviewing until the file list is confirmed.**
 
-Before writing ANY file, follow **ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE** in `.agents/AGENTS.md`: classify it (work-item artifact, project knowledge, or repository file), state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`. Review notes and drafts belong in the task folder (`review.md`); a review never writes into a service repo.
+Before writing ANY file, follow **ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT** in `.agents/AGENTS.md`: decide the document's type and use its single home, search before you create, state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`. Review notes belong in the task folder (`review.draft.md`); a decision or lesson the review surfaces is offered to `record_project_knowledge`, not written as a file; a review never writes into a service repo.
 
 ---
 

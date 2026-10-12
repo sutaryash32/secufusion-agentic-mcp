@@ -91,7 +91,7 @@ Read `.agents/claude.md` and check `<MEMORY>`. If `DNA_LOADED` is `false` or mis
 
 ## Step 5 — Design: the implementation strategy
 
-Read `.agents/planner.md` for the Planner Persona. Before writing ANY file, follow **ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE** in `.agents/AGENTS.md`: classify it (work-item artifact, project knowledge, or repository file), state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`.
+Read `.agents/planner.md` for the Planner Persona. Before writing ANY file, follow **ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT** in `.agents/AGENTS.md`: decide the document's type and use its single home, search before you create, state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`.
 
 1. `manage_implementation_plan action=create` (`requirement_id` = the same reference) covering: affected services and **expected file changes**, API/DB/event/frontend/extension changes, security implications,
    ordered implementation steps, test obligations, validation requirements, **risks and dependencies**, assumptions, unknowns. Every acceptance criterion needs at least one step and one test obligation.

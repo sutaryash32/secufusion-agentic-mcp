@@ -16,7 +16,7 @@ Task: **$ARGUMENTS**
    > ❌ No approved specification found for `$ARGUMENTS`. Please run `/sfn-spec $ARGUMENTS` first.
    Do not improvise a plan here. Investigation and design belong to `/sfn-spec`.
 3. Read `.agents/coder.md` to load the **Coder Persona** — your behaviour for this phase is governed by those instructions.
-4. Before writing ANY file, follow **ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE** in `.agents/AGENTS.md`: classify it (work-item artifact, project knowledge, or repository file), state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`.
+4. Before writing ANY file, follow **ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT** in `.agents/AGENTS.md`: decide the document's type and use its single home, search before you create, state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`.
 
 ## Phase 1 — Load Rejected Patterns Memory
 
