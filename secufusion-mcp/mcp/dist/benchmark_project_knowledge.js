@@ -2,7 +2,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
-import { loadKnowledge, queryKnowledge, createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd, parseFrontmatter, serializeEntry, renderEntry, AGENTS_MD_SOFT_LIMIT, CATEGORIES, } from "./project_knowledge.js";
+import { loadKnowledge, queryKnowledge, createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd, parseFrontmatter, serializeEntry, renderEntry, AGENTS_MD_SOFT_LIMIT, CATEGORIES, parseEntryText, validateAdrBody, } from "./project_knowledge.js";
+/** A body that follows the ADR format standard. */
+const adrBody = (summary, status = "Proposed") => `> ${summary}\n\n## Decision Snapshot\n\n**Problem**\n\nThe problem.\n\n**Decision**\n\nThe decision.\n\n**Outcome**\n\nThe outcome.\n\n**Status**\n\n${status}\n\n**Related Work**\n\n- STORY-1\n\n---\n\n## Executive Summary\n\nWhy it mattered.\n\n## Context\n\nc\n\n## Problem Statement\n\nps\n\n## Investigation Summary\n\nis\n\n## Options Considered\n\noc\n\n## Decision\n\nd\n\n## Consequences\n\n### Benefits\n\nb\n\n### Trade-Offs\n\nt\n\n### Risks\n\nr\n\n### Future Reconsideration Criteria\n\nf\n\n## Verification\n\nv\n\n## References\n\n- ref\n`;
 /** The repository is its own source of intelligence: knowledge is project-owned, validated, and found by relevance. */
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -57,9 +59,34 @@ const entry = (extra = "", body = "Body text.") => `---\nid: "e1"\ntitle: "T"\nc
     catch (e) {
         return /already exists/.test(e.message);
     } })());
-    const adr1 = createEntry(r, { category: "adr", title: "Use Kafka for deletion events", body: "Decision...", source: "design review" });
-    const adr2 = createEntry(r, { category: "adr", title: "Manual migrations", body: "Decision...", source: "design review" });
+    const adr1 = createEntry(r, { category: "adr", title: "Use Kafka for deletion events", body: adrBody("Deletion events travel over Kafka so every service converges."), source: "design review" });
+    const adr2 = createEntry(r, { category: "adr", title: "Manual migrations", body: adrBody("Migrations are applied manually before deploy."), source: "design review" });
     check("ADRs are numbered sequentially", adr1.id === "adr-0001-use-kafka-for-deletion-events" && adr2.id === "adr-0002-manual-migrations", `${adr1.id} ${adr2.id}`);
+    // ADR format standard: a document first (title, executive summary), metadata last and invisible
+    {
+        const text = fs.readFileSync(path.join(r, adr1.file), "utf8");
+        check("an ADR opens with its title and one-sentence summary, not metadata", text.startsWith("# ADR-0001: Use Kafka for deletion events\n\n> Deletion events travel over Kafka") && !/^---/.test(text) && !/^id:/m.test(text.split("<!-- mcp:entry")[0]), text.slice(0, 160));
+        check("its metadata sits in a trailing comment (invisible when rendered)", /<!-- mcp:entry[\s\S]*\bid: "adr-0001-use-kafka-for-deletion-events"[\s\S]*-->\s*$/.test(text), text.slice(-300));
+        const loaded = loadKnowledge(r).entries.find((e) => e.id === adr1.id);
+        check("it loads back with its metadata, and the body is the readable document", loaded.title === "Use Kafka for deletion events" && loaded.status === "proposed" && loaded.category === "adr" && loaded.body.startsWith("# ADR-0001:") && !loaded.body.includes("mcp:entry"), JSON.stringify(loaded).slice(0, 200));
+        check("the Decision Snapshot Status line matches the recorded status at creation", /\*\*Status\*\*\s+Proposed/.test(text));
+        setStatus(r, adr1.id, "accepted");
+        const acc = fs.readFileSync(path.join(r, adr1.file), "utf8");
+        check("accepting an ADR updates both the metadata and the readable Status line, touching nothing else", /^status: accepted$/m.test(acc) && /\*\*Status\*\*\s+Accepted/.test(acc) && acc.replace("status: accepted", "status: proposed").replace("Accepted", "Proposed") === text, acc.slice(-200));
+        const bad = (() => { try {
+            createEntry(r, { category: "adr", title: "Sloppy", body: "Decision...", source: "s" });
+            return "";
+        }
+        catch (e) {
+            return e.message;
+        } })();
+        check("an ADR that does not follow the format is refused, naming what is missing", /does not follow the ADR format standard/.test(bad) && /blockquote/.test(bad) && /missing section `## Executive Summary`/.test(bad) && /Do not start with metadata/.test(bad), bad.slice(0, 300));
+        check("an ADR that starts with metadata is refused", validateAdrBody("id: adr-0003\ntitle: x\nstatus: proposed\n\n" + adrBody("s")).some((p) => /begins with metadata/.test(p)) && validateAdrBody("---\nid: x\n---\n" + adrBody("s")).some((p) => /begins with metadata/.test(p)));
+        check("a body that supplies its own H1 does not get a second title", (() => { const e = createEntry(r, { category: "adr", title: "Own heading", body: "# Something else\n\n" + adrBody("Own heading summary."), source: "s" }); const t = fs.readFileSync(path.join(r, e.file), "utf8"); return t.startsWith("# ADR-0003: Own heading\n") && (t.match(/^# /gm) ?? []).length === 1; })());
+        const legacy = '---\nid: "legacy-adr"\ntitle: "Legacy"\ncategory: adr\nstatus: accepted\ntags: []\napplies_to: []\nsource: "old"\ndate: 2026-01-01\nsupersedes: []\n---\n\nOld style body.\n';
+        check("an existing ADR with front matter at the top still loads", parseEntryText(legacy)?.meta.id === "legacy-adr" && !!parseEntryText(legacy)?.body.startsWith("Old style body"));
+        check("other categories keep front matter at the top", fs.readFileSync(path.join(r, a.file), "utf8").startsWith("---\nid:"));
+    }
     const old = createEntry(r, { category: "patterns", title: "Old pattern", body: "x", source: "s" });
     const fresh2 = createEntry(r, { category: "patterns", title: "New pattern", body: "y", source: "s", supersedes: [old.id] });
     const m2 = loadKnowledge(r);

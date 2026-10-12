@@ -138,6 +138,7 @@ export function registerKnowledgeTools(server: any): void {
   server.tool(
     "record_project_knowledge",
     "Adds ONE piece of project knowledge to the repository (.mcp/<category>/<id>.md) so it outlives this conversation, this agent and this engineer: a terminology trap, an ADR, a pattern, an intentional exception, a lesson, an operational constraint. " +
+    "An ADR (category `adr`) must read like an engineering design narrative, not a database record: pass a `body` that opens with a one-sentence `>` summary, never with metadata or YAML-looking fields; the tool writes the `# ADR-NNNN: <Decision Title>` heading itself and stores its metadata at the end of the file. Required: ## Decision Snapshot (**Problem**, **Decision**, **Outcome**, **Status**, **Related Work**), ## Executive Summary, ## Context, ## Problem Statement, ## Investigation Summary, ## Options Considered, ## Decision, ## Consequences (### Benefits, ### Trade-Offs, ### Risks, ### Future Reconsideration Criteria), ## Verification, ## References. The first page must answer: what problem, why it mattered, what was chosen, why. " +
     "It is saved as `proposed` (visible but labelled unreviewed) unless the user explicitly confirms it, in which case pass user_statement and status=accepted. " +
     "`source` is mandatory: say where this came from. Record what is TRUE and WHY, and what must NOT be 'fixed'. Never record a guess as knowledge.",
     {

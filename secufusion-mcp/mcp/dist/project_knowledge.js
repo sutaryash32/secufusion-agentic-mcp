@@ -48,23 +48,40 @@ function parseValue(raw) {
     }
     return v.replace(/^'(.*)'$/, "$1");
 }
-export function parseFrontmatter(text) {
-    const m = FM.exec(text);
-    if (!m)
-        return null;
+function parseMeta(block) {
     const meta = {};
-    for (const line of m[1].split(/\r?\n/)) {
+    for (const line of block.split(/\r?\n/)) {
         const kv = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
         if (kv)
             meta[kv[1]] = parseValue(kv[2]);
     }
-    return { meta, body: text.slice(m[0].length).replace(/^\s+/, "") };
+    return meta;
+}
+export function parseFrontmatter(text) {
+    const m = FM.exec(text);
+    if (!m)
+        return null;
+    return { meta: parseMeta(m[1]), body: text.slice(m[0].length).replace(/^\s+/, "") };
+}
+/**
+ * Metadata for human-first documents (ADRs) sits at the END of the file in an HTML comment, so the reader meets the title and
+ * the executive summary, not machine fields. It is invisible when the Markdown is rendered.
+ */
+const TRAILER = /\r?\n[ \t]*<!--[ \t]*mcp:entry[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*-->[ \t]*(?:\r?\n)*$/;
+/** An entry's metadata and body, from front matter at the top (any category) or the `mcp:entry` block at the end. */
+export function parseEntryText(text) {
+    const fm = parseFrontmatter(text);
+    if (fm)
+        return fm;
+    const m = TRAILER.exec(text);
+    if (!m)
+        return null;
+    return { meta: parseMeta(m[1]), body: text.slice(0, m.index).replace(/^﻿/, "").trim() };
 }
 const asList = (v) => (Array.isArray(v) ? v.map(String) : typeof v === "string" && v ? [v] : []);
-export function serializeEntry(e) {
+function metaLines(e) {
     const j = (x) => JSON.stringify(x);
     return [
-        "---",
         `id: ${j(e.id)}`,
         `title: ${j(e.title)}`,
         `category: ${e.category}`,
@@ -74,11 +91,51 @@ export function serializeEntry(e) {
         `source: ${j(e.source)}`,
         `date: ${e.date}`,
         `supersedes: ${j(e.supersedes)}`,
-        "---",
-        "",
-        e.body.trim(),
-        "",
-    ].join("\n");
+    ];
+}
+export function serializeEntry(e) {
+    // ADRs are documents first: title and executive summary on top, machine metadata in a trailing comment.
+    if (e.category === "adr") {
+        return [e.body.trim(), "", "<!-- mcp:entry", "Machine-readable metadata for the MCP project knowledge layer. Change the status with set_knowledge_status.", ...metaLines(e), "-->", ""].join("\n");
+    }
+    return ["---", ...metaLines(e), "---", "", e.body.trim(), ""].join("\n");
+}
+// ── ADR format: a design narrative, not a database record ───────────────────
+export const ADR_SECTIONS = ["Decision Snapshot", "Executive Summary", "Context", "Problem Statement", "Investigation Summary", "Options Considered", "Decision", "Consequences", "Verification", "References"];
+export const ADR_SNAPSHOT_FIELDS = ["Problem", "Decision", "Outcome", "Status", "Related Work"];
+export const ADR_CONSEQUENCE_PARTS = ["Benefits", "Trade-Offs", "Risks", "Future Reconsideration Criteria"];
+const STATUS_LABEL = { proposed: "Proposed", accepted: "Accepted", superseded: "Superseded", deprecated: "Deprecated" };
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+/** The body without a leading H1: the tool owns the title line (`# ADR-NNNN: Title`). */
+export function stripAdrTitle(body) {
+    return body.replace(/^\s*#[ \t]+[^\r\n]*\r?\n/, "").trim();
+}
+/** What is wrong with an ADR body, if anything. The first page must answer: what problem, why it mattered, what was chosen, why. */
+export function validateAdrBody(body) {
+    const b = stripAdrTitle(body);
+    const problems = [];
+    const first = b.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+    if (/^(---|[A-Za-z_][\w-]*\s*:\s)/.test(first.trim()))
+        problems.push("it begins with metadata (YAML-looking fields). Start with a one-sentence summary; the MCP stores its metadata at the end of the file");
+    else if (!first.trim().startsWith(">"))
+        problems.push("it must open with a one-sentence summary as a blockquote (`> ...`) directly under the title: the problem being solved and the selected approach");
+    for (const s of ADR_SECTIONS)
+        if (!new RegExp(`^##[ \\t]+${esc(s)}[ \\t]*$`, "m").test(b))
+            problems.push(`missing section \`## ${s}\``);
+    for (const f of ADR_SNAPSHOT_FIELDS)
+        if (!new RegExp(`^\\*\\*${esc(f)}\\*\\*[ \\t]*$`, "m").test(b))
+            problems.push(`Decision Snapshot is missing \`**${f}**\``);
+    for (const c of ADR_CONSEQUENCE_PARTS)
+        if (!new RegExp(`^###[ \\t]+${esc(c)}[ \\t]*$`, "m").test(b))
+            problems.push(`Consequences is missing \`### ${c}\``);
+    return problems;
+}
+/** Keep the human-readable **Status** line in the Decision Snapshot in step with the recorded status. */
+export function syncStatusLine(body, status) {
+    return body.replace(/(^\*\*Status\*\*[ \t]*\r?\n+)([^\r\n]+)/m, (_m, head) => head + (STATUS_LABEL[status] ?? status));
+}
+export function composeAdr(num, title, body, status) {
+    return `# ADR-${num}: ${title.trim()}\n\n${syncStatusLine(stripAdrTitle(body), status)}\n`;
 }
 // ── loading and validation ──────────────────────────────────────────────────
 function walk(dir, out = []) {
@@ -103,9 +160,9 @@ export function loadKnowledge(workspaceRoot) {
         for (const abs of walk(path.join(root, cat))) {
             const rel = path.relative(workspaceRoot, abs).split(path.sep).join("/");
             const problem = (code, message) => model.problems.push({ file: rel, code, message });
-            const parsed = parseFrontmatter(fs.readFileSync(abs, "utf-8"));
+            const parsed = parseEntryText(fs.readFileSync(abs, "utf-8"));
             if (!parsed) {
-                problem("MISSING_FRONTMATTER", "No frontmatter block. Add id, title, status and source.");
+                problem("MISSING_FRONTMATTER", "No metadata block: add front matter at the top, or an `<!-- mcp:entry ... -->` block at the end, with id, title, status and source.");
                 continue;
             }
             const { meta, body } = parsed;
@@ -246,22 +303,97 @@ export const TEMPLATE_BODIES = {
     },
     adr: {
         status: "proposed", tags: '["decision"]',
-        guide: `# <The decision, stated as a fact>
+        guide: `# ADR-XXXX: <Decision Title>
+
+> One concise sentence: the architectural problem being solved and the selected approach.
+
+## Decision Snapshot
+
+**Problem**
+
+One paragraph explaining the architecture problem.
+
+**Decision**
+
+One paragraph explaining the selected solution.
+
+**Outcome**
+
+One paragraph explaining the resulting behavior.
+
+**Status**
+
+Proposed
+
+**Related Work**
+
+- STORY-XXXX
+- PR-XXXX
+- Investigation document
+- Related ADRs
+
+---
+
+## Executive Summary
+
+A concise business and engineering summary. A reviewer should understand what problem existed, why it mattered, what was decided and why, without reading the rest.
+
+---
+
+## Context
+
+The original architecture and the circumstances.
+
+---
+
+## Problem Statement
+
+The architectural concern that triggered the investigation.
+
+---
+
+## Investigation Summary
+
+The key discoveries that led to the decision.
+
+---
+
+## Options Considered
+
+Every alternative, and why each was accepted or rejected.
+
+---
 
 ## Decision
-What was decided.
 
-## Why
-The reasoning and the problem it solved.
+The selected architecture.
 
-## Alternatives rejected
-What else was considered and why it lost.
-
-## Constraints
-What limited the choice (technical, organisational, time).
+---
 
 ## Consequences
-What this makes easier, what it makes harder, and when to revisit it.`,
+
+### Benefits
+
+### Trade-Offs
+
+### Risks
+
+### Future Reconsideration Criteria
+
+---
+
+## Verification
+
+Tests, reviews, validation and acceptance criteria.
+
+---
+
+## References
+
+- Investigation document
+- Story
+- Review notes
+- Related ADRs`,
     },
     patterns: {
         status: "proposed", tags: '["convention"]',
@@ -322,6 +454,17 @@ function writeTemplates(root) {
         if (fs.existsSync(file))
             continue;
         const t = TEMPLATE_BODIES[c];
+        if (c === "adr") {
+            // an ADR template is a document first; its metadata sits at the end, like a real ADR's
+            fs.writeFileSync(file, [
+                t.guide, "", "<!-- mcp:entry", "Machine-readable metadata. Replace these values; the MCP writes this block itself when you use record_project_knowledge.",
+                'id: "adr-0000-replace-with-a-short-unique-id"', 'title: "Replace with the decision title"', "category: adr", `status: ${t.status}`, `tags: ${t.tags}`,
+                'applies_to: ["a term people search for", "path/glob/**"]', 'source: "Ticket, PR, incident, person or file this came from (required)"',
+                `date: ${new Date().toISOString().slice(0, 10)}`, "supersedes: []", "-->", "",
+            ].join("\n"));
+            created.push(`${KNOWLEDGE_DIR}/templates/${c}.md`);
+            continue;
+        }
         fs.writeFileSync(file, [
             "---",
             'id: "replace-with-a-short-unique-id"',
@@ -394,11 +537,23 @@ export function createEntry(workspaceRoot, n) {
     for (const s of n.supersedes ?? [])
         if (!model.entries.some((e) => e.id === s))
             throw new Error(`Cannot supersede '${s}': no such entry.`);
+    const status = n.status ?? "proposed";
+    let body = n.body;
+    if (n.category === "adr") {
+        const problems = validateAdrBody(n.body);
+        if (problems.length) {
+            throw new Error(`The ADR does not follow the ADR format standard:\n- ${problems.join("\n- ")}\n\n` +
+                `An ADR reads like an engineering design narrative. Under the title (the tool writes \`# ADR-NNNN: <Decision Title>\`) give: a one-sentence \`>\` summary; ` +
+                `## ${ADR_SECTIONS.join(", ## ")}. The Decision Snapshot holds ${ADR_SNAPSHOT_FIELDS.map((f) => `**${f}**`).join(", ")}; Consequences holds ${ADR_CONSEQUENCE_PARTS.map((f) => `### ${f}`).join(", ")}. ` +
+                `The first page must answer: what problem, why it mattered, what was chosen, why. Do not start with metadata; the MCP stores it at the end of the file.`);
+        }
+        body = composeAdr(/^adr-(\d+)/.exec(id)?.[1] ?? nextAdrNumber(model), n.title, n.body, status);
+    }
     scaffoldKnowledge(workspaceRoot);
     const entry = {
-        id, title: n.title.trim(), category: n.category, status: n.status ?? "proposed",
+        id, title: n.title.trim(), category: n.category, status,
         tags: n.tags ?? [], applies_to: n.applies_to ?? [], source: n.source.trim(),
-        date: new Date().toISOString().slice(0, 10), supersedes: n.supersedes ?? [], body: n.body,
+        date: new Date().toISOString().slice(0, 10), supersedes: n.supersedes ?? [], body,
     };
     const rel = `${KNOWLEDGE_DIR}/${n.category}/${id}.md`;
     const abs = path.join(workspaceRoot, rel);
@@ -415,7 +570,9 @@ export function setStatus(workspaceRoot, id, status) {
         throw new Error(`No knowledge entry with id '${id}'.`);
     const abs = path.join(workspaceRoot, e.file);
     const raw = fs.readFileSync(abs, "utf-8");
-    const next = raw.replace(/^(status:\s*).*$/m, `$1${status}`);
+    let next = raw.replace(/^(status:\s*).*$/m, `$1${status}`);
+    if (e.category === "adr")
+        next = syncStatusLine(next, status); // the Decision Snapshot's readable Status line follows
     if (next === raw && e.status !== status)
         throw new Error(`Could not update status in ${e.file}.`);
     fs.writeFileSync(abs, next, "utf-8");

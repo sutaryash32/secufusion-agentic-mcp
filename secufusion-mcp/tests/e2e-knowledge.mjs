@@ -81,6 +81,24 @@ r = await call("load_project_knowledge", { workspace_root: W });
 check("a malformed entry is reported rather than silently ignored", r.text.includes("MISSING_FRONTMATTER") && r.text.includes("broken.md"), r.text);
 fs.rmSync(path.join(dir, ".mcp", "patterns", "broken.md"));
 
+// ── ADRs: a design narrative first, metadata last ──────────────────────────
+{
+    const adrBody = (summary) => `> ${summary}\n\n## Decision Snapshot\n\n**Problem**\n\nReplicas diverge.\n\n**Decision**\n\nReconcile from the database.\n\n**Outcome**\n\nAll replicas converge.\n\n**Status**\n\nProposed\n\n**Related Work**\n\n- STORY-1093\n\n---\n\n## Executive Summary\n\nIt mattered because retention jobs ran twice.\n\n## Context\n\nc\n\n## Problem Statement\n\nps\n\n## Investigation Summary\n\nis\n\n## Options Considered\n\noc\n\n## Decision\n\nd\n\n## Consequences\n\n### Benefits\n\nb\n\n### Trade-Offs\n\nt\n\n### Risks\n\nr\n\n### Future Reconsideration Criteria\n\nf\n\n## Verification\n\nv\n\n## References\n\n- ref\n`;
+    let r = await call("record_project_knowledge", { workspace_root: W, category: "adr", title: "Sloppy ADR", body: "id: adr-0009\ntitle: x\nstatus: proposed\n\nWe decided things.", source: "test" });
+    check("an ADR that opens with metadata and skips the structure is refused, with what to fix", r.err && r.text.includes("does not follow the ADR format standard") && r.text.includes("begins with metadata") && r.text.includes("missing section `## Executive Summary`"), r.text.slice(0, 400));
+    r = await call("record_project_knowledge", { workspace_root: W, category: "adr", title: "Preventing Scheduler State Divergence Across Events API Replicas", body: adrBody("Ensuring all replicas derive identical scheduler state from the database using reconciliation."), source: "STORY-1093 investigation" });
+    check("a compliant ADR is recorded as PROPOSED", !r.err && r.text.includes("PROPOSED") && r.text.includes(".mcp/adr/adr-"), r.text);
+    const adrFile = fs.readdirSync(path.join(dir, ".mcp", "adr")).find((f) => f.includes("scheduler-state"));
+    const adrText = adrFile ? fs.readFileSync(path.join(dir, ".mcp", "adr", adrFile), "utf8") : "";
+    check("the file reads like a document: title, summary, executive summary first, metadata last", /^# ADR-\d{4}: Preventing Scheduler State Divergence Across Events API Replicas\n\n> Ensuring all replicas/.test(adrText) && !adrText.startsWith("---") && adrText.indexOf("## Executive Summary") < adrText.indexOf("<!-- mcp:entry") && adrText.trimEnd().endsWith("-->"), adrText.slice(0, 200));
+    r = await call("get_project_knowledge", { workspace_root: W, terms: ["scheduler state divergence replicas"] });
+    check("retrieval shows the readable ADR with its summary first", r.text.includes("# ADR-") && r.text.includes("> Ensuring all replicas") && !r.text.includes("mcp:entry"), r.text.slice(0, 500));
+    const adrId = adrFile.replace(/\.md$/, "");
+    r = await call("set_knowledge_status", { workspace_root: W, id: adrId, status: "accepted", user_statement: "Yes, this is the decision we took." });
+    const accepted = fs.readFileSync(path.join(dir, ".mcp", "adr", adrFile), "utf8");
+    check("accepting it updates the readable Status line and the metadata together", !r.err && /\*\*Status\*\*\s+Accepted/.test(accepted) && /^status: accepted$/m.test(accepted), r.text + accepted.slice(-250));
+}
+
 // ── release history now lives with the project ─────────────────────────────
 r = await call("generate_release_notes", { workspace_root: W, version: "1.0.0", why: "baseline" });
 check("with a .mcp/ layer, release notes and snapshots are written under .mcp/release-history (version-controlled)", fs.existsSync(path.join(dir, ".mcp", "release-history", "v1.0.0.md")) && fs.existsSync(path.join(dir, ".mcp", "release-history", "snapshots", "v1.0.0.json")) && !fs.existsSync(path.join(dir, ".secufusion", "releases", "v1.0.0.md")), r.text.slice(0, 300));

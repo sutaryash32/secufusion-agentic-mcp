@@ -148,6 +148,29 @@ supersedes: []
 What is true, why, and what must NOT be "fixed".
 ```
 
+**ADRs are documents first.** An ADR is an engineering design narrative for engineers, reviewers, architects and future maintainers, so it never opens with metadata. The file starts with the title (`# ADR-0003: Preventing Scheduler State Divergence Across Events API Replicas`) and a one-sentence summary, and the same fields sit in an invisible `<!-- mcp:entry ... -->` comment at the **end** of the file. The loader reads either form, so older entries with front matter at the top keep working.
+
+The required structure answers, on the first page, *what problem did we have, why was it important, what did we choose, why*:
+
+```markdown
+# ADR-XXXX: <Decision Title>
+
+> One sentence: the architectural problem and the selected approach.
+
+## Decision Snapshot        (**Problem**, **Decision**, **Outcome**, **Status**, **Related Work**)
+## Executive Summary
+## Context
+## Problem Statement
+## Investigation Summary
+## Options Considered
+## Decision
+## Consequences             (### Benefits, ### Trade-Offs, ### Risks, ### Future Reconsideration Criteria)
+## Verification
+## References
+```
+
+`record_project_knowledge` refuses an ADR that does not follow this structure and lists what is missing. The tool writes the title and the metadata; the readable **Status** line in the Decision Snapshot follows `set_knowledge_status`.
+
 Entries are validated on load: missing fields, a wrong folder, a bad status, duplicate ids, dangling `supersedes` and empty bodies are reported, never silently ignored.
 
 **It is retrieved by relevance, not dumped.** `/sfn-init` builds a compact index of the whole layer; during a task, `get_project_knowledge` returns only the entries that apply, ranked by the ticket's terms, the files involved and tags, with the reason each matched. Generic words in a free-text ticket do not drag in unrelated entries.

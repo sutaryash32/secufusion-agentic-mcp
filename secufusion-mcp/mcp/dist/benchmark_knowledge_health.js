@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { discoverEntities, computeCoverage, buildHealth, renderHealth, renderSuggestions, findTribalCandidates, findRepeated, recordLookup, readLookups, significantTerms, COVERAGE_DEFINITION, } from "./knowledge_health.js";
-import { createEntry, loadKnowledge, scaffoldKnowledge, autoScaffoldEnabled, parseFrontmatter, CATEGORIES, inspectAgentsMd, AGENTS_MD_SOFT_LIMIT } from "./project_knowledge.js";
+import { createEntry, loadKnowledge, scaffoldKnowledge, autoScaffoldEnabled, parseEntryText, CATEGORIES, inspectAgentsMd, AGENTS_MD_SOFT_LIMIT } from "./project_knowledge.js";
 /** Coverage is documented vs discovered entities, per dimension. Never an arbitrary percentage. */
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -227,10 +227,11 @@ const dim = (cov, d) => cov.find((c) => c.dimension === d);
     const created = scaffoldKnowledge(root);
     check("scaffold creates one template per category under .mcp/templates/", CATEGORIES.every((c) => fs.existsSync(path.join(root, ".mcp", "templates", `${c}.md`))) && created.filter((c) => c.includes("templates/")).length === 6, created.join());
     check("each template is a valid entry skeleton that says what a good entry answers", CATEGORIES.every((c) => {
-        const p = parseFrontmatter(fs.readFileSync(path.join(root, ".mcp", "templates", `${c}.md`), "utf8"));
+        const p = parseEntryText(fs.readFileSync(path.join(root, ".mcp", "templates", `${c}.md`), "utf8"));
         return !!p && p.meta.category === c && p.meta.status === "proposed" && p.body.length > 150;
     }));
-    check("the ADR template asks for decision, why, alternatives and constraints", /Decision[\s\S]*Why[\s\S]*Alternatives rejected[\s\S]*Constraints/.test(fs.readFileSync(path.join(root, ".mcp", "templates", "adr.md"), "utf8")));
+    const adrTemplate = fs.readFileSync(path.join(root, ".mcp", "templates", "adr.md"), "utf8");
+    check("the ADR template is a document first (title and summary, metadata last) with the full ADR structure", /^# ADR-XXXX: <Decision Title>\n\n> /.test(adrTemplate) && !adrTemplate.startsWith("---") && ["Decision Snapshot", "Executive Summary", "Context", "Problem Statement", "Investigation Summary", "Options Considered", "Consequences", "Future Reconsideration Criteria", "Verification", "References"].every((h) => adrTemplate.includes(h)) && adrTemplate.indexOf("## References") < adrTemplate.indexOf("<!-- mcp:entry"));
     check("the exception template says what NOT to change", /Do not change it/.test(fs.readFileSync(path.join(root, ".mcp", "templates", "known-exceptions.md"), "utf8")));
     check("templates are not mistaken for knowledge entries", loadKnowledge(root).entries.length === 0 && loadKnowledge(root).problems.length === 0);
     fs.writeFileSync(path.join(root, ".mcp", "templates", "adr.md"), "team's own template");

@@ -358,6 +358,8 @@ Rules:
 Not a file you write. A decision with lasting consequences is recorded **once**, in `.mcp/adr/`, with `record_project_knowledge` (category `adr`, saved `proposed`, with its source; only a person accepts it).
 First search with `get_project_knowledge`: if an ADR already covers the decision, update it, or record a new entry with `supersedes`. Never create a second ADR for the same decision. The other documents link to it by id.
 
+**ADR format standard.** An ADR is an engineering design narrative for engineers, reviewers, architects and future maintainers, not a database record. Never start it with metadata or YAML-looking fields (`id:`, `title:`, `status:`, `date:`); the tool writes the `# ADR-NNNN: <Decision Title>` heading and keeps the metadata at the end of the file. Your `body` opens with a one-sentence `>` summary of the problem and the selected approach, then: `## Decision Snapshot` (**Problem**, **Decision**, **Outcome**, **Status**, **Related Work**), `## Executive Summary`, `## Context`, `## Problem Statement`, `## Investigation Summary`, `## Options Considered`, `## Decision`, `## Consequences` (`### Benefits`, `### Trade-Offs`, `### Risks`, `### Future Reconsideration Criteria`), `## Verification`, `## References`. The first page must answer: what problem did we have, why was it important, what did we choose, why did we choose it. The tool refuses an ADR that does not follow this structure and lists what is missing.
+
 ### Design Investigation Record (`investigation.draft.md`, in the task folder)
 
 A permanent document that preserves **the reasoning journey** of a piece of work: not what was changed (the PR summary says that) and not the decision alone (the ADR says that), but how the team got there and why.
