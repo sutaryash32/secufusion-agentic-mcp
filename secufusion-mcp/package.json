@@ -1,6 +1,6 @@
 {
   "name": "secufusion-mcp",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "type": "module",
   "description": "Project-level spec driven AI workflow tooling for SecuFusion, MCP server - developer workflow tooling with guardrails",
   "main": "mcp/dist/server.js",

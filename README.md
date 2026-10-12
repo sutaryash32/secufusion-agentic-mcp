@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.3.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, and 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings. 73 tools. See [What's New in 4.3.0](#whats-new-in-430) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.4.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, and 4.4.0 makes `/sfn-review` spec-aware and experience-aware. 73 tools. See [What's New in 4.4.0](#whats-new-in-440) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,21 +23,22 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.3.0](#whats-new-in-430)
-15. [What's New in 4.2.0](#whats-new-in-420)
-16. [What's New in 4.1.0](#whats-new-in-410)
-17. [What's New in 4.0.0](#whats-new-in-400)
-18. [Upgrading from 3.x](#upgrading-from-3x)
-19. [Getting Started](#getting-started)
-20. [New Contributor Guide](#new-contributor-guide)
-21. [Contributing Knowledge](#contributing-knowledge)
-22. [Release Notes Philosophy](#release-notes-philosophy)
-23. [Tool Reference](#tool-reference)
-24. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-25. [Development](#development)
-26. [Status and Known Limitations](#status-and-known-limitations)
-27. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-28. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.4.0](#whats-new-in-440)
+15. [What's New in 4.3.0](#whats-new-in-430)
+16. [What's New in 4.2.0](#whats-new-in-420)
+17. [What's New in 4.1.0](#whats-new-in-410)
+18. [What's New in 4.0.0](#whats-new-in-400)
+19. [Upgrading from 3.x](#upgrading-from-3x)
+20. [Getting Started](#getting-started)
+21. [New Contributor Guide](#new-contributor-guide)
+22. [Contributing Knowledge](#contributing-knowledge)
+23. [Release Notes Philosophy](#release-notes-philosophy)
+24. [Tool Reference](#tool-reference)
+25. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+26. [Development](#development)
+27. [Status and Known Limitations](#status-and-known-limitations)
+28. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+29. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -375,6 +376,22 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.4.0
+
+A minor release: no breaking changes, no new tools. `/sfn-review` now reviews against what was **agreed to be built** as well as against the product.
+
+**Spec-aware review**
+- Before it reads the code, the review loads the specification the change was built against: gates passed (`spec_status`), the Implementation Specification (`spec.md`), requirement, plan, intent and recorded decisions. With no work item given it looks for one (branch name, recent commits, task search) and offers the match; with no specification it says so and never invents one.
+- PASS 6 now checks conformance to the whole specification, not only the acceptance criteria: files outside scope (`6C`), recorded decisions (`6D`; a contradicted user decision is a BLOCKER), assumptions the spec carried that the code now treats as settled (`6E`), and whether the spec's root cause and impacted services are supported by the code.
+- It also asks whether **the specification itself** contradicts recorded product knowledge. A spec can be followed perfectly and still be wrong for the product.
+
+**Experience-aware review**
+- Lessons from earlier tasks (`get_engineering_experience`) are now read by the review. Before this release they were recorded but never consulted. They are the lowest-trust memory: a hint about where to look, never a rule, and never able to override a current `.mcp/` entry.
+
+**Three memories, three authorities.** Product knowledge is fact about the product; the specification is fact about intent; engineering experience is a hint. The report names the specification reviewed and the experience consulted.
 
 ---
 
