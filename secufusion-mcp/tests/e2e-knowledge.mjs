@@ -99,6 +99,35 @@ fs.rmSync(path.join(dir, ".mcp", "patterns", "broken.md"));
     check("accepting it updates the readable Status line and the metadata together", !r.err && /\*\*Status\*\*\s+Accepted/.test(accepted) && /^status: accepted$/m.test(accepted), r.text + accepted.slice(-250));
 }
 
+// ── platform defaults: Device vs Machine is recorded by default, as proposed, and never duplicated ──
+{
+    const mkWs = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "e2eseed-")); fs.writeFileSync(path.join(d, "package.json"), "{}"); return d; };
+    const archDir = (d) => path.join(d, ".mcp", "architecture");
+
+    const d2 = mkWs();
+    let r = await call("load_project_knowledge", { workspace_root: d2, scaffold: true, seed_defaults: true });
+    const seeded = path.join(archDir(d2), "terminology-device-vs-machine.md");
+    check("init seeds Device vs Machine by default, reported as PROPOSED and shipped with the MCP", !r.err && r.text.includes("terminology-device-vs-machine") && r.text.includes("PROPOSED") && fs.existsSync(seeded), r.text.slice(0, 500));
+    const seededText = fs.existsSync(seeded) ? fs.readFileSync(seeded, "utf8") : "";
+    check("the seeded entry is proposed (never accepted), cites where it came from, and carries the full rule", /^status: proposed$/m.test(seededText) && /^source: "Shipped with secufusion-mcp/m.test(seededText) && seededText.includes("A **browser installation**") && seededText.includes("Never propose a rename"), seededText.slice(0, 300));
+    r = await call("load_project_knowledge", { workspace_root: d2, seed_defaults: true });
+    check("seeding is idempotent: a second init adds nothing and says why", r.text.includes("not added") && fs.readdirSync(archDir(d2)).filter((f) => f.endsWith(".md")).length === 1, r.text.slice(0, 300));
+    r = await call("set_knowledge_status", { workspace_root: d2, id: "terminology-device-vs-machine", status: "accepted", user_statement: "Yes, that is our terminology." });
+    r = await call("load_project_knowledge", { workspace_root: d2, seed_defaults: true });
+    check("an accepted default is never overwritten or demoted by a later init", /^status: accepted$/m.test(fs.readFileSync(seeded, "utf8")) && r.text.includes("already recorded"), r.text.slice(0, 300));
+
+    const d3 = mkWs();
+    await call("load_project_knowledge", { workspace_root: d3, scaffold: true });
+    await call("record_project_knowledge", { workspace_root: d3, category: "architecture", title: "How we name devices and machines", body: "Our own wording of the rule.", tags: ["device", "machine"], source: "team wiki" });
+    r = await call("load_project_knowledge", { workspace_root: d3, seed_defaults: true });
+    check("an equivalent entry under another name is respected: no second copy is created", r.text.includes("already recorded as `how-we-name-devices-and-machines`") && !fs.existsSync(path.join(archDir(d3), "terminology-device-vs-machine.md")), r.text.slice(0, 400));
+
+    const d4 = mkWs();
+    r = await call("load_project_knowledge", { workspace_root: d4, seed_defaults: true });
+    check("seeding alone does not create .mcp/ (creating the layer still needs scaffold or the opt-in setting)", !fs.existsSync(path.join(d4, ".mcp")) && r.text.includes("No Project Intelligence Layer"), r.text.slice(0, 200));
+    for (const d of [d2, d3, d4]) fs.rmSync(d, { recursive: true, force: true });
+}
+
 // ── release history now lives with the project ─────────────────────────────
 r = await call("generate_release_notes", { workspace_root: W, version: "1.0.0", why: "baseline" });
 check("with a .mcp/ layer, release notes and snapshots are written under .mcp/release-history (version-controlled)", fs.existsSync(path.join(dir, ".mcp", "release-history", "v1.0.0.md")) && fs.existsSync(path.join(dir, ".mcp", "release-history", "snapshots", "v1.0.0.json")) && !fs.existsSync(path.join(dir, ".secufusion", "releases", "v1.0.0.md")), r.text.slice(0, 300));

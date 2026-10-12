@@ -1,0 +1,83 @@
+/**
+ * Knowledge the MCP ships for the SecuFusion platform itself, recorded into a project's .mcp/ by default when /sfn-init builds
+ * project understanding. This is not invented: it is the platform terminology the MCP already carries as MCP-owned content in
+ * the project spec. It is recorded as `proposed` with its source, never `accepted` (only a person accepts), never overwrites,
+ * and is skipped when the project already records an equivalent entry (search before you create; one home per document).
+ */
+import { KnowledgeEntry, Category, loadKnowledge, createEntry } from "./project_knowledge.js";
+
+export interface DefaultEntry {
+    id: string;
+    category: Category;
+    title: string;
+    body: string;
+    tags: string[];
+    applies_to: string[];
+    source: string;
+    /** An existing entry in the same category carrying all of these tags already covers this default. */
+    covered_by_tags: string[];
+}
+
+export const DEFAULT_ENTRIES: DefaultEntry[] = [
+    {
+        id: "terminology-device-vs-machine",
+        category: "architecture",
+        title: "Device vs Machine terminology",
+        tags: ["terminology", "device", "machine", "browser", "endpoint", "legacy-naming"],
+        applies_to: ["device", "machine", "browser", "endpoint", "*Device*", "*Machine*"],
+        source: "Shipped with secufusion-mcp: the SecuFusion platform terminology that the MCP carries in the project spec (terminology section). Confirm it against your team's understanding, then accept it.",
+        covered_by_tags: ["device", "machine"],
+        body: `# Device vs Machine terminology
+
+This distinction has caused production bugs and engineering confusion. Every engine must know it.
+
+| Term | Means | Example |
+|---|---|---|
+| **Device** | A **browser installation** | Chrome on a laptop, Edge on a workstation |
+| **Machine** | A **physical endpoint** | Laptop, desktop, workstation, PC |
+
+**Historical problem:** The platform originally used "Device" to mean physical endpoint. This
+caused ambiguity: engineers, POs, and customers all read "device" as a physical machine.
+
+A terminology correction was introduced across backend services and data models. However:
+- **Older code may still use legacy "Device" naming** even when the concept is physically a Machine
+- **DB schemas, event payloads, and older APIs** may not yet reflect the corrected terminology
+- **UI labels are intentionally normalized**: they may say "endpoint" or "device" for UX reasons
+  even when the underlying backend entity is a Machine
+
+**Rules for every engine:**
+
+1. Before declaring a bug involving a "device": determine whether the subject is a Browser (Device)
+   or Physical Endpoint (Machine). They are different entities with different ownership models.
+
+2. When reading backend code, DB schemas, API contracts, event payloads, or migration scripts:
+   - "Device" often = browser install (unless proven otherwise by context)
+   - "Machine" = physical endpoint
+   - Naming inconsistency is not necessarily a bug: it may be legacy terminology, not a defect
+
+3. Frontend labels do NOT map 1:1 to backend entity names. Always trace the API contract and
+   payload before concluding a data mismatch exists.
+
+4. Never propose a rename or terminology fix without first confirming:
+   - Which entity is actually being referenced in that specific file/layer
+   - Whether the inconsistency is legacy naming or an actual modelling error`,
+    },
+];
+
+export interface SeedResult { created: string[]; skipped: Array<{ id: string; reason: string }> }
+
+const covers = (e: KnowledgeEntry, d: DefaultEntry): boolean =>
+    e.id === d.id || (e.category === d.category && d.covered_by_tags.every((t) => e.tags.map((x) => x.toLowerCase()).includes(t)));
+
+/** Record the shipped defaults that the project does not already have. Idempotent; needs .mcp/ to exist. */
+export function seedDefaultKnowledge(workspaceRoot: string): SeedResult {
+    const out: SeedResult = { created: [], skipped: [] };
+    const model = loadKnowledge(workspaceRoot);
+    for (const d of DEFAULT_ENTRIES) {
+        const existing = model.entries.find((e) => covers(e, d));
+        if (existing) { out.skipped.push({ id: d.id, reason: `already recorded as \`${existing.id}\` (${existing.status})` }); continue; }
+        const r = createEntry(workspaceRoot, { category: d.category, title: d.title, body: d.body, tags: d.tags, applies_to: d.applies_to, source: d.source, id: d.id, status: "proposed" });
+        out.created.push(r.id);
+    }
+    return out;
+}

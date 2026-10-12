@@ -175,6 +175,8 @@ Entries are validated on load: missing fields, a wrong folder, a bad status, dup
 
 **It is retrieved by relevance, not dumped.** `/sfn-init` builds a compact index of the whole layer; during a task, `get_project_knowledge` returns only the entries that apply, ranked by the ticket's terms, the files involved and tags, with the reason each matched. Generic words in a free-text ticket do not drag in unrelated entries.
 
+**Platform defaults.** `/sfn-init` calls `load_project_knowledge(seed_defaults: true)`, which records the platform knowledge the MCP ships, starting with the **Device vs Machine terminology**, into `.mcp/architecture/` by default. It is the MCP-owned terminology already carried in the project spec, so nothing is invented; it is saved `proposed` with its source until a person confirms it; it is skipped when the project already records an equivalent entry (no second copy), and it never overwrites or demotes an accepted one. Terminology lives in `architecture/`, not `adr/`, because an ADR records a decision and each document has one home.
+
 **Health, templates and suggestions.**
 - `get_knowledge_health` compares what the project spec says exists with what `.mcp/` documents (see *What's New in 4.1.0* for the exact definition) and lists the gaps; `/sfn-init` prints it.
 - `.mcp/templates/` holds a starter per category. `load_project_knowledge(scaffold: true)` creates the layer; auto-creation is opt-in and off by default.

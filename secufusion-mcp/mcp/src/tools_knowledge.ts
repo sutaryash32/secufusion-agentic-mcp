@@ -7,6 +7,7 @@ import {
   CATEGORIES, CATEGORY_PURPOSE, STATUSES, KNOWLEDGE_DIR, loadKnowledge, queryKnowledge, renderEntry,
   createEntry, setStatus, scaffoldKnowledge, inspectAgentsMd, autoScaffoldEnabled,
 } from "./project_knowledge.js";
+import { seedDefaultKnowledge } from "./default_knowledge.js";
 import { buildHealth, renderHealth, renderUnifiedKnowledge, renderSuggestions, readLookups, recordLookup, findRepeated, significantTerms } from "./knowledge_health.js";
 
 /** The directory that owns .mcp/: the nearest ancestor that already has one, else the git root, else the given directory. */
@@ -39,18 +40,27 @@ export function registerKnowledgeTools(server: any): void {
     "load_project_knowledge",
     "Builds the project's unified memory model from the Project Intelligence Layer (.mcp/): architecture knowledge, ADRs, patterns, known exceptions, lessons learned, operational intelligence. " +
     "Used by /sfn-init. Returns a compact index (not the full text), validation problems, and whether agents.md has grown into a knowledge dump. Use get_project_knowledge to read what applies to a task. " +
-    "scaffold=true creates the .mcp/ structure if it does not exist.",
+    "scaffold=true creates the .mcp/ structure if it does not exist. seed_defaults=true (what /sfn-init passes) also records the platform knowledge the MCP ships " +
+    "(Device vs Machine terminology) as `proposed` with its source, skipping anything the project already records and never overwriting.",
     {
       workspace_root: z.string().describe("A directory inside the project"),
       scaffold: z.boolean().optional().describe("Create the .mcp/ folder structure and README if missing."),
+      seed_defaults: z.boolean().optional().describe("Record the MCP-shipped platform defaults (Device vs Machine terminology) as proposed entries when .mcp/ exists. Idempotent; skips anything already recorded."),
     },
-    async ({ workspace_root, scaffold }) => {
+    async ({ workspace_root, scaffold, seed_defaults }) => {
       try {
         const root = knowledgeRoot(workspace_root);
         let created: string[] = [];
         const auto = autoScaffoldEnabled(root);
         const wasMissing = !fs.existsSync(path.join(root, KNOWLEDGE_DIR));
         if (scaffold || (wasMissing && auto.enabled)) created = scaffoldKnowledge(root);
+        const seeded = seed_defaults && fs.existsSync(path.join(root, KNOWLEDGE_DIR)) ? seedDefaultKnowledge(root) : null;
+        const seedNote = seeded
+          ? [
+              ...seeded.created.map((id) => `🌱 Recorded the platform default \`${id}\` as PROPOSED (shipped with the MCP; confirm it, then accept it with set_knowledge_status and the user's words).`),
+              ...seeded.skipped.map((s) => `🌱 Platform default \`${s.id}\` not added: ${s.reason}.`),
+            ].join("\n")
+          : "";
         const m = loadKnowledge(root);
         const agents = inspectAgentsMd(root);
         if (!m.exists) {
@@ -65,7 +75,7 @@ export function registerKnowledgeTools(server: any): void {
           // just created: say so, and say why, without pretending there is knowledge yet
           return text(
             `📚 Created the Project Intelligence Layer at ${path.join(root, KNOWLEDGE_DIR).split(path.sep).join("/")}` + (auto.enabled && !scaffold ? ` (automatically, via ${auto.via})` : "") + `.\n\n${WHY_LAYER}\n\n` +
-            `Created: ${created.join(", ")}\n\nIt is empty, so nothing has been claimed yet. ` +
+            `Created: ${created.join(", ")}\n\n` + (seedNote ? `${seedNote}\n\n` : "It is empty, so nothing has been claimed yet. ") +
             `Use the templates in .mcp/templates/ or record_project_knowledge to add entries (saved as proposed until a person accepts them). ` +
             `Run get_knowledge_health to see what the project spec says exists but is not yet documented.` +
             (agents.warning ? `\n\n⚠️ ${agents.warning}` : "")
@@ -73,6 +83,7 @@ export function registerKnowledgeTools(server: any): void {
         }
         const byCat = (c: string) => m.entries.filter((e) => e.category === c);
         const lines: string[] = [];
+        if (seedNote) lines.push(seedNote + "\n");
         lines.push(`📚 Project memory model — ${m.entries.length} entr${m.entries.length === 1 ? "y" : "ies"} in ${KNOWLEDGE_DIR}/` + (created.length ? ` (created: ${created.join(", ")})` : ""));
         for (const c of CATEGORIES) {
           const es = byCat(c);
