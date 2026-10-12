@@ -238,6 +238,10 @@ WORKSPACE-OWNED sections (preserved from scan, updated with new scan results):
    and writes `.secufusion/releases/v{new_version}.md` plus a snapshot the next release will compare against. It leads with the changes (Executive Summary, Added, Changed,
    Fixed, Removed / Deprecated, Risks, Repository Intelligence Updates, Rule Changes) and puts the Detailed Snapshot last.
 
+   **The file also carries what the new MCP version itself brings.** Right after the Executive Summary the tool adds *What this MCP version brings*, read from the release notes bundled with the MCP
+   (summary, added, changed, fixed, breaking changes and new tools) for **every version after `previous_version` up to `version`**, so skipping versions loses nothing. Keep `previous_version` accurate
+   (the old MCP version from the spec's `_meta`); do not summarise or rewrite that section yourself. If it says no release information is bundled, report that to the user as is.
+
    Rules for you:
    - **Pass `previous_migrations_path`.** Without it the tool cannot compare migrations and will say "Not compared: migrations" rather than guess. Never tell the user "no changes" about something it reported as not compared.
    - **Supply `why`** (and only things you actually know for `fixed` / `removed` / `discoveries`). Never pad them; an omitted `why` is shown as "not stated", which is better than a guess.

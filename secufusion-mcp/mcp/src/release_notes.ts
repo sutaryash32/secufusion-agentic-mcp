@@ -328,6 +328,8 @@ export interface RenderInput {
     current: ReleaseSnapshot;
     narrative?: Narrative;
     include_snapshot?: boolean;
+    /** Pre-rendered "What this MCP version brings" section (see mcp_release_info.ts). */
+    mcp_release?: string;
 }
 
 export function renderReleaseNotes(i: RenderInput): string {
@@ -464,6 +466,7 @@ export function renderReleaseNotes(i: RenderInput): string {
         `# Version ${ver.replace(/^v/, "")}`,
         `**Date:** ${i.date}${prev ? ` · **Previous:** ${prev}` : " · **Baseline release**"}\n`,
         `## Executive Summary\n${parts.join("\n\n")}\n`,
+        i.mcp_release ?? "",
         section("Added", addedCount, added, nar.added, none),
         section("Changed", changedCount, changed, nar.changed, none),
         section("Fixed", fixedCount, fixed, nar.fixed, none),

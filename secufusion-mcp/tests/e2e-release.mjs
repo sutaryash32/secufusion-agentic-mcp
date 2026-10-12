@@ -115,6 +115,19 @@ const rel = (dir, v) => path.join(dir, ".secufusion", "releases", `v${v}.md`);
 
     r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.0.0", previous_version: "3.3.1", previous_spec_path: ".secufusion-project-spec.json.backup-1", previous_migrations_path: "nope.json", dry_run: true });
     check("an unreadable migrations baseline is flagged, not ignored", r.text.includes("previous_migrations_path nope.json could not be read"), r.text.slice(0, 400));
+    // what the new MCP version itself brings: every bundled version after the previous one, up to the new one
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.2.0", previous_version: "2.5.1", previous_spec_path: ".secufusion-project-spec.json.backup-1", previous_migrations_path: ".secufusion-migrations.json.backup-1", dry_run: true, why: "Upgrade" });
+    const iExec = r.text.indexOf("## Executive Summary"), iMcp = r.text.indexOf("## What this MCP version brings"), iAdded = r.text.indexOf("## Added");
+    check("init's release notes include 'What this MCP version brings', after the Executive Summary and before the project's Added", iExec >= 0 && iMcp > iExec && iAdded > iMcp, r.text.slice(0, 300));
+    const iv = ["### v4.2.0", "### v4.1.0", "### v4.0.0"].map((h) => r.text.indexOf(h));
+    check("skipping versions loses nothing: 4.0.0, 4.1.0 and 4.2.0 all appear, newest first", iv.every((x) => x > 0) && iv[0] < iv[1] && iv[1] < iv[2], JSON.stringify(iv));
+    check("it carries the real content: summary, added, breaking changes and new tools of those releases", r.text.includes("product-aware") && r.text.includes("#### Breaking changes") && r.text.includes("#### New tools") && r.text.includes("`get_knowledge_health`") && r.text.includes("resolve_work_item_ref"));
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.2.0", previous_version: "4.1.0", previous_spec_path: ".secufusion-project-spec.json.backup-1", dry_run: true, why: "Upgrade" });
+    check("only versions after the previous one are listed", r.text.includes("### v4.2.0") && !r.text.includes("### v4.1.0") && !r.text.includes("### v4.0.0"));
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "9.9.9", previous_version: "4.2.0", previous_spec_path: ".secufusion-project-spec.json.backup-1", dry_run: true, why: "Future" });
+    check("a version with no bundled notes says so instead of staying silent", r.text.includes("No release information is bundled with this version of the MCP for v9.9.9"), r.text.slice(0, 300));
+    r = await call(c, "generate_release_notes", { workspace_root: dir, version: "4.2.0", previous_version: "4.1.0", previous_spec_path: ".secufusion-project-spec.json.backup-1", dry_run: true, mcp_release_info: false });
+    check("the section can be switched off", !r.text.includes("What this MCP version brings"));
     await c.close();
     fs.rmSync(dir, { recursive: true, force: true });
 }

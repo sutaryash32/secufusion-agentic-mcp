@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { extractSnapshot, computeDelta, renderReleaseNotes, saveSnapshot, loadSnapshot, findPreviousSnapshot, releasesDir, } from "./release_notes.js";
+import { loadMcpReleases, renderMcpRelease } from "./mcp_release_info.js";
 function readJsonFile(p) {
     try {
         return JSON.parse(fs.readFileSync(p, "utf-8").replace(/^﻿/, ""));
@@ -48,6 +49,7 @@ export function registerReleaseTools(server) {
         discoveries: z.array(z.string()).optional().describe("Author notes: notable discoveries."),
         rule_notes: z.array(z.string()).optional(),
         include_snapshot: z.boolean().optional().describe("Include the Detailed Snapshot at the end (default true)."),
+        mcp_release_info: z.boolean().optional().describe("Include 'What this MCP version brings' from the release notes bundled with the MCP, for every version after previous_version up to `version` (default true)."),
         dry_run: z.boolean().optional().describe("Return the notes without writing the file or the snapshot."),
     }, async (a) => {
         try {
@@ -86,7 +88,10 @@ export function registerReleaseTools(server) {
                 notes.push("No earlier snapshot or previous spec was available, so this is recorded as the baseline release; no delta is claimed.");
             const delta = computeDelta(previous, current);
             const date = a.date ?? new Date().toISOString().slice(0, 10);
+            const fromVersion = previous?.version ?? a.previous_version ?? null;
+            const mcpRelease = a.mcp_release_info === false ? undefined : renderMcpRelease(loadMcpReleases(fromVersion, version), version, fromVersion);
             const md = renderReleaseNotes({
+                mcp_release: mcpRelease,
                 version, previous_version: previous?.version ?? null, date, delta, current,
                 include_snapshot: a.include_snapshot,
                 narrative: { summary: a.summary, why: a.why, added: a.added, changed: a.changed, fixed: a.fixed, removed: a.removed, risks: a.risks, discoveries: a.discoveries, rule_notes: a.rule_notes },

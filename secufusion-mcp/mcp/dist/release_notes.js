@@ -433,6 +433,7 @@ export function renderReleaseNotes(i) {
         `# Version ${ver.replace(/^v/, "")}`,
         `**Date:** ${i.date}${prev ? ` · **Previous:** ${prev}` : " · **Baseline release**"}\n`,
         `## Executive Summary\n${parts.join("\n\n")}\n`,
+        i.mcp_release ?? "",
         section("Added", addedCount, added, nar.added, none),
         section("Changed", changedCount, changed, nar.changed, none),
         section("Fixed", fixedCount, fixed, nar.fixed, none),

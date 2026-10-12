@@ -11,6 +11,7 @@
     "agents",
     "commands",
     "hooks",
+    "release-notes",
     "mcp/dist",
     "!mcp/dist/benchmark_*.js",
     "!mcp/dist/run_benchmarks.js",

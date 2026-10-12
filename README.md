@@ -566,6 +566,8 @@ Good entries say what is true, why, and **what must not be "fixed"**; cite `file
 
 ## Release Notes Philosophy
 
+**Every `/sfn-init` release file also says what the new MCP version brings.** The MCP ships one release-notes file per version (`release-notes/vX.Y.Z.md`: summary, added, changed, fixed, breaking changes, new tools). `generate_release_notes` includes *What this MCP version brings* for every version between the project's previous MCP version and the new one, right after the Executive Summary, so a team that skipped versions sees everything it missed. A version cannot be released without that file: a test fails if `release-notes/v<package version>.md` is missing or incomplete.
+
 **Delta first. Snapshot second.** A release is a changelog, not a repository scan. Release notes exist to answer a short list of questions, in this order:
 
 1. **What changed?**

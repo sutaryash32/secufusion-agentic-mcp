@@ -73,7 +73,15 @@ for (const rel of docs) {
         /proposed/.test(readme) && /accepted/.test(readme) && /Delta first\. Snapshot second/.test(readme) && /A correct implementation with a noisy diff is not a fully reviewed change/.test(readme));
     const pkgVersion = JSON.parse(read("package.json")).version;
     const pluginVersion = JSON.parse(read(".claude-plugin/plugin.json")).version;
-    check("package.json and the plugin manifest carry the same version", pkgVersion === pluginVersion, `${pkgVersion} vs ${pluginVersion}`);
+    check("every release carries its MCP release information: release-notes/v<version>.md has all six sections, and ships in the package", (() => {
+        const f = path.join(PKG, "release-notes", `v${pkgVersion}.md`);
+        if (!fs.existsSync(f)) return false;
+        const t = fs.readFileSync(f, "utf-8").replace(/\r\n/g, "\n");
+        const heads = ["Summary", "Added", "Changed", "Fixed", "Breaking changes", "New tools"];
+        const body = (h) => (new RegExp("## " + h + "\\n([\\s\\S]*?)(?=\\n## |$)").exec(t)?.[1] ?? "").trim();
+        return heads.every((h) => body(h).length > 0) && JSON.parse(fs.readFileSync(path.join(PKG, "package.json"), "utf-8")).files.includes("release-notes");
+    })(), `a version bump needs release-notes/v${pkgVersion}.md (Summary, Added, Changed, Fixed, Breaking changes, New tools)`);
+check("package.json and the plugin manifest carry the same version", pkgVersion === pluginVersion, `${pkgVersion} vs ${pluginVersion}`);
     check("README states the current version and has matching release notes", readme.includes(`**Version ${pkgVersion}**`) && readme.includes(`## What's New in ${pkgVersion}`) && readme.includes("## Upgrading from"), pkgVersion);
     check("README's '71 tools' style counts match the server", (() => { const m = /\*\*Version [\d.]+\*\*[^\n]*?(\d+) tools/.exec(readme); return !!m && Number(m[1]) === tools.size; })(), `server has ${tools.size}`);
     check("README ends with the closing line", readme.trimEnd().endsWith("The intelligence of the project should travel with the project itself."));
