@@ -143,6 +143,17 @@ for (const f of ["AGENTS.md", "claude.md", "coder.md", "planner.md", "reviewer.m
     try { rootCopy = norm(read(`../.agents/${f}`)); } catch { /* the repo-level copy is optional when the package is tested on its own */ }
     if (rootCopy !== null) check(`agent file ${f}: repo-level .agents copy is aligned with the shipped plugin copy`, rootCopy === norm(read(`agents/${f}`)));
 }
+{
+    const agents = read("agents/AGENTS.md").replace(/\r\n/g, "\n");
+    const sec = /## ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE\n([\s\S]*?)\n---/.exec(agents)?.[1] ?? "";
+    check("AGENTS.md has the artifact placement discipline: three categories, preflight, promotion, bookkeeping", sec.length > 0 && ["WORK-ITEM ARTIFACTS", "PROJECT KNOWLEDGE", "REPOSITORY FILES", "PREFLIGHT", "PROMOTION", "BOOKKEEPING", "Source of record:", "Which repo, or task folder only, or both?"].every((x) => sec.includes(x)));
+    check("placement rules use the real tools: resolve_work_item_ref folder, record_project_knowledge, manage_task log_file_touched", /resolve_work_item_ref/.test(sec) && /record_project_knowledge/.test(sec) && /log_file_touched/.test(sec) && tools.has("resolve_work_item_ref") && tools.has("record_project_knowledge") && tools.has("manage_task"));
+    const handWritten = /Hand-written files use these names: ([^\n]*)/.exec(sec)?.[1] ?? "";
+    const mcpGenerated = ["spec.md", "pr-summary.md", "spec.json", "decisions.json", "progress.json", "files-touched.json", "scenarios.json"];
+    check("no hand-written filename collides with a file an MCP tool generates, and every generated name is forbidden", mcpGenerated.every((f) => sec.includes("`" + f + "`")) && !mcpGenerated.some((f) => handWritten.includes("`" + f + "`")));
+    check("the reviewer persona uses the same hand-written names (ado-comment.md, pr-comment.md)", /`ado-comment\.md`/.test(read("agents/reviewer.md")) && !/ado-comments\.md/.test(read("agents/reviewer.md")) && /`pr-comment\.md`/.test(read("agents/reviewer.md")));
+    check("/sfn-spec, /sfn-code and /sfn-review each point at the placement discipline", ["sfn-spec.md", "sfn-code.md", "sfn-review.md"].every((f) => /ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE/.test(cmds[f]) && /log_file_touched/.test(cmds[f])));
+}
 const readmeText = read("../README.md");
 check("README presents DNA (what) and Project Intelligence (why) as one Unified Project Knowledge System", /## Unified Project Knowledge System/.test(readmeText) && /What exists\?/.test(readmeText) && /Why does it exist\?/.test(readmeText) && /DNA tells the MCP what the system is\. Project Intelligence tells the MCP why the system became that way\./.test(readmeText));
 check("/sfn-init loads both layers and says they are combined; the agent router does too", /Unified Project Knowledge System/.test(cmds["sfn-init.md"]) && /what exists/.test(cmds["sfn-init.md"]) && /why it exists/.test(cmds["sfn-init.md"]) && /Layer 2/.test(read("agents/claude.md")) && /Layer 1/.test(read("agents/claude.md")));

@@ -265,7 +265,7 @@ Record it every time.
 
 If the developer asks for PR documents after an APPROVED verdict:
 
-### ADO Comment (`ado-comments.md`)
+### ADO Comment (`ado-comment.md`)
 
 Audience: Technical and non-technical stakeholders on the Azure DevOps board.
 

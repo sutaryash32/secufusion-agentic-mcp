@@ -109,6 +109,39 @@ Source code changes are the absolute final step. Only after the plan is approved
 
 ---
 
+## ARTIFACT PLACEMENT AND FILE-CREATION DISCIPLINE
+
+Every file you create must belong somewhere on purpose. Before writing ANY file, classify it into exactly one of three categories and follow that category's rule.
+
+**1. WORK-ITEM ARTIFACTS: `.secufusion/tasks/<ref-folder>/`**
+Anything produced for or about one work item: spec, review notes, ADR, investigation record, PR text, ADO comment, test-run notes, drafts.
+- `<ref-folder>` is the `folder` from `resolve_work_item_ref(work_item, title)`. Never invent or retype a slug.
+- Hand-written files use these names: `adr.md`, `investigation.md`, `review.md`, `ado-comment.md`, `pr-comment.md` (the PR description). A hand-written draft gets a `.draft` suffix (`pr-comment.draft.md`).
+- **NEVER write a file with the name of one an MCP tool generates:** `spec.md` (`generate_spec_document`), `pr-summary.md` (`manage_task`), and `spec.json`, `decisions.json`, `progress.json`, `files-touched.json`, `scenarios.json`. The tool will overwrite you, or you will overwrite its output.
+- DEFAULT for any request to "write a document / summary / ADR / record" with no explicit path: the task folder.
+
+**2. PROJECT KNOWLEDGE (outlives the work item): `.mcp/` via `record_project_knowledge`** (saved `proposed`). Never hand-write into `.mcp/`.
+
+**3. REPOSITORY FILES (ship with the code): only these, inside a service repo**
+- a. Source, tests and migrations listed in the spec's expected file changes.
+- b. A document, ONLY if the user names a repo-relative path AND exactly one repo is unambiguous.
+- If the user names a path (for example `docs/architecture/x.md`) and the workspace has more than one repo, or its root is not a repo, **STOP and ask:** "Which repo, or task folder only, or both?" Do not guess, and do not pick a repo because it happens to have a `docs/` folder.
+- Never touch config or environment files (`application.properties`, `.env`, docker-compose, certificates, CI) unless they are in the approved plan.
+
+**PREFLIGHT, before each file write** (say it to the user in one line): `path | category (1/2/3) | why | new or overwrite`.
+- Read an existing file before overwriting it. Never overwrite an MCP-generated file.
+- If the target is inside a git repo, say so: it becomes an uncommitted change.
+- If a repo file is outside the spec's expected file changes: stop, and ask to amend the spec first.
+
+**PROMOTION (task folder to repo): copy, don't move.** The task-folder copy is canonical. Put `Source of record: .secufusion/tasks/<ref-folder>/<file>` as the first line of the repo copy. If you ever move a file, update every reference to it (decision log, project-knowledge entries, spec, PR text) in the same turn.
+
+**BOOKKEEPING, after writing:**
+- Call `manage_task(action: log_file_touched, file_path, change_summary)` for EVERY file you created or changed, including tests and docs, so the generated PR summary is complete.
+- List the task folder and report anything that belongs to this work item but sits outside it.
+- End your message with a table: `path | category | committed? | referenced by`.
+
+---
+
 ## The philosophy principle (for your internal reasoning only)
 
 Four questions every story must answer before implementation can begin:
