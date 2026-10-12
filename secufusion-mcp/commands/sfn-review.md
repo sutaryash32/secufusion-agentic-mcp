@@ -89,10 +89,18 @@ Where the lenses miss something real, **report it anyway** under the closest pas
 
 ---
 
-## STEP 0 — Build your product knowledge (self-bootstrapping)
+## STEP 0 — Build your product, specification and experience knowledge (self-bootstrapping)
 
 You may have been invoked with no prior session, no DNA loaded and no task context. That is fine. This step builds context from scratch.
-Do it **before** reading the code under review, so you judge the code against the product and not the other way round.
+Do it **before** reading the code under review, so you judge the code against the product and against what was agreed to be built, and not the other way round.
+
+You load three kinds of memory, and you keep them apart:
+
+| Memory | What it tells you | Authority |
+|---|---|---|
+| **Product knowledge** (`.mcp/`, project spec, DNA) | What the product is and why it is that way | Accepted entries and recorded rules are FACT about the product |
+| **The specification** (requirement, plan, Implementation Specification, decisions) | What this change was **agreed to do**: scope, acceptance criteria, expected files, assumptions | FACT about *intent*. It is not proof the intent is right for the product |
+| **Engineering experience** (lessons recorded from earlier tasks) | What went wrong or right before | Never a requirement, never FACT: a hint about where to look |
 
 ### 0.1: Resolve the review target
 
@@ -127,7 +135,26 @@ Try each source. Use what exists. **Never fail because something is missing.**
 5. .agents/AGENTS.md, .agents/reviewer.md, CLAUDE.md   behaviour rules and the reviewer persona (read fully)
 6. .secufusion/tasks/<work item>-*/  spec.json, decisions.json, scenarios.json, progress.json, files-touched.json
 7. .rejected-patterns.json           patterns this codebase has already rejected
+8. Engineering experience            get_engineering_experience(workspace_root, query, affected_components, affected_services,
+                                       source_requirement_id): lessons from earlier tasks on the same components and services.
+                                       find_experience_conflicts when records disagree; get_experience_context for provenance
 ```
+
+**Engineering experience is the lowest-trust memory.** Use it to decide where to look harder and which hypotheses to form, never as a rule and never as proof. If a record has no provenance, is stale,
+or conflicts with another or with current code, say so and do not rely on it (the persona's `UNPROVEN_EXPERIENCE`, `STALE_EXPERIENCE`, `CONFLICTING_EXPERIENCE` and `EXPERIENCE_USED_AS_FACT` apply to you as much as to a plan).
+A current `.mcp/` entry or recorded rule always wins over an experience record.
+
+### 0.2b: Load the specification (be spec-aware)
+
+A review is not only "is this good code" but "did it build what was agreed, and only that". Find the specification for this change:
+
+1. **A work item is known** (argument, branch name, commit message): `spec_status(work_item_id)` shows which gates passed. Then load, as far as they exist: `.secufusion/tasks/<ref>/spec.md` (the Implementation Specification),
+   the requirement (`manage_requirement`, read), the validated plan (`manage_implementation_plan`), the intent (`spec_read_intent`) and the task folder files above. Pass the reference exactly as given.
+2. **No work item is given:** try to find one. Take the work-item reference from the branch name or recent commit messages, or search past tasks (`search_tasks`, `get_task_history`) with the terms and files of the change. Offer the match to the developer; do not silently adopt a guess.
+3. **No specification exists:** say so, review against product knowledge only, and note that there is nothing to check scope or acceptance criteria against (an ASSUMPTION and a suggestion to run `/sfn-spec` for the next change). Do not invent a specification from the diff.
+
+From the specification extract: **scope** (in and out), **acceptance criteria** (verbatim), **expected file changes**, **recorded decisions** (user decisions are authoritative), **assumptions and unknowns** it carried, the **root cause** it claimed, and any **UI reference**.
+If the spec's gates have not all passed (`spec_status`), say so: the change was built without an approved specification.
 
 If `load_project_knowledge` reports no `.mcp/` folder, say so and continue. That is a **knowledge gap**, not a failure: the product dimensions will lean on the other sources.
 
@@ -143,6 +170,8 @@ From what you loaded, note for each of these what is **recorded** and from which
 | Tenant hierarchy | How tenants relate (parent and child, acting versus home tenant, delegated administration) and how the tenant reaches the code (token, context, message payload) |
 | Privacy model | What counts as personal or sensitive data, what may be logged or emitted, retention and deletion rules, what may be revealed across tenants |
 | Operational constraints | Throughput, scheduling, retry and idempotency expectations, observability conventions |
+| **Specification** | What was agreed to be built: scope in and out, acceptance criteria, expected files, decisions (user decisions are authoritative), assumptions and unknowns it carried, claimed root cause. `UNKNOWN` if there is no specification |
+| **Experience** | Lessons from earlier tasks on the same components, with provenance and freshness. Hints only |
 
 ### 0.4: Fall back to the source code
 
@@ -203,7 +232,9 @@ H{n}: {specific suspicion about THIS change, naming the code and the harm}
    Risk if true: {who or what is harmed, how badly}
 ```
 
-Aim for the handful that matter, not a long list. Rank by risk. Draw hypotheses from the change first, then from recorded lessons and exceptions (`get_project_knowledge`), then from the lenses (PASS 0 to 18), which exist to jog your memory about classes of risk.
+Aim for the handful that matter, not a long list. Rank by risk. Draw hypotheses from the change first, then from the specification (does the code do more, less or something other than was agreed?), then from recorded lessons and exceptions (`get_project_knowledge`) and engineering experience, then from the lenses (PASS 0 to 18), which exist to jog your memory about classes of risk.
+
+Specification-driven hypotheses worth testing: a file changed that the spec never mentioned; an acceptance criterion with no code or no test; an assumption or unknown the spec carried that the code silently turned into behavior; a recorded user decision the code contradicts; scope that grew while coding; and the opposite, a spec claim (root cause, impacted service) the code does not support. Equally test whether **the specification itself** contradicts recorded product knowledge: a spec can be followed perfectly and still be wrong for the product, and that is a finding about the spec, raised as a question.
 Then investigate: most hypotheses die quickly when you read the code, and the survivors are your findings and your questions for Step 2.
 
 ---
@@ -570,7 +601,7 @@ FINDING 5I — HYGIENE: Obvious comment (explains what, not why)
 
 ### PASS 6 — Acceptance Criteria Coverage
 
-**Trigger: only if a task folder was found with spec.json**
+**Trigger: if Step 0.2b found a specification (task folder with spec.json, spec.md, or a confirmed requirement)**
 
 Read every AC from `spec.json` (`acceptance_criteria` array) and `progress.json` (`pending_acs`, `completed_acs`).
 
@@ -600,6 +631,13 @@ PASS 6 — AC COVERED: "{full AC text}"
    Implemented: {file}:{method}
    Tested: {test file}:{test method}
 ```
+
+**Specification conformance (beyond the acceptance criteria).** You hold the Implementation Specification from Step 0.2b, so also check the change against all of it, with the same evidence standard:
+- **Scope.** Is every changed file either expected by the spec or a necessary consequence (test, rename)? Work the spec marks out of scope that the diff does it anyway is `FINDING 6C — SCOPE`. `verify_against_spec` supplies `diff_scope` (`outside_plan`, `planned_untouched`); interpret it, do not re-derive it.
+- **Decisions.** Is every recorded decision, especially a user's, honoured? A contradiction is `FINDING 6D — SPEC DECISION` (BLOCKER when a user decision is contradicted; that decision was theirs to make).
+- **Assumptions and unknowns.** An assumption or unknown the spec carried that the code now relies on as if it were settled is `FINDING 6E — SPEC ASSUMPTION`. Ask the developer; do not resolve it for them.
+- **Claims.** Does the code support the spec's stated root cause and impacted services? A spec that no longer matches the code means the spec or the change is wrong.
+- **No specification.** Say it plainly in the report. The review then stands on product knowledge alone, and you do not manufacture acceptance criteria.
 
 ---
 
@@ -1005,6 +1043,8 @@ After all passes are complete, produce the final report in this exact format:
 
 ## PRODUCT KNOWLEDGE USED
 {One line per source actually loaded: .mcp entries (ids), project spec, migrations spec, DNA queries, persona files.}
+{The specification you reviewed against: work item, the gates passed (`spec_status`), the path of `spec.md`, the number of acceptance criteria. Or "No specification found".}
+{Engineering experience consulted, with its provenance and whether you relied on any of it. Or "none found".}
 {Sources that were missing, and what you fell back to. Never imply knowledge you did not have.}
 
 ## REASONING TRACE
