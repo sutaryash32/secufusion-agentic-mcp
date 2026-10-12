@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.7.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, and 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning. 74 tools. See [What's New in 4.7.0](#whats-new-in-470) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.8.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, and 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default. 74 tools. See [What's New in 4.8.0](#whats-new-in-480) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,25 +23,26 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.7.0](#whats-new-in-470)
-15. [What's New in 4.6.0](#whats-new-in-460)
-16. [What's New in 4.5.0](#whats-new-in-450)
-17. [What's New in 4.4.0](#whats-new-in-440)
-18. [What's New in 4.3.0](#whats-new-in-430)
-19. [What's New in 4.2.0](#whats-new-in-420)
-20. [What's New in 4.1.0](#whats-new-in-410)
-21. [What's New in 4.0.0](#whats-new-in-400)
-22. [Upgrading from 3.x](#upgrading-from-3x)
-23. [Getting Started](#getting-started)
-24. [New Contributor Guide](#new-contributor-guide)
-25. [Contributing Knowledge](#contributing-knowledge)
-26. [Release Notes Philosophy](#release-notes-philosophy)
-27. [Tool Reference](#tool-reference)
-28. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-29. [Development](#development)
-30. [Status and Known Limitations](#status-and-known-limitations)
-31. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-32. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.8.0](#whats-new-in-480)
+15. [What's New in 4.7.0](#whats-new-in-470)
+16. [What's New in 4.6.0](#whats-new-in-460)
+17. [What's New in 4.5.0](#whats-new-in-450)
+18. [What's New in 4.4.0](#whats-new-in-440)
+19. [What's New in 4.3.0](#whats-new-in-430)
+20. [What's New in 4.2.0](#whats-new-in-420)
+21. [What's New in 4.1.0](#whats-new-in-410)
+22. [What's New in 4.0.0](#whats-new-in-400)
+23. [Upgrading from 3.x](#upgrading-from-3x)
+24. [Getting Started](#getting-started)
+25. [New Contributor Guide](#new-contributor-guide)
+26. [Contributing Knowledge](#contributing-knowledge)
+27. [Release Notes Philosophy](#release-notes-philosophy)
+28. [Tool Reference](#tool-reference)
+29. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+30. [Development](#development)
+31. [Status and Known Limitations](#status-and-known-limitations)
+32. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+33. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -404,6 +405,20 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.8.0
+
+A minor release: no new tools and no breaking changes to commands or parameters.
+
+**ADRs are design narratives, not database records**
+- An ADR opens with `# ADR-NNNN: <Decision Title>` and a one-sentence summary, never with metadata. The required structure (Decision Snapshot, Executive Summary, Context, Problem Statement, Investigation Summary, Options Considered, Decision, Consequences, Verification, References) makes the first page answer: what problem, why it mattered, what was chosen, why.
+- The machine metadata moves to a trailing `<!-- mcp:entry ... -->` comment, invisible when rendered. The loader reads both forms, so every existing entry keeps working; only ADRs use the trailing form.
+- `record_project_knowledge` refuses an ADR that begins with metadata or lacks the structure, and lists what is missing. `set_knowledge_status` keeps the readable **Status** line in the Decision Snapshot in step with the recorded status.
+
+**Device vs Machine is recorded by default**
+- `/sfn-init` calls `load_project_knowledge(seed_defaults: true)`, which records the MCP-shipped Device vs Machine terminology into `.mcp/architecture/` as a `proposed` entry with its source. It is skipped when the project already records an equivalent entry, never overwrites or demotes an accepted one, and needs `.mcp/` to exist.
 
 ---
 
