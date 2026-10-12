@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.2.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, and 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer. 73 tools. See [What's New in 4.2.0](#whats-new-in-420) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.3.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, and 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings. 73 tools. See [What's New in 4.3.0](#whats-new-in-430) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,20 +23,21 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.2.0](#whats-new-in-420)
-15. [What's New in 4.1.0](#whats-new-in-410)
-16. [What's New in 4.0.0](#whats-new-in-400)
-17. [Upgrading from 3.x](#upgrading-from-3x)
-18. [Getting Started](#getting-started)
-19. [New Contributor Guide](#new-contributor-guide)
-20. [Contributing Knowledge](#contributing-knowledge)
-21. [Release Notes Philosophy](#release-notes-philosophy)
-22. [Tool Reference](#tool-reference)
-23. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-24. [Development](#development)
-25. [Status and Known Limitations](#status-and-known-limitations)
-26. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-27. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.3.0](#whats-new-in-430)
+15. [What's New in 4.2.0](#whats-new-in-420)
+16. [What's New in 4.1.0](#whats-new-in-410)
+17. [What's New in 4.0.0](#whats-new-in-400)
+18. [Upgrading from 3.x](#upgrading-from-3x)
+19. [Getting Started](#getting-started)
+20. [New Contributor Guide](#new-contributor-guide)
+21. [Contributing Knowledge](#contributing-knowledge)
+22. [Release Notes Philosophy](#release-notes-philosophy)
+23. [Tool Reference](#tool-reference)
+24. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+25. [Development](#development)
+26. [Status and Known Limitations](#status-and-known-limitations)
+27. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+28. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -372,6 +373,18 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.3.0
+
+A minor release: no breaking changes, no new tools. It fixes a gap in the release file that `/sfn-init` writes.
+
+**The release file now says what the new MCP version brings**
+- `v<version>.md` used to describe only what changed in the project (services, topics, rules, migrations). It now also has a **What this MCP version brings** section right after the Executive Summary: the summary, added, changed, fixed, breaking changes and new tools of **every MCP version after the project's previous one, up to the new one**, newest first. A team that skips versions still sees everything it missed.
+- The information comes from `release-notes/vX.Y.Z.md`, shipped in the package for 4.0.0, 4.1.0, 4.2.0 and 4.3.0. If a version has no bundled notes, the file says so instead of omitting the section.
+- A release cannot be cut without it: a test fails if `release-notes/v<package version>.md` is missing or has an empty section.
+- `generate_release_notes` has an optional `mcp_release_info` (default true) to switch the section off.
 
 ---
 
