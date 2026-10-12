@@ -263,7 +263,7 @@ Record it every time.
 
 ## PR Document Generation
 
-If the developer asks for PR documents after an APPROVED verdict:
+If the developer asks for the post-review documents after an APPROVED verdict, produce them in this order: the ADO comment, the PR description, the ADR (only when the work made an architecture decision), and the Design Investigation Record (only when the work involved a real design investigation):
 
 ### ADO Comment (`ado-comment.draft.md`, in the task folder)
 
@@ -352,6 +352,78 @@ Rules:
 - No @Entity changes — migration not required {OR: Migration V{n} included and applied manually}
 - All review passes passed
 ```
+
+### ADR (architecture decision), only when the work made one
+
+Not a file you write. A decision with lasting consequences is recorded **once**, in `.mcp/adr/`, with `record_project_knowledge` (category `adr`, saved `proposed`, with its source; only a person accepts it).
+First search with `get_project_knowledge`: if an ADR already covers the decision, update it, or record a new entry with `supersedes`. Never create a second ADR for the same decision. The other documents link to it by id.
+
+### Design Investigation Record (`investigation.draft.md`, in the task folder)
+
+A permanent document that preserves **the reasoning journey** of a piece of work: not what was changed (the PR summary says that) and not the decision alone (the ADR says that), but how the team got there and why.
+Create it after the ADO comment, PR description and ADR, for work that involved a real design investigation (a discovered problem, assumptions that failed, options weighed). Skip it for routine changes and say so.
+
+Rules:
+- **Do NOT create another PR summary and do NOT create another ADR.** Link to the ADR by id and to `spec.md` and the PR text by path; do not repeat their content.
+- **Build it from recorded evidence only:** the requirement, `decisions.json`, `spec.md`, the review's Reasoning trace and findings, the developer's answers, `file:line` evidence. Where the reasoning was not recorded, write "not recorded". Never reconstruct a journey that was not captured, and never present a guess as a finding.
+- **Audience: a future engineer who was not involved.** Explain WHY, not only WHAT. Define terms and state the original design before criticising it.
+- **Home:** the task folder. If the user names a repository path (for example `docs/architecture/<topic>-investigation.md`), apply the placement rule: if the workspace has several repos or the root is not a repo, ask which repo; then COPY it there with `Source of record: .secufusion/tasks/<ref-folder>/investigation.draft.md` as its first line. The task-folder copy stays canonical.
+
+Structure (omit a section only by writing "not applicable" and why):
+
+```markdown
+# {Topic}: design investigation ({work item reference})
+
+**Status:** {accepted | superseded | open}  ·  **Date:** {date}  ·  **ADR:** {id}  ·  **Spec:** {path}  ·  **PR:** {reference}
+
+## 1. Problem discovered
+{What was wrong or missing, where, who or what it affected, and how it was first noticed.}
+
+## 2. How it was investigated
+{The steps in order: what was read, queried or reproduced, what was asked of the team and what they answered. Evidence as file:line.}
+
+## 3. Assumptions proven wrong
+| Assumption | Why it was believed | What disproved it | Evidence |
+|---|---|---|---|
+
+## 4. Architectural requirements identified
+{R1, R2, ...: what any acceptable solution must satisfy, each stated as a testable property and traced to the finding that produced it.}
+
+## 5. Original architecture
+{How it worked before, in enough detail to follow the failure scenarios.}
+
+## 6. Failure scenarios
+| Scenario | Trigger | Consequence | Evidence |
+|---|---|---|---|
+
+## 7. Analyses
+{One subsection for each analysis the investigation actually performed. Typical ones, include only those that happened:
+ replica or multi-instance synchronization; stale-state (for example stale timers); orphaned or ghost state (ghost timers); runtime validation design;
+ reconciliation design; the consistency model (for example eventual consistency and its bounds); evaluation of an alternative architecture (for example a DB-driven scheduler).
+ For each: the question, the method, the finding, and what it implies.}
+
+## 8. Options evaluated
+| Option | How it works | Verdict | Why accepted or rejected | Trade-offs |
+|---|---|---|---|---|
+
+## 9. Final architecture
+{What was selected, how it satisfies each requirement in section 4, and the rationale: WHY this over the rejected options. State the consistency guarantees plainly.}
+
+## 10. Risks that remain
+| Risk | Likelihood and impact | Mitigation | Owner |
+|---|---|---|---|
+
+## 11. Release blockers
+| Blocker | Status | What clears it |
+|---|---|---|
+
+## 12. Open questions and what was not recorded
+
+## 13. References
+{ADR id, spec.md, PR, files, tickets; paths only.}
+```
+
+The document must let a reader answer: what problem was discovered, how it was investigated, which assumptions were wrong, which requirements followed, which options were evaluated and why each was accepted or rejected, what the final architecture is, what risks remain and what blocks release.
 
 Task type emoji: bug = 🐛 | user_story = 📖 | feature = ✨ | hotfix = 🚨 | refactor = 🔄 | chore = 🧹
 

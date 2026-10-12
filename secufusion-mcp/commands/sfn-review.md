@@ -1144,8 +1144,8 @@ Next steps:
 2. Run any migration scripts listed under Manual Actions
 3. Open your PR
 
-Want me to generate PR documents?
-  A: PR description + ADO work item comment
+Want me to generate the post-review documents? (Each goes to its one home: see the placement rule.)
+  A: Full set: ADO comment, PR description, the ADR (recorded as proposed knowledge, only if this work made an architecture decision) and the design investigation record (only if it involved a real design investigation)
   B: PR description only
   C: Skip, I will write it myself
 

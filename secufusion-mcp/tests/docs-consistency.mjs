@@ -152,6 +152,15 @@ for (const f of ["AGENTS.md", "claude.md", "coder.md", "planner.md", "reviewer.m
     const mcpGenerated = ["spec.md", "pr-summary.md", "spec.json", "decisions.json", "progress.json", "files-touched.json", "scenarios.json"];
     check("every file an MCP tool generates is named as forbidden, and hand-written ones carry .draft", mcpGenerated.every((f) => new RegExp("`" + f.replace(".", "\.") + "`").test(sec)) && /\.draft/.test(sec));
     check("the reviewer persona's hand-written deliverables use the .draft names in the task folder", /`ado-comment\.draft\.md`/.test(read("agents/reviewer.md")) && /`pr-comment\.draft\.md`/.test(read("agents/reviewer.md")) && !/ado-comments\.md/.test(read("agents/reviewer.md")));
+    {
+        const persona = read("agents/reviewer.md").replace(/\r\n/g, "\n");
+        const inv = /### Design Investigation Record[\s\S]*?(?=\nTask type emoji|\n## Phase 2)/.exec(persona)?.[0] ?? "";
+        const sections = ["Problem discovered", "How it was investigated", "Assumptions proven wrong", "Architectural requirements identified", "Original architecture", "Failure scenarios", "Analyses", "Options evaluated", "Final architecture", "Risks that remain", "Release blockers", "Open questions", "References"];
+        check("the reviewer persona defines the Design Investigation Record with every section the format requires", inv.length > 0 && sections.every((h) => inv.includes(h)) && /investigation\.draft\.md/.test(inv));
+        check("the investigation record never duplicates the PR summary or the ADR, is built from recorded evidence, and says 'not recorded' instead of guessing", /Do NOT create another PR summary and do NOT create another ADR/.test(inv) && /not recorded/.test(inv) && /recorded evidence only/.test(inv) && /Source of record:/.test(inv) && /WHY/.test(inv));
+        check("the ADR is recorded through record_project_knowledge (category adr), searched first, never a hand-written second copy", /### ADR \(architecture decision\)[\s\S]*?record_project_knowledge[\s\S]*?`adr`[\s\S]*?get_project_knowledge[\s\S]*?supersedes/.test(persona));
+        check("the post-review order is ADO comment, PR description, ADR, then the investigation record, and /sfn-review offers all of them", /ADO comment, the PR description, the ADR[^\n]*and the Design Investigation Record/.test(persona) && /ADO comment, PR description, the ADR[^\n]*and the design investigation record/.test(cmds["sfn-review.md"]));
+    }
     check("/sfn-spec, /sfn-code and /sfn-review each point at the placement rule and require log_file_touched", ["sfn-spec.md", "sfn-code.md", "sfn-review.md"].every((f) => /ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT/.test(cmds[f]) && /log_file_touched/.test(cmds[f])) && !Object.values(cmds).some((t) => /FILE-CREATION DISCIPLINE/.test(t)) && !/FILE-CREATION DISCIPLINE/.test(agents));
 }
 const readmeText = read("../README.md");
