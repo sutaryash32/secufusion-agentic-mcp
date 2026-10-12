@@ -278,6 +278,8 @@ So reviews now validate:
 
 **PASS 11, Product & Privacy Fit,** answers five questions with evidence, each as `FITS`, `DOES NOT FIT`, `CONCERN` or `UNVERIFIED`: does this match the product's actual behavior, will it work in the production deployment model, does it subtly break the tenant hierarchy, will it be hard to maintain in six months, does it violate the privacy model. PASS 12 to 18 supply the evidence.
 
+It is an **investigation, not a checklist.** The reviewer models the change and its blast radius (using the DNA graph), forms specific hypotheses about how *this* change could harm the product, investigates each until it is confirmed or dismissed, asks the developer only what the evidence cannot settle, and shows its work in a *Reasoning trace* that includes the suspicions it dismissed. The passes are lenses that stop it forgetting a class of risk, not a form to fill in, and it reports what the lenses missed. The deterministic facts (`check_diff_quality`, the spec gate) stay deterministic.
+
 The governance rule carries over from the knowledge layer: **the reviewer never invents a product rule.** Every product finding names its `Source` and its `Basis` (`FACT`, `INFERENCE`, `ASSUMPTION`, `UNKNOWN`). Only a `FACT` can block; an `INFERENCE` is a question; a rule nobody recorded is reported as **UNVERIFIED** and listed under *Knowledge gaps*, with an offer to record the answer in `.mcp/` so the next review does not have to ask. Maintainability alone never blocks.
 
 `check_diff_quality` measures the diff that **would be committed** (respecting `core.autocrlf` and `.gitattributes`) against the real change and explains the gap:
