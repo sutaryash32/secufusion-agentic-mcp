@@ -129,6 +129,9 @@ server.tool(
         const report =
             `${passed ? "✅" : "⛔"} PHILOSOPHY_${v.verdict} — ${work_item_id} (judged by ${outcome.source})\n\n` +
             `**WHY:** ${v.why}\n**WHO:** ${v.who}\n**WHAT:** ${v.what}\n**RISK:** ${v.risk}\n` +
+            (v.reasoning.length > 0
+                ? `\n**Reasoning${v.verdict === "PASS" ? "" : " (the evidence behind this verdict)"}:**\n${v.reasoning.map((r) => `- ${r}`).join("\n")}\n`
+                : "") +
             (v.questions_for_user.length > 0
                 ? `\n**Ask the user before continuing:**\n${v.questions_for_user.map((q) => `- ${q}`).join("\n")}\n`
                 : "") +

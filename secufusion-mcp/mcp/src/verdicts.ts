@@ -10,11 +10,15 @@ export const PhilosophyVerdict = z.object({
     what: z.string().min(1),
     risk: z.string().min(1),
     questions_for_user: z.array(z.string()).default([]),
+    /** The evidence behind the verdict, one point per entry, citing names from the project (services, topics, rules, rejected patterns), not generalities. */
+    reasoning: z.array(z.string().min(1)).default([]),
 }).refine((v) => v.verdict === "PASS" || v.verdict === "ADVISORY" || v.questions_for_user.length > 0, {
     message: "FAIL/BLOCKED must include at least one question_for_user",
+}).refine((v) => v.verdict === "PASS" || v.reasoning.length > 0, {
+    message: "ADVISORY/FAIL/BLOCKED must include `reasoning`: the specific project evidence (services, topics, golden rules, rejected patterns) that led to the verdict",
 });
 export const PhilosophyHint =
-    `{"verdict":"PASS|ADVISORY|FAIL|BLOCKED","why":"...","who":"decision maker / user affected","what":"scope in one line","risk":"what breaks if built wrong or not built","questions_for_user":["required when FAIL/BLOCKED"]}`;
+    `{"verdict":"PASS|ADVISORY|FAIL|BLOCKED","why":"...","who":"decision maker / user affected","what":"scope in one line","risk":"what breaks if built wrong or not built","questions_for_user":["required when FAIL/BLOCKED"],"reasoning":["required unless PASS: one evidence-backed point per entry, naming the service, topic, rule or rejected pattern it rests on"]}`;
 export const PhilosophyRubric = [
     "WHY: is the business problem stated, not just a solution?",
     "WHO: is there a named decision maker / affected user? Has it been confirmed (see client_confirmed)?",
@@ -23,6 +27,7 @@ export const PhilosophyRubric = [
     "Check against rejected_patterns: does the request ask for something the team already rejected?",
     "Bugs/hotfixes may PASS with less business framing but still need a reproducible symptom.",
     "FAIL = unclear intent, ask the user. BLOCKED = unsafe or contradicts golden rules. ADVISORY = proceed but note concerns.",
+    "Show your reasoning for anything other than a clean PASS: each point names the evidence (a service, topic, entity, golden rule or rejected pattern from the project) and what it implies. 'Looks risky' is not reasoning.",
 ];
 
 // ── classification ─────────────────────────────────────────────────────────

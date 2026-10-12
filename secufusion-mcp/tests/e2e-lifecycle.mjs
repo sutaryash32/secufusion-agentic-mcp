@@ -79,7 +79,12 @@ const SAMPLING = V;
 
     r = await call(c, "philosophy_check", { work_item_id: id, title: "T", description: "d", task_type: "feature", judgment: { verdict: "FAIL", why: "w", who: "w", what: "w", risk: "w", questions_for_user: [] } });
     check("FAIL without questions is rejected by schema", r.err && r.text.includes("schema"), r.text);
-
+    r = await call(c, "philosophy_check", { work_item_id: id, title: "T", description: "d", task_type: "feature", judgment: { verdict: "FAIL", why: "w", who: "w", what: "w", risk: "w", questions_for_user: ["Who asked for this?"] } });
+    check("a FAIL without reasoning is rejected: the gate must show its evidence", r.err && r.text.includes("reasoning"), r.text);
+    r = await call(c, "philosophy_check", { work_item_id: id, title: "T", description: "d", task_type: "feature", judgment: { verdict: "ADVISORY", why: "w", who: "PM", what: "w", risk: "w", questions_for_user: [] } });
+    check("an ADVISORY without reasoning is rejected too", r.err && r.text.includes("reasoning"), r.text);
+    r = await call(c, "philosophy_check", { work_item_id: id, title: "T", description: "d", task_type: "feature", judgment: { verdict: "FAIL", why: "no stated problem", who: "unknown", what: "w", risk: "touches tenant isolation", questions_for_user: ["Who asked for this?"], reasoning: ["The request names a solution, not a problem", "Touches the shared auth service (spec: platform.auth_provider)"] } });
+    check("a FAIL with reasoning is accepted, blocks, and shows the evidence behind it", r.text.includes("PHILOSOPHY_FAIL") && r.text.includes("the evidence behind this verdict") && r.text.includes("Touches the shared auth service"), r.text);
     r = await call(c, "philosophy_check", { work_item_id: id, title: "T", description: "d", task_type: "feature", judgment: JSON.stringify(V.philosophy) });
     check("philosophy PASS recorded (JSON-string judgment)", r.text.includes("PHILOSOPHY_PASS"), r.text);
 
