@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.4.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, and 4.4.0 makes `/sfn-review` spec-aware and experience-aware. 73 tools. See [What's New in 4.4.0](#whats-new-in-440) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.5.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, and 4.5.0 gives every document one home. 73 tools. See [What's New in 4.5.0](#whats-new-in-450) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,22 +23,23 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.4.0](#whats-new-in-440)
-15. [What's New in 4.3.0](#whats-new-in-430)
-16. [What's New in 4.2.0](#whats-new-in-420)
-17. [What's New in 4.1.0](#whats-new-in-410)
-18. [What's New in 4.0.0](#whats-new-in-400)
-19. [Upgrading from 3.x](#upgrading-from-3x)
-20. [Getting Started](#getting-started)
-21. [New Contributor Guide](#new-contributor-guide)
-22. [Contributing Knowledge](#contributing-knowledge)
-23. [Release Notes Philosophy](#release-notes-philosophy)
-24. [Tool Reference](#tool-reference)
-25. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-26. [Development](#development)
-27. [Status and Known Limitations](#status-and-known-limitations)
-28. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-29. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.5.0](#whats-new-in-450)
+15. [What's New in 4.4.0](#whats-new-in-440)
+16. [What's New in 4.3.0](#whats-new-in-430)
+17. [What's New in 4.2.0](#whats-new-in-420)
+18. [What's New in 4.1.0](#whats-new-in-410)
+19. [What's New in 4.0.0](#whats-new-in-400)
+20. [Upgrading from 3.x](#upgrading-from-3x)
+21. [Getting Started](#getting-started)
+22. [New Contributor Guide](#new-contributor-guide)
+23. [Contributing Knowledge](#contributing-knowledge)
+24. [Release Notes Philosophy](#release-notes-philosophy)
+25. [Tool Reference](#tool-reference)
+26. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+27. [Development](#development)
+28. [Status and Known Limitations](#status-and-known-limitations)
+29. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+30. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -376,6 +377,19 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.5.0
+
+A minor release: no breaking changes, no new tools. It adds a rule to the shared agent instructions so that every document has exactly one home.
+
+**Artifact placement, one home per document** (in `AGENTS.md`; `/sfn-spec`, `/sfn-code` and `/sfn-review` point at it)
+- **Knowledge** (ADRs, lessons learned, known exceptions, patterns, operational constraints) lives in `.mcp/` through `record_project_knowledge`, saved `proposed`. **Work-item artifacts** (spec, review notes, PR summary, ADO comment, investigation record, test-run notes) live in `.secufusion/tasks/<ref-folder>/`. **Repository files** are only the source, tests and migrations the specification lists; documents, configuration, CI and environment files need an explicit instruction.
+- **Search before you create.** If a document already covers the decision, update it in place; a changed decision becomes a new entry with `supersedes`, never a forked copy. A decision is stated in full in one place and linked everywhere else.
+- **Never write a file an MCP tool generates** (`spec.md`, `pr-summary.md`, `spec.json`, `decisions.json`, `progress.json`, `files-touched.json`, `scenarios.json`). Hand-written task documents carry a `.draft` suffix.
+- **When a path does not name a repo** (the workspace has several, or its root is not one), the agent asks instead of choosing. On a move or rename it updates every reference and reports that none of the old path is left.
+- **Every write is announced** (`path | home | why | new or overwrite`), every file is logged with `log_file_touched` so the PR summary is complete, and a turn that created files ends with `path | home | committed? | referenced by`.
 
 ---
 
