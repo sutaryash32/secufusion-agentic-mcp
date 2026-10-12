@@ -1,7 +1,7 @@
 {
   "name": "secufusion-mcp",
   "description": "SecuFusion MSSP platform dev agent: project-level spec driven, tenant-isolation enforced, zero-trust guardrails. Core workflow: /sfn-init (load context: DNA, architecture, conventions) -> /sfn-spec (investigate + analyze + design one complete specification) -> /sfn-code (build only what was specified) -> /sfn-review (correctness AND diff quality: line endings, formatting rewrites, scope, conventions).",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "author": {
     "name": "Motivity Labs"
   },
