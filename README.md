@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.6.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, and 4.6.0 adds the design investigation record to the post-review documents. 73 tools. See [What's New in 4.6.0](#whats-new-in-460) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.6.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, and 4.6.0 adds the design investigation record to the post-review documents. 74 tools. See [What's New in 4.6.0](#whats-new-in-460) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -678,6 +678,7 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | `manage_exploration` | UI impact, questions only the user can answer, UI-reference feedback, exploration readiness |
 | `manage_implementation_plan`, `validate_implementation_plan` | Create and validate the plan against the requirement (judged) |
 | `generate_spec_document` | Assemble the Implementation Specification from recorded state |
+| `generate_pr_summary` | Write `pr-summary.md` as an engineering change summary (problem, investigation, root cause, options, design, before/after, tests, risks, impact) from recorded state plus the author's narrative |
 | `verify_against_spec` | Adversarial review verdict; blocked by unaccepted HIGH diff noise |
 | `spec_status` | The gate ledger and the next step |
 | `manage_task`, `get_task_history`, `search_tasks`, `get_pattern_from_task`, `record_retrospective` | Task records and cross-task memory |

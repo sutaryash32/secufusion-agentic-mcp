@@ -12,6 +12,7 @@ import { loadPlan, savePlan, validatePlan, ImplementationPlan } from "./implemen
 import { generateTestObligations, aggregateValidation } from "./validation_engine.js";
 import { recordExperience, loadExperience, getEngineeringExperience, validateExperience, getExperienceContext, findExperienceConflicts, findRepeatedOutcomes, markExperienceStale, retireExperience, linkExperience, getLearningFeedback } from "./experience_manager.js";
 import { loadRequirement } from "./requirement_manager.js";
+import { buildPrSummary, mergeNarrative, loadNarrative, NARRATIVE_FILE } from "./pr_summary.js";
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { investigateEntity, investigateRelationship } from "./investigation_engine.js";
 import { loadSnapshot, saveSnapshot, getRegressionContext, recordRegressionObservation, compareRepositorySnapshots, detectArchitectureDrift, detectRequirementDrift, detectTraceabilityDrift, getChangeHistoryContext, findRegressionTests, analyzeRegressionRisk } from "./regression_engine.js";
@@ -742,19 +743,8 @@ server.tool(
       progress["completed_at"] = new Date().toISOString();
       writeFile(progressPath, JSON.stringify(progress, null, 2));
       upsertRegistry({ work_item_id, status: "complete" });
-      const prSummary = [
-        `# PR Summary — ${displayRef(work_item_id)}: ${spec["title"] || ""}`,
-        ``, `**Status:** Complete  `, `**Completed:** ${progress["completed_at"]}`, ``,
-        `## Acceptance Criteria`,
-        ...((progress["completed_acs"] as string[]) || []).map(ac => `- ✅ ${ac}`),
-        ...(((progress["pending_acs"] as string[]) || []).length > 0 ? ((progress["pending_acs"] as string[]) || []).map(ac => `- ⚠️ ${ac}`) : []),
-        ``, `## Files Modified (${files.length})`,
-        ...files.map(f => `- \`${f["file_path"]}\`${f["change_summary"] ? ` — ${f["change_summary"]}` : ""}`),
-        ``, `## Architectural Decisions`,
-        ...decisions.map(d => `- **${d["decision"]}**${d["rationale"] ? `: ${d["rationale"]}` : ""}`),
-        ``, `## Test Scenarios (${scenarios.length})`,
-        ...scenarios.map(s => `- [${s["type"]}] ${s["scenario"]}`),
-      ].join("\n");
+      // an engineering change summary assembled from recorded state (plus any narrative saved by generate_pr_summary), not a file-change list
+      const prSummary = buildPrSummary({ workspaceRoot: getWorkspaceRoot(), ecosystemRoot: getEcosystemRoot(getWorkspaceRoot()), id: work_item_id, taskDir: dir!, completedAt: progress["completed_at"] as string });
       writeFile(prSummaryPath, prSummary);
 
       let retroMessage = "";
@@ -857,6 +847,61 @@ server.tool(
   }
 );
 
+
+// ─── generate_pr_summary: the PR summary as an engineering change summary ───
+server.tool(
+  "generate_pr_summary",
+  "Writes pr-summary.md as an ENGINEERING CHANGE SUMMARY for a reviewer who has never seen the work item: the problem, how it was investigated, the root cause, the options weighed and why one was chosen, " +
+  "how the final design works, what was resolved, behavior before and after (including multi-instance behavior), tests executed and results, remaining risks and release considerations, business impact, " +
+  "then the files as a reference. Assembled from recorded state (requirement, plan, decisions, scenarios, test results, gate ledger); anything the record does not hold says 'Not recorded'. " +
+  "Pass `narrative` for what only the author knows (options evaluated, behavior before/after, business impact); it is saved beside the task and shown as Author notes, " +
+  "and manage_task action=complete re-renders with it. Supply only what you actually know from the work; never pad it.",
+  {
+    workspace_root: z.string().describe("Root directory of the workspace"),
+    work_item_id: z.string().describe(WORK_ITEM_ID_DESC),
+    narrative: z.object({
+      problem: z.string().optional().describe("What problem existed, in plain words"),
+      investigation: z.array(z.string()).optional().describe("How it was investigated, in order"),
+      root_cause: z.string().optional(),
+      options: z.array(z.object({
+        option: z.string(),
+        verdict: z.enum(["selected", "rejected", "deferred"]),
+        why: z.string().describe("Why it was accepted or rejected"),
+      })).optional().describe("Architectural options evaluated"),
+      why_selected: z.string().optional().describe("Why the selected design won over the rejected ones"),
+      how_it_works: z.string().optional().describe("How the final design works"),
+      issues_resolved: z.array(z.string()).optional(),
+      behavior_before: z.string().optional().describe("Behavior before the change, including multi-instance (replica) behavior where relevant"),
+      behavior_after: z.string().optional().describe("Behavior after the change, including multi-instance behavior where relevant"),
+      tests_run: z.array(z.object({ what: z.string(), result: z.string() })).optional().describe("Tests actually executed and their results"),
+      risks: z.array(z.string()).optional().describe("Risks that remain"),
+      release_considerations: z.array(z.string()).optional(),
+      business_impact: z.string().optional(),
+    }).optional().describe("What only the author knows. Merged into any narrative saved earlier."),
+    dry_run: z.boolean().optional().describe("Return the summary without writing pr-summary.md or saving the narrative"),
+  },
+  async ({ workspace_root, work_item_id, narrative, dry_run }) => {
+    try {
+      const identityClash = findRegistryConflict(readRegistry(), work_item_id);
+      if (identityClash) return textResult(identityConflictMessage(work_item_id, identityClash), true);
+      const dir = resolveTaskFolder(work_item_id, resolve(TASKS_DIR));
+      if (!dir) return textResult(`Task ${displayRef(work_item_id)} not found in ${resolve(TASKS_DIR)}. Has it been initialized?`, true);
+      const merged = mergeNarrative(loadNarrative(dir), narrative ?? {});
+      const md = buildPrSummary({ workspaceRoot: getWorkspaceRoot(), ecosystemRoot: getEcosystemRoot(workspace_root), id: work_item_id, taskDir: dir, narrative: merged });
+      let note = "";
+      if (!dry_run) {
+        writeFile(path.join(dir, "pr-summary.md"), md);
+        if (narrative) writeFile(path.join(dir, NARRATIVE_FILE), JSON.stringify(merged, null, 2));
+        note = `📄 Written: ${path.join(dir, "pr-summary.md").split(path.sep).join("/")}\n`;
+      }
+      const missing = ["problem", "root_cause", "options", "why_selected", "behavior_before", "behavior_after", "business_impact"].filter((k) => !(merged as any)[k] || (merged as any)[k]?.length === 0);
+      const hint = missing.length ? `\nℹ️ Author notes not yet supplied: ${missing.join(", ")}. Add them with \`narrative\` if you know them from the work; otherwise they stay "Not recorded".\n` : "";
+      return textResult(`${note}${hint}\n---\n${md}`);
+    } catch (e: any) {
+      return textResult(`Error: ${e.message}`, true);
+    }
+  }
+);
 
 // ─── Tool 6: get_task_history ─────────────────────────────────────────────────
 server.tool(

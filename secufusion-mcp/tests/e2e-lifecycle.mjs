@@ -165,8 +165,26 @@ const SAMPLING = V;
 
     r = await call(c, "spec_status", { work_item_id: id });
     check("spec_status: all gates passed", r.text.includes("All gates passed"), r.text);
+    // The PR summary is an engineering change summary: problem, investigation, root cause, options, design, resolved issues, before/after, tests, risks, impact.
+    r = await call(c, "manage_task", { action: "log_file_touched", work_item_id: id, file_path: "svc/Svc.java", change_summary: "re-add the tenant predicate" });
+    r = await call(c, "generate_pr_summary", { workspace_root: dir, work_item_id: id });
+    const sections = ["## 1. What problem existed", "## 2. How it was investigated", "## 3. Root cause", "## 4. Architectural options evaluated", "## 5. Why this design was selected", "## 6. How the final design works", "## 7. Issues resolved", "## 8. Behavior before and after", "## 9. Tests executed and results", "## 10. Remaining risks and release considerations", "## 11. Business impact", "## 12. Files changed (reference)"];
+    check("the PR summary is an engineering change summary with every section, files last", !r.err && sections.every((s) => r.text.includes(s)) && r.text.indexOf("## 12.") > r.text.indexOf("## 11."), r.text.slice(0, 500));
+    check("it states recorded facts and the root cause, and says 'Not recorded' for what only the author knows (no invention)", r.text.includes("Svc.java:10 drops the tenant filter") && r.text.includes("_Not recorded._") && r.text.includes("Author notes not yet supplied") && !r.text.includes("Author notes**\n- "), r.text.slice(0, 700));
+    r = await call(c, "generate_pr_summary", { workspace_root: dir, work_item_id: id, narrative: {
+        problem: "Tenant A could list tenant B's rows.", root_cause: "The query dropped its tenant predicate.",
+        options: [{ option: "Filter in the controller", verdict: "rejected", why: "Every caller must remember it" }, { option: "Predicate in the repository query", verdict: "selected", why: "Enforced where the data is read" }],
+        why_selected: "It cannot be bypassed by a new caller.", behavior_before: "Two replicas could both run the job.", behavior_after: "A lock lets one replica run it.",
+        tests_run: [{ what: "SvcTenantIsolationTest", result: "passed" }], risks: ["Lock expiry under a long GC pause"], business_impact: "Closes a cross-tenant data exposure.",
+    } });
+    const rich = r.text;
+    check("the narrative appears as Author notes in the right sections", rich.includes("Tenant A could list tenant B's rows.") && rich.includes("| Filter in the controller | rejected |") && rich.includes("| Predicate in the repository query | selected |") && rich.includes("| **Before** | Two replicas could both run the job. |") && rich.includes("| **After** | A lock lets one replica run it. |") && rich.includes("SvcTenantIsolationTest") && rich.includes("Lock expiry under a long GC pause") && rich.includes("Closes a cross-tenant data exposure."), rich.slice(0, 900));
+    check("the file list is a reference at the end, and the old file-change layout is gone", rich.includes("`svc/Svc.java`: re-add the tenant predicate") && !rich.includes("## Files Modified") && !rich.includes("PR Summary —"));
     r = await call(c, "manage_task", { action: "complete", work_item_id: id });
     check("task complete allowed", !r.err, r.text.slice(0, 300));
+    const taskFolder = path.join(dir, ".secufusion", "tasks", fs.readdirSync(path.join(dir, ".secufusion", "tasks"))[0]);
+    const finalSummary = fs.readFileSync(path.join(taskFolder, "pr-summary.md"), "utf8");
+    check("completing the task re-renders the engineering summary and keeps the author's narrative", finalSummary.includes("engineering change summary") && finalSummary.includes("**Completed:**") && finalSummary.includes("| Predicate in the repository query | selected |") && finalSummary.includes("Closes a cross-tenant data exposure.") && fs.existsSync(path.join(taskFolder, "pr-narrative.json")), finalSummary.slice(0, 300));
     await c.close();
 }
 
