@@ -272,6 +272,14 @@ So reviews now validate:
 
 > **A correct implementation with a noisy diff is not a fully reviewed change.**
 
+### Product-aware review (PASS 11 to 18)
+
+`/sfn-review` is a standalone, product-aware engine. It needs no earlier session: it builds a **Product Knowledge Brief** first (`.mcp/` entries, the project spec, the DNA graph, then the source itself), asks the developer what it cannot establish, and then reviews along eight dimensions: code quality, product behavior, service boundaries, deployment model, tenant hierarchy, privacy, operational resilience and maintainability.
+
+**PASS 11, Product & Privacy Fit,** answers five questions with evidence, each as `FITS`, `DOES NOT FIT`, `CONCERN` or `UNVERIFIED`: does this match the product's actual behavior, will it work in the production deployment model, does it subtly break the tenant hierarchy, will it be hard to maintain in six months, does it violate the privacy model. PASS 12 to 18 supply the evidence.
+
+The governance rule carries over from the knowledge layer: **the reviewer never invents a product rule.** Every product finding names its `Source` and its `Basis` (`FACT`, `INFERENCE`, `ASSUMPTION`, `UNKNOWN`). Only a `FACT` can block; an `INFERENCE` is a question; a rule nobody recorded is reported as **UNVERIFIED** and listed under *Knowledge gaps*, with an offer to record the answer in `.mcp/` so the next review does not have to ask. Maintainability alone never blocks.
+
 `check_diff_quality` measures the diff that **would be committed** (respecting `core.autocrlf` and `.gitattributes`) against the real change and explains the gap:
 
 | Finding | Meaning |

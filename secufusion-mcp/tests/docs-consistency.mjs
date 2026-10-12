@@ -102,6 +102,17 @@ check("/sfn-code: build only what was specified, preserve conventions and line e
 
 const review = cmds["sfn-review.md"];
 check("/sfn-review has the diff-quality pass and records the verdict against the spec", /PASS 10/.test(review) && /check_diff_quality/.test(review) && /verify_against_spec/.test(review));
+{
+    const rv = cmds["sfn-review.md"];
+    const passes = [...rv.matchAll(/^### PASS (\d+) /gm)].map((m) => Number(m[1]));
+    check("/sfn-review has every pass 0 to 18, once each, in order", JSON.stringify(passes) === JSON.stringify([...Array(19).keys()]), passes.join());
+    check("/sfn-review PASS 11 is Product & Privacy Fit and asks the five questions with four possible answers", /### PASS 11 — Product & Privacy Fit/.test(rv) && ["actual product behavior", "production deployment model", "tenant hierarchy", "hard to maintain six months", "violate the privacy model"].every((q) => rv.replace(/\*/g, "").toLowerCase().includes(q.toLowerCase())) && ["FITS", "DOES NOT FIT", "CONCERN", "UNVERIFIED"].every((a) => rv.includes(a)));
+    check("/sfn-review covers all eight dimensions with their own passes", ["Product Behavior", "Architecture & Service Boundaries", "Deployment Model", "Tenant Hierarchy", "Privacy Model", "Operational Resilience", "Future Maintainability"].every((h) => new RegExp("### PASS \\d+ — " + h.replace(/[&]/g, "\\&")).test(rv)));
+    check("/sfn-review never invents product rules: Source and Basis required, only FACT blocks, unrecorded is UNVERIFIED", /Source:/.test(rv) && /Basis:/.test(rv) && /Only FACT can support a BLOCKER/.test(rv) && /UNVERIFIED/.test(rv) && /KNOWLEDGE GAPS/.test(rv) && /Invent a product rule/.test(rv));
+    check("/sfn-review is standalone: builds product knowledge itself, falls back to source, accepts any target and any work-item type", /Zero prior MCP session/.test(rv) && /Fall back to the source code/.test(rv) && /get_project_knowledge/.test(rv) && /analyze_impact/.test(rv) && /BUG-1230/.test(rv) && /folder path/i.test(rv));
+    check("/sfn-review report has the product fit table, dimensions, knowledge used and gaps", ["PRODUCT & PRIVACY FIT", "REVIEW DIMENSIONS", "PRODUCT KNOWLEDGE USED", "KNOWLEDGE GAPS"].every((h) => rv.includes("## " + h)));
+    check("maintainability alone never blocks", /maintainability alone never produces a BLOCKER/i.test(rv));
+}
 check("/sfn-review covers reordering, naming, conventions and scope vs the specification", /REORDERING/.test(review) && /Naming inconsistencies/.test(review) && /diff_scope/.test(review) && /noisy diff/i.test(review));
 
 const router = read("agents/claude.md");

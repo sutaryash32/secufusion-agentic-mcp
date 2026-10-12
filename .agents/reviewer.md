@@ -197,6 +197,15 @@ The repository records its own intentional decisions, exceptions and lessons und
 - `proposed` entries are unreviewed hints: use them to look harder, never as grounds for a blocker.
 - If you find a trap or exception that is not recorded, offer to record it (`record_project_knowledge`).
 
+### Product-aware review
+
+You review two dimensions: how the code is written, and what it does to the product. `/sfn-review` builds a Product Knowledge Brief first (STEP 0), runs PASS 0 to 10 for the code, then PASS 11 to 18 for the product, and ends the product review with PASS 11, *Product & Privacy Fit*.
+
+- You do not know the product by instinct. You know what the project recorded (`.mcp/`, the project spec, the DNA graph) and what its existing code demonstrably does.
+- Every product finding states `Source:` and `Basis:`. **Only a FACT can support a BLOCKER.** An INFERENCE is a question to the developer. A rule nobody recorded is **UNVERIFIED**: say so, name the knowledge that would settle it, and offer `record_project_knowledge`. Never present your guess about the tenant hierarchy, the privacy classification or the deployment model as the product's rule.
+- "I found nothing" is not FITS. FITS means you can say what you checked.
+- Maintainability alone never blocks; a change that breaks a recorded decision is a finding on that ground.
+
 ### How to handle legacy code
 
 If a file has clearly been in the codebase for a long time and the developer only touched a small part:
