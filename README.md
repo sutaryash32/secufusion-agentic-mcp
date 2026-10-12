@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.1.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), and 4.1.0 adds a knowledge health report, starter templates and a suggestion engine. 73 tools. See [What's New in 4.1.0](#whats-new-in-410) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.2.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, and 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer. 73 tools. See [What's New in 4.2.0](#whats-new-in-420) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,19 +23,20 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.1.0](#whats-new-in-410)
-15. [What's New in 4.0.0](#whats-new-in-400)
-16. [Upgrading from 3.x](#upgrading-from-3x)
-17. [Getting Started](#getting-started)
-18. [New Contributor Guide](#new-contributor-guide)
-19. [Contributing Knowledge](#contributing-knowledge)
-20. [Release Notes Philosophy](#release-notes-philosophy)
-21. [Tool Reference](#tool-reference)
-22. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-23. [Development](#development)
-24. [Status and Known Limitations](#status-and-known-limitations)
-25. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-26. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.2.0](#whats-new-in-420)
+15. [What's New in 4.1.0](#whats-new-in-410)
+16. [What's New in 4.0.0](#whats-new-in-400)
+17. [Upgrading from 3.x](#upgrading-from-3x)
+18. [Getting Started](#getting-started)
+19. [New Contributor Guide](#new-contributor-guide)
+20. [Contributing Knowledge](#contributing-knowledge)
+21. [Release Notes Philosophy](#release-notes-philosophy)
+22. [Tool Reference](#tool-reference)
+23. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+24. [Development](#development)
+25. [Status and Known Limitations](#status-and-known-limitations)
+26. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+27. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -371,6 +372,26 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.2.0
+
+A minor release: no breaking changes, no new tools. It rewrites one command, `/sfn-review`, so that it reviews the **product** and not only the code.
+
+**`/sfn-review` is now a standalone, product-aware review engine**
+- **Builds its own context.** Step 0 assembles a Product Knowledge Brief from `.mcp/`, the project spec, the DNA graph and, failing that, the source itself. It needs no earlier session and accepts a work item (`BUG-1230` stays `BUG-1230`), file, folder, service or git diff.
+- **Eight review dimensions:** code quality, product behavior and feature contracts, service boundaries, deployment model, tenant hierarchy, privacy, operational resilience and future maintainability. PASS 0 to 10 are unchanged; PASS 11 to 18 are new.
+- **PASS 11, Product & Privacy Fit:** answers five questions with evidence (does it match actual product behavior, will it work in the production deployment model, does it subtly break the tenant hierarchy, will it be hard to maintain in six months, does it violate the privacy model) as `FITS`, `DOES NOT FIT`, `CONCERN` or `UNVERIFIED`.
+- **An investigation, not a checklist.** The reviewer models the change and its blast radius, forms specific hypotheses about how it could harm the product, investigates each until it is confirmed or dismissed, and shows the trail in a *Reasoning trace*. The passes are lenses, reported as `NOT APPLICABLE` when they do not apply, and findings the lenses miss are still reported.
+- **It never invents product rules.** Every product finding states a `Source` and a `Basis`; only a `FACT` can block; a rule nobody recorded is **UNVERIFIED** and listed under *Knowledge gaps* with an offer to record it in `.mcp/`. Maintainability alone never blocks.
+- **New report sections:** Product knowledge used, Review dimensions, Product & privacy fit, Reasoning trace, Knowledge gaps.
+
+**Also in this release**
+- The repository's `.agents/reviewer.md` is re-aligned with the shipped persona, which now describes the investigative method.
+- Seven documentation tests pin the review contract (every pass 0 to 18 once and in order, the five questions, the evidence rule, the report sections).
+
+**Note.** These are instructions the model follows, so how well the product dimensions answer depends on what the project has recorded in `.mcp/`. Until the tenant hierarchy, privacy model and deployment model are written down there, expect `UNVERIFIED` answers and questions to the developer. Recording them is the quickest way to improve reviews.
 
 ---
 
