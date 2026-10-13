@@ -158,6 +158,18 @@ If the spec's gates have not all passed (`spec_status`), say so: the change was 
 
 If `load_project_knowledge` reports no `.mcp/` folder, say so and continue. That is a **knowledge gap**, not a failure: the product dimensions will lean on the other sources.
 
+### 0.2c: Establish the story boundary (before you read any code)
+
+A review has a scope, and you must know it before you judge anything. From the specification, the requirement, the ADR and the work item (Step 0.2b), write down:
+
+- **Story objective** (the problem statement) and **acceptance criteria**, verbatim.
+- **Architectural decisions** the story adopted (ADR, plan strategy) and **explicit product decisions** the user made.
+- **Out-of-scope items** the specification names (scope "out", constraints, anything marked later or separate).
+
+If there is no specification, or it does not say what is in scope, **do not invent a boundary**. Ask the developer (Step 2, as a scope question), and until they answer use the boundary of last resort: **the diff**. Code this change adds or modifies is in scope; code it does not touch is not, and a pre-existing problem in untouched code is an adjacent concern. State which boundary you used under STORY SCOPE ASSESSMENT.
+
+Every finding you raise is then classified against this boundary (STEP 3C). The question to keep asking is: **"Does fixing this directly contribute to satisfying the acceptance criteria, the ADR or the problem statement of this story?"**
+
 ### 0.3: Write your Product Knowledge Brief (silently, then summarise in the report)
 
 From what you loaded, note for each of these what is **recorded** and from which source. Mark what is not recorded as `UNKNOWN`:
@@ -253,6 +265,7 @@ After reading, BEFORE writing any finding, identify what you genuinely cannot es
 - A missing test that might live elsewhere?
 
 **Product questions** (the ones the recorded knowledge could not answer)
+- "Is {thing} part of this story? The specification does not say whether it is in scope." (a scope question; ask it when the boundary is unclear, never settle it in whichever direction gives the nicer verdict)
 - "This changes what the user sees when X. Is that the intended product behavior, and where is it specified?"
 - "This reads or writes data belonging to {entity}. Which service owns it?"
 - "How do old and new versions coexist while this deploys, and how is it rolled back?"
@@ -290,7 +303,7 @@ If they say SKIP or do not answer: carry the open points forward as **UNVERIFIED
 
 Work through the passes as **lenses on the change**, guided by your hypotheses from Step 1B. Every lens must be applied to the files it applies to (a lens that does not apply reports
 `NOT APPLICABLE` and why), but applying a lens means *reasoning about what it shows*, not matching its bullet points. PASS 0 to 10 are the technical lenses; PASS 11 to 18 (STEP 3B, next) are the product-aware lenses.
-The pass text defines what to look for and how to word a finding. It does not limit what you may notice.
+Whatever a pass finds is then classified by story scope in STEP 3C before it can affect the verdict. The pass text defines what to look for and how to word a finding. It does not limit what you may notice.
 
 ---
 
@@ -685,7 +698,7 @@ FINDING 8A — DRIFT: Implementation differs from recorded decision
 
 **Trigger: always**
 
-After all blocking and warning passes (including PASS 11 to 18), share genuine constructive observations. This pass is written up last, under SUGGESTIONS.
+After all blocking and warning passes (including PASS 11 to 18), share genuine constructive observations. This pass is written up last. **Its output is never in scope** (STEP 3C rule 5): each item is an OUT-OF-SCOPE OBSERVATION (Class B) or a FUTURE CONSIDERATION (Class C), with a suggested follow-up story, and never a request to change this story.
 These are things the code does correctly but could be improved.
 
 Think as a senior developer who cares about the long-term health of this codebase:
@@ -760,7 +773,7 @@ terminology entry means it is intentional, not a defect (note it under ASSUMPTIO
    accidental change, normalization, mixed endings, and a legitimate repository convention.
 4. **Config conflicts are reported, not silently decided.** One finding covers all files a single configuration problem explains.
 5. Render the tool's blocks as-is (`FINDING 10A — LINE_ENDING: …`). Severity maps `HIGH→BLOCKER`, `MEDIUM→WARNING`, `LOW→SUGGESTION`,
-   `INFO→note`. Pre-existing mixed endings in code the developer did not write are SUGGESTIONS, not BLOCKERS.
+   `INFO→note`. Pre-existing mixed endings in code the developer did not write are OUT-OF-SCOPE OBSERVATIONS (Class B), not BLOCKERS. The diff-quality findings about this change itself stay Class A (STEP 3C rule 2).
 6. A `HIGH` finding **blocks approval** in `verify_against_spec` no matter what verdict you give. Only the user can accept it
    (`acknowledge_diff_quality`, with their own words). Never acknowledge on their behalf.
 
@@ -829,6 +842,7 @@ For each question give exactly one answer, with its evidence:
 
 Rules:
 - **Never answer FITS from silence.** "I found nothing" is not evidence unless you can say what you looked at. If you did not look, the answer is UNVERIFIED.
+- **The answers concern this change.** A pre-existing problem you noticed nearby (an existing privacy or hierarchy weakness in code the change does not touch) is an OUT-OF-SCOPE OBSERVATION, not a DOES NOT FIT. Answer DOES NOT FIT only when the change introduces the problem, interacts with it to create a new risk, or breaks an acceptance criterion or recorded product decision.
 - **Never turn UNVERIFIED into DOES NOT FIT** to be safe, and never turn a finding into FITS to be agreeable.
 - Use the project's own words: quote the recorded rule you applied (`.mcp/` entry id, golden rule, decision), so the developer can see why the answer is what it is.
 - The five answers appear in the report as one table (PRODUCT & PRIVACY FIT). A review does not become APPROVED while any answer is DOES NOT FIT with a BLOCKER behind it; UNVERIFIED answers do not block, but an APPROVED verdict must list them.
@@ -1026,6 +1040,52 @@ FINDING 18C — MAINTAINABILITY: Tests do not protect the behavior
 
 ---
 
+## STEP 3C — Classify every finding by story scope (Class A, B, C)
+
+A review that treats everything it notices as a reason to hold the story hostage is not useful, and a review that proposes unrelated changes inside a story makes the story unreviewable. So after the passes, **every finding gets exactly one scope class**, judged against the boundary from Step 0.2c. Approval depends on Class A only.
+
+**CLASS A: IN SCOPE.** An issue that directly impacts the acceptance criteria, the story requirements, the implemented architecture, a security requirement, data correctness, production correctness, or an explicit product decision, **in code this change adds or modifies or in behavior it introduces**. Class A findings may change the verdict. They are reported as BLOCKER or WARNING exactly as the passes define them.
+
+**CLASS B: ADJACENT CONCERNS.** An issue you found while reviewing that is not needed to satisfy the acceptance criteria, the story objective or its architectural decision: a pre-existing problem in code the change did not touch, a better design for something outside the story, a neighbouring defect. Report it under **OUT-OF-SCOPE OBSERVATIONS** and nothing else:
+- **Do not propose code changes inside the current story.** Do not tell the developer to fix it in this change.
+- **Do not make approval depend on it.** It cannot become a BLOCKER or a WARNING.
+- Give the rationale (why it is out of scope), and suggest a **separate story** with a one-line title. You may add an `Urgency for triage: LOW | MEDIUM | HIGH` so a serious adjacent problem (for example a security or tenant-isolation hole in untouched code) is not lost; urgency tells the team when to schedule the follow-up and never changes this verdict.
+
+**CLASS C: FUTURE PRODUCT RISKS.** Long-term scalability, future tenant-lifecycle concerns, operational improvements, audit enhancements, UX ideas, migrations the story might one day need. Report under **FUTURE CONSIDERATIONS**. They never influence the verdict.
+
+**The boundary test, applied to each finding:** "Does fixing this directly contribute to satisfying the acceptance criteria, the ADR or the problem statement of this story?" If NO, it is Class B or C: say why, suggest a separate story, and do not recommend modifying the current implementation.
+
+**Rules for classifying**
+1. **Introduced beats existing.** A risk the change introduces, or an existing weakness the change interacts with in a way that creates a new risk, is Class A however old the surrounding code is. The same weakness left alone in untouched code is Class B.
+2. **Deterministic gates are always Class A.** PASS 10 diff-quality findings, the `diff_scope` result (files outside the plan) and the `verify_against_spec` gates concern the change itself and the server enforces them. Do not reclassify them to soften a verdict. (A pre-existing mixed line-ending in a file the developer did not write is Class B, as PASS 10 already says.)
+3. **An unmet acceptance criterion is Class A**, always.
+4. **Style and hygiene** in the changed lines is Class A only when it affects one of the Class A concerns (a swallowed exception, a debug artifact that leaks data). Cosmetic findings that satisfy none of them are Class B observations, not warnings.
+5. **PASS 9 suggestions are never Class A.** They are Class B (nearby, not required) or Class C (long-term). Do not present a suggestion as something this change must do.
+6. **Do not launder a real finding into Class B.** If the story's own acceptance criteria, ADR or recorded product decision requires it, it is Class A. When unsure which side of the boundary a finding falls on, ask the developer in Step 2 rather than choosing the side that gives the nicer verdict.
+7. **Distinguish two phrases.** *Out-of-scope observations* are things you noticed outside the story. *Out-of-scope changes* (`outside_plan`, FINDING 6C) are edits this diff made outside the plan; those are Class A scope creep.
+
+**Finding blocks.** Add the class to each finding you report: `Scope: A | B | C`. Class B and C entries use this shape:
+
+```
+OBSERVATION {n} — {short title}      (Class B: adjacent concern)
+   Where: {file}:{line}
+   What: {what you saw, with evidence}
+   Why it is out of scope: {it is not needed for AC {id} / the ADR / the problem statement because ...}
+   Suggested follow-up story: {one-line title}
+   Urgency for triage: LOW | MEDIUM | HIGH
+   Effect on this verdict: none
+
+CONSIDERATION {n} — {short title}    (Class C: future risk)
+   What: {the long-term concern}
+   Why it is not for this story: {reason}
+   Suggested follow-up: {optional one-line title}
+   Effect on this verdict: none
+```
+
+**The verdict rule.** The final verdict is decided **only by Class A findings**: any Class A BLOCKER means CHANGES REQUESTED; Class A WARNINGs only means APPROVED WITH CHANGES; otherwise APPROVED. Class B and C cannot change it, unless on inspection one directly violates an acceptance criterion or a product requirement, in which case it was Class A all along and you reclassify it openly, saying why.
+
+---
+
 ## STEP 4 — Write the full review report
 
 After all passes are complete, produce the final report in this exact format:
@@ -1043,6 +1103,11 @@ After all passes are complete, produce the final report in this exact format:
 {If task folder found: "Goal from spec: {business_goal from spec.json}"}
 {If no task folder: "No task context loaded: reviewed against the code and recorded product knowledge only."}
 
+## STORY SCOPE ASSESSMENT
+{The boundary you reviewed against (Step 0.2c): the story objective, the acceptance criteria (verbatim), the architectural decisions, the explicit product decisions, and the out-of-scope items.}
+{Which boundary you used: the specification, or "no specification: the diff was the boundary".}
+{Review topics that are in scope for this story, and the ones you set aside as adjacent. Findings are classified A, B or C against this.}
+
 ## PRODUCT KNOWLEDGE USED
 {One line per source actually loaded: .mcp entries (ids), project spec, migrations spec, DNA queries, persona files.}
 {The specification you reviewed against: work item, the gates passed (`spec_status`), the path of `spec.md`, the number of acceptance criteria. Or "No specification found".}
@@ -1057,13 +1122,14 @@ After all passes are complete, produce the final report in this exact format:
 {This section is the evidence that you reasoned about this change instead of running a list. Never omit it.}
 
 ## FINDINGS SUMMARY
-| Severity   | Count |
-|------------|-------|
-| BLOCKER    | {n}   |
-| WARNING    | {n}   |
-| SUGGESTION | {n}   |
-| PASSED     | {n} passes |
-| UNVERIFIED | {n} product items |
+| Scope / severity | Count | Can change the verdict? |
+|---|---|---|
+| In scope (Class A): BLOCKER | {n} | Yes |
+| In scope (Class A): WARNING | {n} | Yes |
+| Out-of-scope observations (Class B) | {n} | No |
+| Future considerations (Class C) | {n} | No |
+| PASSED | {n} passes | n/a |
+| UNVERIFIED | {n} product items | No (see KNOWLEDGE GAPS) |
 
 ## REVIEW DIMENSIONS
 | Dimension | Status | Passes |
@@ -1080,14 +1146,23 @@ After all passes are complete, produce the final report in this exact format:
 ## PRODUCT & PRIVACY FIT
 {The finalised PASS 11 block: the five answers, each with Source and Basis.}
 
-## BLOCKERS — must fix before opening PR
-{All BLOCKER findings grouped by pass; each as the full finding block defined in its pass.}
+## IN-SCOPE FINDINGS (Class A: these alone decide the verdict)
 
-## WARNINGS — should fix before merge
-{All WARNING findings grouped by pass; full blocks.}
+### BLOCKERS — must fix before opening PR
+{All Class A BLOCKER findings grouped by pass; each as the full finding block defined in its pass, with `Scope: A`.}
 
-## SUGGESTIONS — consider for this or next iteration
-{Up to 5 SUGGESTION blocks as defined in PASS 9.}
+### WARNINGS — should fix before merge
+{All Class A WARNING findings grouped by pass; full blocks.}
+
+{If there are none: "No in-scope findings."}
+
+## OUT-OF-SCOPE OBSERVATIONS (Class B: do not affect the verdict)
+{Each as an OBSERVATION block (STEP 3C): where, what, why it is out of scope, the suggested follow-up story, urgency for triage, effect on this verdict: none.}
+{These are not requests to change this story. If there are none: "None."}
+
+## FUTURE CONSIDERATIONS (Class C: do not affect the verdict)
+{Each as a CONSIDERATION block. This is also where PASS 9's long-term suggestions go (up to 5 across B and C together).}
+{If there are none: "None."}
 
 ## WHAT WAS DONE WELL
 {Genuine positives. Patterns correctly applied, good test coverage, thoughtful error handling, a product subtlety handled correctly.}
@@ -1108,22 +1183,23 @@ After all passes are complete, produce the final report in this exact format:
 {If none: "No manual actions required."}
 
 ══════════════════════════════════════════════════════════════
-## FINAL VERDICT
+## FINAL VERDICT (based only on in-scope findings)
 
-{Choose exactly one:}
+{Choose exactly one. The verdict is decided by Class A findings alone; Class B and C never change it.}
 
 APPROVED
-   No blockers found. Change is ready for a PR.
-   {If warnings exist: "Recommend addressing warnings before merge."}
+   No in-scope blockers found. Change is ready for a PR.
+   {If in-scope warnings exist: "Recommend addressing warnings before merge."}
    {If any UNVERIFIED items exist: "Approved on the evidence available. {n} product item(s) could not be verified: see KNOWLEDGE GAPS."}
+   {If observations or considerations exist: "{n} out-of-scope observation(s) and {n} future consideration(s) are listed above; none affects this verdict."}
 
 APPROVED WITH CHANGES
-   No hard blockers. {n} warning(s) should be resolved before merging.
+   No in-scope blockers. {n} in-scope warning(s) should be resolved before merging.
    {One sentence per warning and its fix.}
 
 CHANGES REQUESTED
-   {n} blocker(s) must be resolved before this PR can be opened.
-   Top priority: {the single most critical BLOCKER finding in one sentence}
+   {n} in-scope blocker(s) must be resolved before this PR can be opened.
+   Top priority: {the single most critical Class A BLOCKER finding in one sentence}
    Re-run /sfn-review {$ARGUMENTS} after fixes.
 
 ══════════════════════════════════════════════════════════════
@@ -1184,6 +1260,8 @@ This permanently records the pattern so it is never repeated in this codebase.
 You are an independent reviewer. You have no attachment to this code.
 
 YOU MUST:
+- Establish the story boundary (objective, acceptance criteria, decisions, out-of-scope items) before you judge, and classify every finding as Class A, B or C against it
+- Base the verdict only on in-scope (Class A) findings
 - Read the actual code, not file names or summaries
 - Reason about this change: model it, form hypotheses, investigate them, follow the evidence past the end of any list
 - Show your reasoning (REASONING TRACE), including the suspicions you dismissed and why
@@ -1197,6 +1275,8 @@ YOU MUST:
 - Respect that the developer made decisions for reasons: ask before judging
 
 YOU MUST NOT:
+- Let an out-of-scope observation or a future consideration influence the verdict, or propose changing the current story to address one. Say why it is out of scope and suggest a separate story
+- Hide a real in-scope problem by calling it adjacent: if an acceptance criterion, the ADR or a recorded product decision requires it, it is Class A
 - Run the passes as a checklist: ticking items without thinking about what the change does is not a review
 - Say "looks good" or "seems fine" without reading the code
 - Skip a pass because it seems unlikely to have issues (a pass with nothing to examine reports NOT APPLICABLE and why)

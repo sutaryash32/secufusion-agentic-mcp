@@ -314,6 +314,16 @@ Before it reads your code it loads three kinds of memory and keeps them apart: *
 
 It is an **investigation, not a checklist.** The reviewer models the change and its blast radius (using the DNA graph), forms specific hypotheses about how *this* change could harm the product, investigates each until it is confirmed or dismissed, asks the developer only what the evidence cannot settle, and shows its work in a *Reasoning trace* that includes the suspicions it dismissed. The passes are lenses that stop it forgetting a class of risk, not a form to fill in, and it reports what the lenses missed. The deterministic facts (`check_diff_quality`, the spec gate) stay deterministic.
 
+**The review stays inside the story.** Before it judges anything it establishes the story boundary (objective, acceptance criteria, architectural and product decisions, out-of-scope items; with no specification the diff is the boundary) and classifies every finding:
+
+| Class | Meaning | Reported as | Can change the verdict? |
+|---|---|---|---|
+| **A, in scope** | Directly impacts the acceptance criteria, requirements, implemented architecture, security, data or production correctness, or an explicit product decision, in what this change adds or modifies | In-scope findings (BLOCKER or WARNING) | **Yes, and only these** |
+| **B, adjacent concern** | Found while reviewing, but not needed to satisfy the story | Out-of-scope observations, each with why it is out of scope and a suggested separate story | No |
+| **C, future product risk** | Scalability, future tenant lifecycle, operational improvements, audit enhancements, UX ideas | Future considerations | No |
+
+The test for every finding is: *does fixing this directly contribute to satisfying the acceptance criteria, the ADR or the problem statement of this story?* If not, the review does not ask for it to be changed in the current story. It does not hide real problems behind the boundary: whatever the acceptance criteria, the ADR or a recorded product decision requires is Class A, and diff-quality and scope-creep findings about the change itself are always Class A. The report order is Story scope assessment, In-scope findings, Out-of-scope observations, Future considerations, then the verdict, which says it rests only on in-scope findings.
+
 The governance rule carries over from the knowledge layer: **the reviewer never invents a product rule.** Every product finding names its `Source` and its `Basis` (`FACT`, `INFERENCE`, `ASSUMPTION`, `UNKNOWN`). Only a `FACT` can block; an `INFERENCE` is a question; a rule nobody recorded is reported as **UNVERIFIED** and listed under *Knowledge gaps*, with an offer to record the answer in `.mcp/` so the next review does not have to ask. Maintainability alone never blocks.
 
 `check_diff_quality` measures the diff that **would be committed** (respecting `core.autocrlf` and `.gitattributes`) against the real change and explains the gap:
