@@ -10,6 +10,7 @@
  */
 import path from "path";
 import { git, gitTop, pickBase } from "./diff_quality.js";
+import { findIntentEvidence, SEARCHED } from "./intent_evidence.js";
 const PATTERNS = [
     ["AUTHORIZATION", /(@PreAuthorize|@PostAuthorize|@Secured|@RolesAllowed|hasAuthority|hasAnyAuthority|hasRole|hasPermission|isCallerAncestorOrSelf|AccessDenied|Forbidden|isAuthorized|isAuthenticated|permitAll|authenticated\(\)|authorizeHttpRequests|requestMatchers|antMatchers|checkPermission|canAccess|requireRole|requireAuth)/i],
     ["VALIDATION", /(@Valid\b|@Validated|@NotNull|@NotBlank|@NotEmpty|@Size\b|@Min\b|@Max\b|@Pattern\b|@Email\b|@Positive|@Negative|\bvalidate\w*\(|Objects\.requireNonNull|Preconditions\.|throw new (IllegalArgument|IllegalState|Validation|BadRequest|ConstraintViolation)\w*|\.isBlank\(\)|\.matches\()/],
@@ -87,7 +88,7 @@ function baselineRisk(cats, signals) {
 }
 export function analyzeBehaviorChanges(cwd, opts = {}) {
     const top = gitTop(cwd);
-    const rep = { root: top, base: null, base_reason: "", files_scanned: 0, test_files_changed: [], candidates: [], counts: { HIGH: 0, MEDIUM: 0, LOW: 0 }, notes: [] };
+    const rep = { root: top, base: null, base_reason: "", files_scanned: 0, test_files_changed: [], candidates: [], counts: { HIGH: 0, MEDIUM: 0, LOW: 0 }, notes: [], intent_search: { run: !!opts.sources, sources: opts.sources?.length ?? 0 } };
     if (!top) {
         rep.notes.push("Not a git repository: there is no diff to inspect.");
         return rep;
@@ -126,7 +127,7 @@ export function analyzeBehaviorChanges(cwd, opts = {}) {
             return;
         const ordered = PATTERNS.map(([c2]) => c2).filter((c2) => cats.has(c2));
         const signals = signalsFor(r.join(" "), a.join(" "));
-        rep.candidates.push({ file: f, line: ln, context: c, categories: ordered, old: r.map((x) => x.trim()), new: a.map((x) => x.trim()), signals, baseline_risk: baselineRisk(ordered, signals) });
+        rep.candidates.push({ file: f, line: ln, context: c, categories: ordered, old: r.map((x) => x.trim()), new: a.map((x) => x.trim()), signals, baseline_risk: baselineRisk(ordered, signals), support: opts.sources ? findIntentEvidence(r, a, opts.sources) : [] });
     };
     for (const raw of text.split(/\r?\n/)) {
         if (raw.startsWith("diff --git ")) {
@@ -197,6 +198,11 @@ export function renderBehaviorReport(r, max = 40) {
         "New code:", ...(c.new.length ? c.new.map((l) => `  + ${l}`) : ["  (none: the line was removed)"]),
         `Signals: ${c.signals.join("; ") || "none"}`,
         `Baseline risk: ${c.baseline_risk}`,
+        ...(!r.intent_search.run
+            ? ["Intent evidence: NOT SEARCHED. Pass work_item_id so the acceptance criteria, story text, ADRs and recorded product decisions can be searched, and check the user's instructions yourself, before writing NO."]
+            : c.support.length
+                ? [`Possible supporting evidence (searched: ${SEARCHED}; read the full source and decide whether it really confirms THIS change):`, ...c.support.map((s) => `  - [${s.label}${s.trust ? `; ${s.trust}` : ""}] "${s.quote}" (shares: ${s.matched.join(", ")})`)]
+                : [`Intent evidence: none found in ${SEARCHED} (${r.intent_search.sources} source(s) searched). Check the user's instructions in this conversation before marking intent unconfirmed.`]),
     ].join("\n"));
     return head + "\n" + blocks.join("\n\n---\n\n") + (r.candidates.length > max ? `\n\n…and ${r.candidates.length - max} more (lower risk), not shown.\n` : "\n");
 }

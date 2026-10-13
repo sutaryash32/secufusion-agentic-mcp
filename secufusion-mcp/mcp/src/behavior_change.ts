@@ -10,6 +10,7 @@
  */
 import path from "path";
 import { git, gitTop, pickBase } from "./diff_quality.js";
+import { findIntentEvidence, IntentSource, Support, SEARCHED } from "./intent_evidence.js";
 
 export type Category = "AUTHORIZATION" | "VALIDATION" | "QUERY_PREDICATE" | "FILTERING" | "DEFAULT_VALUE" | "FEATURE_FLAG" | "CONDITIONAL" | "TIME_CALCULATION";
 export type Risk = "LOW" | "MEDIUM" | "HIGH";
@@ -34,10 +35,14 @@ const NOISE = /^(\s*$|\s*(\/\/|\/\*|\*|#|import\s|package\s)|\s*(log|logger|LOG|
 export interface Candidate {
     file: string; line: number; context: string; categories: Category[];
     old: string[]; new: string[]; signals: string[]; baseline_risk: Risk;
+    /** possible support for the intent, found in the story's recorded sources (empty when none, or when no search was run) */
+    support: Support[];
 }
 export interface BehaviorReport {
     root: string | null; base: string | null; base_reason: string; files_scanned: number; test_files_changed: string[];
     candidates: Candidate[]; counts: Record<Risk, number>; notes: string[];
+    /** whether the story's recorded sources were searched for intent evidence, and how many sources were available */
+    intent_search: { run: boolean; sources: number };
 }
 
 const numbers = (s: string) => [...s.matchAll(/(?<![\w.])-?\d+(?:\.\d+)?(?![\w.])/g)].map((m) => m[0]);
@@ -87,9 +92,9 @@ function baselineRisk(cats: Category[], signals: string[]): Risk {
     return signals.some((s) => /^(operator|negation)/.test(s)) ? "MEDIUM" : "LOW";
 }
 
-export function analyzeBehaviorChanges(cwd: string, opts: { base?: string } = {}): BehaviorReport {
+export function analyzeBehaviorChanges(cwd: string, opts: { base?: string; sources?: IntentSource[] } = {}): BehaviorReport {
     const top = gitTop(cwd);
-    const rep: BehaviorReport = { root: top, base: null, base_reason: "", files_scanned: 0, test_files_changed: [], candidates: [], counts: { HIGH: 0, MEDIUM: 0, LOW: 0 }, notes: [] };
+    const rep: BehaviorReport = { root: top, base: null, base_reason: "", files_scanned: 0, test_files_changed: [], candidates: [], counts: { HIGH: 0, MEDIUM: 0, LOW: 0 }, notes: [], intent_search: { run: !!opts.sources, sources: opts.sources?.length ?? 0 } };
     if (!top) { rep.notes.push("Not a git repository: there is no diff to inspect."); return rep; }
     const { base, reason } = pickBase(top, opts.base);
     rep.base = base; rep.base_reason = reason;
@@ -113,7 +118,7 @@ export function analyzeBehaviorChanges(cwd: string, opts: { base?: string } = {}
         if (!cats.size) return;
         const ordered = PATTERNS.map(([c2]) => c2).filter((c2) => cats.has(c2));
         const signals = signalsFor(r.join(" "), a.join(" "));
-        rep.candidates.push({ file: f, line: ln, context: c, categories: ordered, old: r.map((x) => x.trim()), new: a.map((x) => x.trim()), signals, baseline_risk: baselineRisk(ordered, signals) });
+        rep.candidates.push({ file: f, line: ln, context: c, categories: ordered, old: r.map((x) => x.trim()), new: a.map((x) => x.trim()), signals, baseline_risk: baselineRisk(ordered, signals), support: opts.sources ? findIntentEvidence(r, a, opts.sources) : [] });
     };
     for (const raw of text.split(/\r?\n/)) {
         if (raw.startsWith("diff --git ")) { flush(); file = ""; continue; }
@@ -158,6 +163,11 @@ export function renderBehaviorReport(r: BehaviorReport, max = 40): string {
         "New code:", ...(c.new.length ? c.new.map((l) => `  + ${l}`) : ["  (none: the line was removed)"]),
         `Signals: ${c.signals.join("; ") || "none"}`,
         `Baseline risk: ${c.baseline_risk}`,
+        ...(!r.intent_search.run
+            ? ["Intent evidence: NOT SEARCHED. Pass work_item_id so the acceptance criteria, story text, ADRs and recorded product decisions can be searched, and check the user's instructions yourself, before writing NO."]
+            : c.support.length
+                ? [`Possible supporting evidence (searched: ${SEARCHED}; read the full source and decide whether it really confirms THIS change):`, ...c.support.map((s) => `  - [${s.label}${s.trust ? `; ${s.trust}` : ""}] "${s.quote}" (shares: ${s.matched.join(", ")})`)]
+                : [`Intent evidence: none found in ${SEARCHED} (${r.intent_search.sources} source(s) searched). Check the user's instructions in this conversation before marking intent unconfirmed.`]),
     ].join("\n"));
     return head + "\n" + blocks.join("\n\n---\n\n") + (r.candidates.length > max ? `\n\n…and ${r.candidates.length - max} more (lower risk), not shown.\n` : "\n");
 }

@@ -5,7 +5,8 @@ import { fixLineEndings } from "./line_ending_fix.js";
 import { analyzeMergeRegressions, renderMergeReport } from "./merge_regression.js";
 import { analyzeBehaviorChanges, renderBehaviorReport } from "./behavior_change.js";
 import { analyzeScopeDrift, renderScopeDrift } from "./scope_drift.js";
-import { getEcosystemRoot } from "./shared.js";
+import { getEcosystemRoot, resolveTaskFolder, resolve, TASKS_DIR } from "./shared.js";
+import { gatherIntentSources } from "./intent_evidence.js";
 import { loadRequirement } from "./requirement_manager.js";
 import { findPlanFor } from "./pr_summary.js";
 export function registerReviewTools(server) {
@@ -82,11 +83,17 @@ export function registerReviewTools(server) {
         "It cannot know what a change means for users or whether anyone intended it: YOU judge that and write the BEHAVIOR CHANGE blocks (Old Behavior, New Behavior, Affected Users, Acceptance Criteria Impact, Risk, Intent Explicitly Confirmed). " +
         "Pattern-based: it surfaces candidates and cannot prove a behavior change or its absence. Test files are not scanned but are listed. READ-ONLY.", {
         workspace_root: z.string().describe("A directory inside the git repository being reviewed"),
+        work_item_id: z.string().optional().describe("The story. When given, each candidate is checked against the story's recorded sources for possible confirmation of intent: acceptance criteria, story text (requirement, plan, specification), ADRs, and recorded product decisions (answered user decisions, the task's decision log, accepted project knowledge). Pass it exactly as given."),
         base: z.string().optional().describe("Git ref to diff against. Default: merge-base with the default branch, else HEAD (uncommitted changes only)."),
         format: z.enum(["blocks", "json"]).optional().describe("blocks (default): readable candidates. json: the full structured report."),
-    }, async ({ workspace_root, base, format }) => {
+    }, async ({ workspace_root, work_item_id, base, format }) => {
         try {
-            const report = analyzeBehaviorChanges(workspace_root, { base });
+            let sources;
+            if (work_item_id) {
+                const eco = getEcosystemRoot(workspace_root);
+                sources = gatherIntentSources({ ecosystemRoot: eco, workItemId: work_item_id, taskDir: resolveTaskFolder(work_item_id, resolve(TASKS_DIR)) });
+            }
+            const report = analyzeBehaviorChanges(workspace_root, { base, sources });
             if (format === "json")
                 return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
             return { content: [{ type: "text", text: renderBehaviorReport(report) }] };

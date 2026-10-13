@@ -3,6 +3,8 @@ import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { analyzeBehaviorChanges, renderBehaviorReport, BehaviorReport } from "./behavior_change.js";
+import { findIntentEvidence, gatherIntentSources, IntentSource } from "./intent_evidence.js";
+import { createEntry } from "./project_knowledge.js";
 
 /** Silent behavior changes: code that compiles and passes its tests while the business behavior moves. Real git repositories. */
 
@@ -160,6 +162,63 @@ const at = (rep: BehaviorReport, file: string, needle: string) => rep.candidates
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), "bhv-"));
     check("not a git repository: a note, no crash", analyzeBehaviorChanges(plain).notes.some((n) => /Not a git repository/.test(n)));
     fs.rmSync(plain, { recursive: true, force: true });
+}
+
+// ── before "intent not confirmed", the story's recorded sources are searched ──
+{
+    const sources: IntentSource[] = [
+        { kind: "acceptance criterion", label: "acceptance criterion 1", text: "The default retention period is 60 days." },
+        { kind: "acceptance criterion", label: "acceptance criterion 2", text: "Only one replica runs a retention job." },
+        { kind: "story text", label: "requirement: request", text: "Retention scheduler replica convergence. Add reconciliation so replicas agree." },
+        { kind: "ADR", label: "ADR adr-0003", text: "ADR-0003: Reconcile timers against the database. Reconciliation runs every 5 minutes." },
+        { kind: "product decision", label: "user decision D1", text: "Should expired events be archived? Yes, archive them for 90 days." },
+    ];
+    const def = findIntentEvidence(['@Value("${retention.days:30}")'], ['@Value("${retention.days:60}")'], sources);
+    check("a changed default is matched to the acceptance criterion that states it (60 days)", def.length >= 1 && def[0].label === "acceptance criterion 1" && def[0].matched.includes("60") && def[0].matched.includes("retention"), JSON.stringify(def));
+    const time = findIntentEvidence(["return Instant.now().minus(Duration.ofDays(30));"], ["return Instant.now().minus(Duration.ofDays(90));"], sources);
+    check("a changed time window is matched to the recorded product decision (archive for 90 days)", time.some((s) => s.source === "product decision" && s.matched.includes("90")), JSON.stringify(time));
+    const none = findIntentEvidence(["if (e.ageInDays() >= limit) {"], ["if (e.ageInDays() > limit) {"], sources);
+    check("nothing is claimed when nothing in the story talks about it", none.length === 0, JSON.stringify(none));
+    const lone = findIntentEvidence(['String label = "Retention";'], ['String label = "Retention policy";'], sources);
+    check("a single shared common word is not evidence", lone.every((s) => s.matched.length >= 2), JSON.stringify(lone));
+    const adr = findIntentEvidence(["scheduler.reconcileEvery(10);"], ["scheduler.reconcileEvery(5);"], sources);
+    check("an ADR that decided it is found and labelled as an ADR", adr.some((s) => s.source === "ADR" && /reconcil/i.test(s.quote)), JSON.stringify(adr));
+
+    // real recorded state: a requirement, an ADR, accepted project knowledge and the task's decision log
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "intent-"));
+    fs.mkdirSync(path.join(ws, ".secufusion", "requirements"), { recursive: true });
+    fs.writeFileSync(path.join(ws, ".secufusion", "requirements", "STORY-7.json"), JSON.stringify({
+        id: "STORY-7", title: "Retention defaults", raw_request: "Make the default retention longer.", status: "CONFIRMED", clarification_questions: [],
+        acceptance_criteria: ["The default retention period is 60 days"], scope: "events service", constraints: [], facts: ["The scheduler reads retention.days"],
+        user_decisions: [{ id: "D1", category: "product", question: "Archive expired events?", options: ["yes", "no"], evidence: [], state: "ANSWERED", asked_at: "x", answer: "yes, for 90 days", user_statement: "yes, keep them 90 days" },
+                         { id: "D2", category: "product", question: "Open question", options: [], evidence: [], state: "OPEN", asked_at: "x" }],
+    }));
+    const taskDir = path.join(ws, ".secufusion", "tasks", "STORY-7-x");
+    fs.mkdirSync(taskDir, { recursive: true });
+    fs.writeFileSync(path.join(taskDir, "decisions.json"), JSON.stringify([{ decision: "Reconcile every 5 minutes", rationale: "bounds staleness" }]));
+    fs.writeFileSync(path.join(taskDir, "spec.json"), JSON.stringify({ work_item_id: "STORY-7", title: "Retention defaults", acceptance_criteria: [], description: "Longer default retention" }));
+    createEntry(ws, { category: "adr", title: "Retention window", source: "design", body: `> The retention window is 60 days.\n\n## Decision Snapshot\n\n**Problem**\n\np\n\n**Decision**\n\nd\n\n**Outcome**\n\no\n\n**Status**\n\nProposed\n\n**Related Work**\n\n- x\n\n## Executive Summary\n\ns\n\n## Context\n\nc\n\n## Problem Statement\n\nps\n\n## Investigation Summary\n\ni\n\n## Options Considered\n\no\n\n## Decision\n\nWe keep events for 60 days.\n\n## Consequences\n\n### Benefits\n\nb\n\n### Trade-Offs\n\nt\n\n### Risks\n\nr\n\n### Future Reconsideration Criteria\n\nf\n\n## Verification\n\nv\n\n## References\n\n- r\n` });
+    createEntry(ws, { category: "architecture", title: "Archive policy", source: "owner", status: "accepted", body: "Expired events are archived and kept for 90 days before deletion." });
+    const got = gatherIntentSources({ ecosystemRoot: ws, workItemId: "STORY-7", taskDir });
+    const kinds = new Set(got.map((s) => s.kind));
+    check("the story's sources are gathered: acceptance criteria, story text, ADR and product decisions", ["acceptance criterion", "story text", "ADR", "product decision"].every((k) => kinds.has(k as any)), JSON.stringify([...kinds]));
+    check("only answered user decisions count (an open question is not a decision)", got.some((s) => s.label === "user decision D1") && !got.some((s) => s.label === "user decision D2"));
+    check("the task's decision log and accepted project knowledge are product decisions; a proposed ADR is labelled a hint", got.some((s) => s.label === "task decision") && got.some((s) => s.label === "project knowledge archive-policy") && got.some((s) => s.kind === "ADR" && /proposed: a hint, not confirmation/.test(s.trust ?? "")), JSON.stringify(got.map((s) => s.label + "|" + (s.trust ?? ""))));
+    const found = findIntentEvidence(["Duration.ofDays(30)"], ["Duration.ofDays(90)"], got);
+    check("with real recorded state, the 90-day window is traced to the decision and the knowledge entry", found.some((s) => s.source === "product decision") && found.every((s) => s.matched.length >= 2), JSON.stringify(found));
+
+    // the report shows the search, and says when it was not run
+    const r = repo();
+    edit(r, SVC, "retention.days:30", "retention.days:60");
+    g(r, "add", "-A"); g(r, "commit", "-q", "-m", "w");
+    const withSearch = renderBehaviorReport(analyzeBehaviorChanges(r, { base: "main", sources }));
+    check("the report lists possible supporting evidence under the candidate, and tells the reviewer to read it", /Possible supporting evidence \(searched: acceptance criteria, story text, ADRs, recorded product decisions/.test(withSearch) && /acceptance criterion 1/.test(withSearch) && /decide whether it really confirms THIS change/.test(withSearch), withSearch.slice(0, 1200));
+    const noSources = renderBehaviorReport(analyzeBehaviorChanges(r, { base: "main" }));
+    check("without a story it says the search was NOT run (never silently 'no evidence')", /Intent evidence: NOT SEARCHED/.test(noSources) && /work_item_id/.test(noSources));
+    const empty = renderBehaviorReport(analyzeBehaviorChanges(r, { base: "main", sources: [] }));
+    check("with a story but nothing found it says so and points at the user's instructions", /Intent evidence: none found in acceptance criteria, story text, ADRs, recorded product decisions/.test(empty) && /user's instructions in this conversation/.test(empty), empty.slice(0, 900));
+    fs.rmSync(r, { recursive: true, force: true });
+    fs.rmSync(ws, { recursive: true, force: true });
 }
 
 process.exit(failures ? 1 : 0);
