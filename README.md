@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.8.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, and 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default. 77 tools. See [What's New in 4.8.0](#whats-new-in-480) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.9.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, and 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review. 77 tools. See [What's New in 4.9.0](#whats-new-in-490) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,26 +23,27 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.8.0](#whats-new-in-480)
-15. [What's New in 4.7.0](#whats-new-in-470)
-16. [What's New in 4.6.0](#whats-new-in-460)
-17. [What's New in 4.5.0](#whats-new-in-450)
-18. [What's New in 4.4.0](#whats-new-in-440)
-19. [What's New in 4.3.0](#whats-new-in-430)
-20. [What's New in 4.2.0](#whats-new-in-420)
-21. [What's New in 4.1.0](#whats-new-in-410)
-22. [What's New in 4.0.0](#whats-new-in-400)
-23. [Upgrading from 3.x](#upgrading-from-3x)
-24. [Getting Started](#getting-started)
-25. [New Contributor Guide](#new-contributor-guide)
-26. [Contributing Knowledge](#contributing-knowledge)
-27. [Release Notes Philosophy](#release-notes-philosophy)
-28. [Tool Reference](#tool-reference)
-29. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-30. [Development](#development)
-31. [Status and Known Limitations](#status-and-known-limitations)
-32. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-33. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.9.0](#whats-new-in-490)
+15. [What's New in 4.8.0](#whats-new-in-480)
+16. [What's New in 4.7.0](#whats-new-in-470)
+17. [What's New in 4.6.0](#whats-new-in-460)
+18. [What's New in 4.5.0](#whats-new-in-450)
+19. [What's New in 4.4.0](#whats-new-in-440)
+20. [What's New in 4.3.0](#whats-new-in-430)
+21. [What's New in 4.2.0](#whats-new-in-420)
+22. [What's New in 4.1.0](#whats-new-in-410)
+23. [What's New in 4.0.0](#whats-new-in-400)
+24. [Upgrading from 3.x](#upgrading-from-3x)
+25. [Getting Started](#getting-started)
+26. [New Contributor Guide](#new-contributor-guide)
+27. [Contributing Knowledge](#contributing-knowledge)
+28. [Release Notes Philosophy](#release-notes-philosophy)
+29. [Tool Reference](#tool-reference)
+30. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+31. [Development](#development)
+32. [Status and Known Limitations](#status-and-known-limitations)
+33. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+34. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -425,6 +426,21 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.9.0
+
+A minor release: three new tools (77 in all) and no breaking changes to commands or existing tools. `/sfn-review` gains three lanes that run in every review, a strict role boundary, and story-scope classification.
+
+**Three lanes in every review** (each reported in its own section)
+- **Merge regressions** (`check_merge_regressions`): functionality accidentally lost while a merge was resolved, found from the merge commit, both parents and the merge base, using git's three-way logic. Reported as POSSIBLE MERGE REGRESSION with severity HIGH / MEDIUM / LOW. It never changes approval unless a finding directly impacts an acceptance criterion.
+- **Silent behavior changes** (`check_behavior_changes`): authorization, validation, query predicates, filtering, defaults, feature flags, conditionals and time calculations that moved while the code compiled and tests passed. Each real change becomes a BEHAVIOR CHANGE block (old and new behavior, affected users, acceptance-criteria impact, risk, intent explicitly confirmed). Before "intent not confirmed" the reviewer must search the acceptance criteria, story text, ADRs, product decisions and the user's instructions; with the work item, the tool searches the first four and lists possible support. An unconfirmed HIGH change is an in-scope blocker, MEDIUM a warning.
+- **Scope drift** (`check_scope_drift`): files classified as core, indirectly related or unrelated to the story; the unrelated ones become SCOPE DRIFT blocks with the recommendation to move them to a separate story or explain why they are included. **Report only: it never fails a review.**
+
+**The reviewer is not a maintainer.** It detects, explains and reports; it never deletes or restores code, removes methods, chooses develop automatically or rewrites files without a request. When unsure it reports DEVELOPER DECISION REQUIRED with evidence and rationale.
+
+**Review stays inside the story.** Every finding is Class A (in scope), B (adjacent) or C (future); only Class A decides the verdict. Files outside the plan are now scope drift, not blocking out-of-scope changes.
 
 ---
 
