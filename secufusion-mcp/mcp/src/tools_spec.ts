@@ -632,7 +632,7 @@ server.tool(
                 },
                 diff_scope: {
                     ...scope,
-                    guidance: "outside_plan = changed files the specification never mentioned (check each is a necessary consequence, e.g. a test or a rename); planned_untouched = specified files with no change. Report unjustified scope growth as out_of_scope_changes.",
+                    guidance: "outside_plan = changed files the specification never mentioned (check each is a necessary consequence, e.g. a test or a rename); planned_untouched = specified files with no change. Files outside the plan are scope drift: report them in the summary; they never fail the review. Use out_of_scope_changes only for work the specification explicitly excludes or a recorded user decision forbids.",
                 },
                 project_knowledge: projectKnowledge,
                 diff_summary: diff_summary ?? null,

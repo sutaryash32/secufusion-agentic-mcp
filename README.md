@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.8.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, and 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default. 74 tools. See [What's New in 4.8.0](#whats-new-in-480) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.8.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, and 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default. 77 tools. See [What's New in 4.8.0](#whats-new-in-480) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -323,6 +323,16 @@ It is an **investigation, not a checklist.** The reviewer models the change and 
 | **C, future product risk** | Scalability, future tenant lifecycle, operational improvements, audit enhancements, UX ideas | Future considerations | No |
 
 The test for every finding is: *does fixing this directly contribute to satisfying the acceptance criteria, the ADR or the problem statement of this story?* If not, the review does not ask for it to be changed in the current story. It does not hide real problems behind the boundary: whatever the acceptance criteria, the ADR or a recorded product decision requires is Class A, and diff-quality and scope-creep findings about the change itself are always Class A. The report order is Story scope assessment, In-scope findings, Out-of-scope observations, Future considerations, then the verdict, which says it rests only on in-scope findings.
+
+**Three lanes run in every review, beside the scope classes** (each has its own section in the report):
+
+| Lane | Tool | What it does | Effect on the verdict |
+|---|---|---|---|
+| **Merge regressions** | `check_merge_regressions` | Finds functionality accidentally lost during merge conflict resolution: methods, endpoints, repository queries and predicates, security and authorization checks, tests, config keys, translation keys, OpenAPI annotations, docs. Uses the merge commit, both parents and the merge base, and git's three-way logic (a deliberate deletion the merge honoured, and a method that moved, are not reported). Severity HIGH / MEDIUM / LOW. | None, unless one directly impacts an acceptance criterion |
+| **Silent behavior changes** | `check_behavior_changes` | Finds behavior that moved while the code compiles and tests pass: authorization, validation, query predicates, filtering, defaults, feature flags, conditionals, time calculations. The reviewer writes a BEHAVIOR CHANGE block per change (old and new behavior, affected users, acceptance-criteria impact, risk, intent explicitly confirmed). | Unconfirmed MEDIUM/HIGH changes become in-scope findings |
+| **Scope drift** | `check_scope_drift` | Classifies changed files as core, indirectly related or unrelated to the story and reports the unrelated ones with the recommendation to move them to a separate story or explain why they are included. | **None: report only** |
+
+**The reviewer is not a maintainer.** It detects, explains and reports. It never deletes or restores code, removes methods, chooses develop (or any branch) automatically, or rewrites files without a request. When it is unsure it reports a **DEVELOPER DECISION REQUIRED** with its evidence and rationale, and the developer decides. A missing method is a *possible merge regression*, never "dead code".
 
 The governance rule carries over from the knowledge layer: **the reviewer never invents a product rule.** Every product finding names its `Source` and its `Basis` (`FACT`, `INFERENCE`, `ASSUMPTION`, `UNKNOWN`). Only a `FACT` can block; an `INFERENCE` is a question; a rule nobody recorded is reported as **UNVERIFIED** and listed under *Knowledge gaps*, with an offer to record the answer in `.mcp/` so the next review does not have to ask. Maintainability alone never blocks.
 
@@ -788,6 +798,9 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | Tool | Purpose |
 |---|---|
 | `check_diff_quality` | Deterministic diff-quality and line-ending findings (PASS 10) |
+| `check_merge_regressions` | Functionality lost during a merge: methods, endpoints, queries, security checks, tests, config, translations (own report lane) |
+| `check_behavior_changes` | Evidence of silent behavior changes: authorization, validation, predicates, filters, defaults, flags, conditionals, time calculations |
+| `check_scope_drift` | Classify changed files as core, indirectly related or unrelated to the story; report only |
 | `normalize_line_endings` | Convert a file back to its own style (preview by default; **writes** only with `apply` and the user's words) |
 
 **Project intelligence and releases**
