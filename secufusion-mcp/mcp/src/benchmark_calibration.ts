@@ -81,13 +81,13 @@ put(ws, "svc-a/src/test/java/com/x/UserServiceTest.java", "public class UserServ
         { text: "Deprovisioning bypasses the delete guard", category: "BLOCKING" },
     ];
     const res = reveal(r, "S", client);
-    check("matching comments are derived, the unrelated one is missed", res.pairings[0].verdict === "DERIVED" && res.pairings[1].verdict === "DERIVED" && res.pairings[2].verdict === "MISSED", JSON.stringify(res.pairings));
+    check("matching comments are derived, the unrelated one is missed", res.pairings[0].verdict === "MATCH" && res.pairings[1].verdict === "MATCH" && res.pairings[2].verdict === "MISS", JSON.stringify(res.pairings));
     check("parity counts and blocking recall are reported", res.parity.derived === 2 && res.parity.missed === 1 && res.parity.blocking_recall === "1/2", JSON.stringify(res.parity));
     let late = "";
     { const r2 = tmp(); seal(r2, "S", derived); reveal(r2, "S", client); fs.rmSync(path.join(r2, ".secufusion", "calibration", "S.sealed.json")); try { seal(r2, "S", derived); } catch (e: any) { late = e.message; } }
     check("after the client comments exist, sealing is refused", /already recorded/.test(late), late);
-    const ov = reveal(r, "S", client, [{ client: 2, derived: 0, verdict: "PARTIAL" }, { client: 0, derived: null, verdict: "MISSED" }]);
-    check("the reviewer's overrides replace the lexical proposals", ov.pairings[2].verdict === "PARTIAL" && ov.pairings[2].by === "reviewer" && ov.pairings[0].verdict === "MISSED");
+    const ov = reveal(r, "S", client, [{ client: 2, derived: 0, verdict: "PARTIAL" }, { client: 0, derived: null, verdict: "MISS" }]);
+    check("the reviewer's overrides replace the lexical proposals", ov.pairings[2].verdict === "PARTIAL" && ov.pairings[2].by === "reviewer" && ov.pairings[0].verdict === "MISS");
     const sevDiff = reveal(r, "S", [{ text: "Stale grid after a failed transfer", category: "BLOCKING" }]);
     check("a severity difference between the client and the derived concern is shown", sevDiff.pairings[0].category_match === false && /SEVERITY DIFFERS/.test(renderReveal(sevDiff, [{ text: "Stale grid after a failed transfer", category: "BLOCKING" }])));
     check("derived concerns the client did not raise are listed as extras", reveal(r, "S", [{ text: "Deprovisioning bypasses the delete guard" }]).extras.length === 2);

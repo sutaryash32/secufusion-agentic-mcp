@@ -3,8 +3,8 @@
   "benchmark_id": "story-1656",
   "at": "2026-10-17T14:43:56.682Z",
   "blind": false,
-  "require_fix": false,
-  "contamination": "The reviewer had read the recorded code-review findings in decisions.json and had reviewed this story earlier in the same session; BUG-1469 post-review rules and UD-8/9/10 questions were in the inputs. The sealed list predates the client comments being re-read for scoring, but it is not blind. Sealed findings recorded no recommended fix, so the fix criterion is 'not recorded' and not required.",
+  "unseen_pack": null,
+  "contamination": "The reviewer had read the recorded findings in decisions.json and had reviewed this story earlier in the same session; post-review rules and UD-8/9/10 were in its inputs; the answer key is not the client's review thread. Findings were sealed before the key was re-read for scoring, but the run is not blind and the story is not unseen.",
   "derived": [
     {
       "title": "IT Admin can be deactivated through the ordinary user update",
@@ -103,96 +103,98 @@
       "concern_id": "C01",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
-      "note": "Never examined the email validation that runs after the new guard (validateUserFields); the run used only the feature model, not the diff-level behavior-change lane.",
+      "note": "Never examined the email validation that runs after the new guard; the run used the feature model, not the diff-level behavior-change lane.",
       "diverged_step": "Consumer discovery",
-      "smallest_improvement": "None new: run the existing check_behavior_changes lane in every pessimistic review; the guard is a diff-level behavior change."
+      "smallest_improvement": "None new: run the existing check_behavior_changes lane in every pessimistic review."
     },
     {
       "concern_id": "C02",
       "grade": "PARTIAL",
       "derived": 8,
-      "derived_severity": "REQUIRES_DECISION",
+      "reached": "dependency",
       "criteria": {
         "entity": true,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
-      "note": "Raised the parent-administrator tenancy question, not the flaw of resolving the caller by email.",
+      "note": "Found the tenancy rule for the caller, not that resolving the caller by email can fail or mis-authorize.",
       "diverged_step": "Field discovery",
-      "smallest_improvement": "None from this code: the email lookup was already replaced by an id lookup. Needs pre-fix code."
+      "smallest_improvement": "None from this code: the email lookup was already replaced by an id lookup. Needs pre-review code."
     },
     {
       "concern_id": "C03",
       "grade": "PARTIAL",
       "derived": 3,
-      "derived_severity": "BLOCKING",
+      "reached": "invariant",
       "criteria": {
         "entity": true,
-        "root_cause": false,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": false
       },
-      "note": "Derived the exactly-one risk and the missing DB backstop, not the transfer-vs-transfer defect, because the lock is already present in this code.",
+      "note": "Derived exactly-one without a DB backstop, not the transfer-vs-transfer interleaving, because the lock is present in this code.",
       "diverged_step": "Lifecycle reasoning",
-      "smallest_improvement": "None from this code: check_invariant_enforcement already rates the pre-fix transfer write CHECK_THEN_ACT. Needs pre-fix code."
+      "smallest_improvement": "None from this code: check_invariant_enforcement already rates the pre-review transfer write CHECK_THEN_ACT. Needs pre-review code."
     },
     {
       "concern_id": "C04",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
       "note": "Never compared who sees the action in the UI with who the server lets execute it.",
       "diverged_step": "Authority reasoning",
-      "smallest_improvement": "check_ui_gating (built after this run). On post-fix code it raises the question and shows the fallback; the original defect needs pre-fix code."
+      "smallest_improvement": "check_ui_gating (built after this run); on post-fix code it shows the question and the fallback. The original defect needs pre-review code."
     },
     {
       "concern_id": "C05",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 9,
-      "derived_severity": "NON-BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
     {
       "concern_id": "C06",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 14,
-      "derived_severity": "NON-BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
     {
       "concern_id": "C07",
-      "grade": "EXACT",
+      "grade": "MATCH",
       "derived": 5,
-      "derived_severity": "BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
@@ -200,53 +202,53 @@
       "concern_id": "C08",
       "grade": "PARTIAL",
       "derived": 4,
-      "derived_severity": "BLOCKING",
+      "reached": "consequence",
       "criteria": {
         "entity": true,
-        "root_cause": false,
         "consequence": true,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
-      "note": "Framed the single-source-of-truth concern around tenant.email; the client's concern is that every service resolves the owner from users.default_user.",
+      "note": "Framed single-source-of-truth around tenant.email; the comment is that every service resolves the owner from users.default_user.",
       "diverged_step": "Consumer discovery",
-      "smallest_improvement": "build_field_impact (built after this run) lists every resolver of defaultUser; whether each reads default_user is still the reviewer's judgment."
+      "smallest_improvement": "build_field_impact (built after this run) lists every resolver of defaultUser; whether each reads default_user is the reviewer's judgment."
     },
     {
       "concern_id": "C09",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 4,
-      "derived_severity": "BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
     {
       "concern_id": "C10",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 3,
-      "derived_severity": "BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
     {
       "concern_id": "C11",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 4,
-      "derived_severity": "BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
@@ -254,26 +256,27 @@
       "concern_id": "C12",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
-      "note": "Did not enumerate who WRITES Tenant outside the service that owns its table.",
+      "note": "Did not enumerate who writes Tenant outside the service that owns its table.",
       "diverged_step": "Consumer discovery",
       "smallest_improvement": "check_service_ownership (built after this run)."
     },
     {
       "concern_id": "C13",
-      "grade": "EQUIVALENT",
+      "grade": "MATCH",
       "derived": 2,
-      "derived_severity": "BLOCKING",
+      "reached": "comment",
       "criteria": {
         "entity": true,
-        "root_cause": true,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": true
       },
       "note": ""
     },
@@ -281,11 +284,12 @@
       "concern_id": "C14",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
       "note": "Saw the tenant.email consumers but never followed the derived domain into the enrollment allow-list.",
       "diverged_step": "Consequence derivation",
@@ -295,26 +299,27 @@
       "concern_id": "C15",
       "grade": "PARTIAL",
       "derived": 4,
-      "derived_severity": "BLOCKING",
+      "reached": "consequence",
       "criteria": {
         "entity": true,
-        "root_cause": false,
         "consequence": true,
-        "fix": null
+        "unsupported_state": true,
+        "comment": false
       },
       "note": "Found that tenant.email can drift, not that the user-edit path is a second writer of the mirrored email.",
       "diverged_step": "Consumer discovery",
-      "smallest_improvement": "Mirrored-field detection (not built): pair fields assigned from one another (users.email and tenant.email) and list every writer of each."
+      "smallest_improvement": "Mirrored-field detection (not built): pair fields assigned from one another and list every writer of each."
     },
     {
       "concern_id": "C16",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
       "note": "No caller graph for the changed endpoint.",
       "diverged_step": "Consumer discovery",
@@ -324,15 +329,57 @@
       "concern_id": "C17",
       "grade": "MISS",
       "derived": null,
+      "reached": "nothing",
       "criteria": {
         "entity": false,
-        "root_cause": false,
         "consequence": false,
-        "fix": null
+        "unsupported_state": false,
+        "comment": false
       },
       "note": "Enumerated the entity's own transitions, not the parent's delete/deprovision that removes the children.",
       "diverged_step": "Lifecycle reasoning",
       "smallest_improvement": "trace_parent_cascade (built after this run)."
+    },
+    {
+      "concern_id": "C18",
+      "grade": "MATCH",
+      "derived": 0,
+      "reached": "comment",
+      "criteria": {
+        "entity": true,
+        "consequence": true,
+        "unsupported_state": true,
+        "comment": true
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C19",
+      "grade": "MATCH",
+      "derived": 1,
+      "reached": "comment",
+      "criteria": {
+        "entity": true,
+        "consequence": true,
+        "unsupported_state": true,
+        "comment": true
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C20",
+      "grade": "PARTIAL",
+      "derived": 2,
+      "reached": "unsupported_state",
+      "criteria": {
+        "entity": true,
+        "consequence": false,
+        "unsupported_state": true,
+        "comment": false
+      },
+      "note": "Sealed finding #3 framed it as authority ESCALATION (the flag grants platform admin to a user without the group); the client's comment is the drift: the new owner is not promoted while the former owner keeps the capability. The drift framing appeared only in a later answer, after the key was known.",
+      "diverged_step": "Review formulation",
+      "smallest_improvement": "One sentence in the authority drift report: after a transfer, list what the new owner can do and what the previous owner can still do; the difference is the drift."
     }
   ]
 }

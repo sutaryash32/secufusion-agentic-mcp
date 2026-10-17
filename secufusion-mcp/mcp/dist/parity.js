@@ -1,23 +1,24 @@
 /**
  * Client Review Parity Suite.
  *
- * The question is not "did the review find a bug" but "would it have written the client's comment?" This module is the
- * measurement, not the review:
+ * The question is not "did the review find a bug" but "would it have written the client's comment, before seeing it?".
  *
- *   Benchmark   a completed review: the concerns the client raised (with severity, kind, consequence), whether pre-fix
- *               code exists, whether any run on it could have been blind, and DETERMINISTIC EVIDENCE CHECKS per concern.
- *   Run         the findings a review derived and sealed BEFORE the comments were revealed, plus a judgment per concern.
- *   Judgment    EXACT / EQUIVALENT / PARTIAL / MISS, decided by four criteria: entity, root cause, business consequence,
- *               recommended fix. A concern only counts as matched when ALL required criteria hold; otherwise it is
- *               downgraded. A MISS (and a PARTIAL) must name the step of the reasoning chain that failed and the smallest
- *               improvement, or it is refused: no capability is added to a miss nobody has root-caused.
- *   Metrics     concern recall/precision, blocking recall/precision (severity must match too), business-consequence
- *               recall, architecture-concern recall, missed count.
- *   Regression  every client concern is a permanent test: (1) the deterministic evidence checks still produce their
- *               evidence on the benchmark workspace; (2) a new run must not lose a concern an earlier run matched, nor
- *               lower concern recall or blocking recall.
- *   Validity    "parity achieved" is only claimed from a blind run, with the fix criterion required, on a benchmark that has
- *               pre-fix code. Anything else is reported as a regression baseline, with the reason.
+ *   Benchmark   a completed review. purpose "parity" (an unseen story, the client's real comments, pre-review code) or
+ *               "design-validation" (anything else: useful to improve the reviewer, never a parity claim).
+ *   Run         the findings a review derived and SEALED before the comments were revealed, plus a judgment per comment.
+ *   Judgment    MATCH / PARTIAL / MISS per client comment. A comment is MATCHED only if all four hold:
+ *                 1. the same entity is identified
+ *                 2. the same business consequence is derived
+ *                 3. the same unsupported state is identified
+ *                 4. the resulting review comment is materially equivalent
+ *               Finding the dependency alone is not enough; finding the invariant alone is not enough. `reached` records how
+ *               far the reasoning went (dependency < invariant < consequence < unsupported_state < comment): a comment that
+ *               stopped at the dependency or the invariant can be at most PARTIAL.
+ *               A MISS (and a PARTIAL) must name the step of the reasoning chain that failed and the smallest improvement
+ *               that would continue the chain, or it is refused: nothing is built for a miss nobody has root-caused.
+ *   Metrics     counts always; percentages only for a VALID run (blind, unseen, pre-review code, purpose parity).
+ *   Regression  every client comment is a permanent test: the deterministic evidence still appears, and a new run may not
+ *               lose a comment an earlier run matched.
  */
 import fs from "fs";
 import path from "path";
@@ -29,6 +30,7 @@ import { mapFieldImpact, renderFieldImpact } from "./field_impact.js";
 import { uiGating, renderGating, endpointConsumers, renderEndpointConsumers, serviceOwnership, renderOwnership, parentCascade, renderCascade } from "./parity_lenses.js";
 import { buildFeatureModel, renderFeatureModel } from "./feature_model.js";
 export const MISS_STEPS = ["Entity discovery", "Field discovery", "Consumer discovery", "Capability derivation", "Lifecycle reasoning", "Authority reasoning", "Consequence derivation", "Review formulation"];
+export const REACH = ["dependency", "invariant", "consequence", "unsupported_state", "comment"];
 // ── dataset location ────────────────────────────────────────────────────────
 export function datasetDir(explicit) {
     const cands = [explicit, fileURLToPath(new URL("../../parity/", import.meta.url))].filter(Boolean);
@@ -49,17 +51,20 @@ export function loadRuns(dir, benchmark) {
 }
 export const hashDerived = (d) => crypto.createHash("sha256").update(JSON.stringify(d)).digest("hex");
 // ── judging ─────────────────────────────────────────────────────────────────
-export function normalizeJudgment(j, requireFix) {
+const reachRank = (r) => (r === "nothing" ? -1 : REACH.indexOf(r));
+export function normalizeJudgment(j) {
     const out = { ...j, criteria: { ...j.criteria } };
     const c = out.criteria;
-    const core = c.entity && c.root_cause && c.consequence;
-    const full = core && (!requireFix || c.fix === true);
-    const any = c.entity || c.root_cause || c.consequence || c.fix === true;
-    if ((out.grade === "EXACT" || out.grade === "EQUIVALENT") && !full) {
-        out.downgraded_from = out.grade;
-        out.grade = any ? "PARTIAL" : "MISS";
+    const all = c.entity && c.consequence && c.unsupported_state && c.comment;
+    const any = c.entity || c.consequence || c.unsupported_state || c.comment;
+    if (out.grade === "MATCH") {
+        // the dependency alone, or the invariant alone, is never a match: the chain must reach the comment
+        if (!all || reachRank(out.reached) < REACH.indexOf("comment")) {
+            out.downgraded_from = "MATCH";
+            out.grade = any && reachRank(out.reached) >= 0 ? "PARTIAL" : "MISS";
+        }
     }
-    else if (out.grade === "PARTIAL" && !any) {
+    else if (out.grade === "PARTIAL" && !any && reachRank(out.reached) < 0) {
         out.downgraded_from = "PARTIAL";
         out.grade = "MISS";
     }
@@ -67,59 +72,56 @@ export function normalizeJudgment(j, requireFix) {
         if (!out.diverged_step || !MISS_STEPS.includes(out.diverged_step))
             throw new Error(`${out.concern_id}: a ${out.grade} must name the step of the reasoning chain where the review diverged (${MISS_STEPS.join(", ")}). Root-cause it before anything is built.`);
         if (!out.note?.trim())
-            throw new Error(`${out.concern_id}: a ${out.grade} needs a note: what the review did instead, in one sentence.`);
+            throw new Error(`${out.concern_id}: a ${out.grade} needs a note: how far the chain went and what the review did instead, in one sentence.`);
         if (!out.smallest_improvement?.trim())
-            throw new Error(`${out.concern_id}: a ${out.grade} needs the smallest improvement that would continue the chain (or "none: <why>" if the code under review cannot show it).`);
+            throw new Error(`${out.concern_id}: a ${out.grade} needs the smallest improvement that would continue the chain (or "none: <why>" if the material available cannot show it).`);
     }
     if (out.grade === "MISS")
         out.derived = null;
     return out;
 }
-const matched = (g) => g === "EXACT" || g === "EQUIVALENT";
 const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
 export function computeMetrics(b, run) {
     const js = run.judgments;
     const by = new Map(js.map((j) => [j.concern_id, j]));
     const n = b.concerns.length;
-    const m = js.filter((j) => matched(j.grade));
-    const usedDerived = new Set(m.map((j) => j.derived).filter((x) => x !== null));
+    const m = js.filter((j) => j.grade === "MATCH");
+    const used = new Set(m.map((j) => j.derived).filter((x) => x !== null));
     const blockingConcerns = b.concerns.filter((c) => c.severity === "BLOCKING");
-    const blockingHit = blockingConcerns.filter((c) => { const j = by.get(c.id); return j && matched(j.grade) && j.derived !== null && run.derived[j.derived]?.category === "BLOCKING"; });
+    const blockingHit = blockingConcerns.filter((c) => { const j = by.get(c.id); return j && j.grade === "MATCH" && j.derived !== null && run.derived[j.derived]?.category === "BLOCKING"; });
     const derivedBlocking = run.derived.map((d, i) => ({ d, i })).filter((x) => x.d.category === "BLOCKING");
-    const blockingPrecise = derivedBlocking.filter((x) => b.concerns.some((c) => c.severity === "BLOCKING" && by.get(c.id)?.derived === x.i && matched(by.get(c.id).grade)));
+    const blockingPrecise = derivedBlocking.filter((x) => blockingConcerns.some((c) => { const j = by.get(c.id); return j && j.grade === "MATCH" && j.derived === x.i; }));
     const arch = b.concerns.filter((c) => c.kind === "architecture");
     const steps = {};
     for (const j of js)
         if ((j.grade === "MISS" || j.grade === "PARTIAL") && j.diverged_step)
             steps[j.diverged_step] = (steps[j.diverged_step] ?? 0) + 1;
+    const partial = js.filter((j) => j.grade === "PARTIAL").length;
     return {
-        concerns: n, derived_findings: run.derived.length,
-        exact: js.filter((j) => j.grade === "EXACT").length, equivalent: js.filter((j) => j.grade === "EQUIVALENT").length,
-        partial: js.filter((j) => j.grade === "PARTIAL").length, miss: js.filter((j) => j.grade === "MISS").length,
-        concern_recall: pct(m.length, n), lenient_recall: pct(m.length + js.filter((j) => j.grade === "PARTIAL").length * 0.5, n),
-        concern_precision: pct(usedDerived.size, run.derived.length),
+        comments: n, derived_findings: run.derived.length, match: m.length, partial, miss: js.filter((j) => j.grade === "MISS").length,
+        dimension_agreement: (() => { const d = (k) => { const j = m.filter((x) => x.criteria[k] !== undefined); return j.length ? pct(j.filter((x) => x.criteria[k]).length, j.length) : null; }; return { root_cause: d("root_cause"), severity: d("severity"), remediation: d("remediation") }; })(),
+        recall: pct(m.length, n), lenient_recall: pct(m.length + partial * 0.5, n), precision: pct(used.size, run.derived.length),
         blocking_recall: blockingConcerns.length ? pct(blockingHit.length, blockingConcerns.length) : null,
         blocking_precision: derivedBlocking.length ? pct(blockingPrecise.length, derivedBlocking.length) : null,
         consequence_recall: pct(js.filter((j) => j.criteria.consequence).length, n),
-        architecture_recall: arch.length ? pct(arch.filter((c) => { const j = by.get(c.id); return j && matched(j.grade); }).length, arch.length) : null,
-        missed: js.filter((j) => j.grade === "MISS").length, steps,
+        architecture_recall: arch.length ? pct(arch.filter((c) => by.get(c.id)?.grade === "MATCH").length, arch.length) : null, steps,
     };
 }
-export const TARGETS = { concern_recall: 90, blocking_recall: 95, consequence_recall: 90, max_missed: 1 };
+export const TARGETS = { recall: 90, blocking_recall: 95, consequence_recall: 90, max_missed: 1 };
 export function verdict(b, run, m) {
     const reasons = [];
+    if (b.purpose !== "parity")
+        reasons.push(`this benchmark is a ${b.purpose} exercise: ${b.answer_key}`);
     if (!run.blind)
         reasons.push(`the run was not blind (${run.contamination})`);
-    if (!run.require_fix)
-        reasons.push("the recommended-fix criterion was not required (the run did not record fixes)");
     if (!b.pre_fix_available)
-        reasons.push("the benchmark has no pre-fix code, so concerns already fixed in the code cannot be derived from it");
+        reasons.push("the benchmark has no pre-review code, so concerns already fixed in the code under review cannot be derived from it");
     const valid = reasons.length === 0;
-    const meets = m.concern_recall >= TARGETS.concern_recall && (m.blocking_recall ?? 0) >= TARGETS.blocking_recall && m.consequence_recall >= TARGETS.consequence_recall && m.missed <= TARGETS.max_missed;
-    return { valid, reasons, achieved: valid && meets, label: valid ? (meets ? "PARITY ACHIEVED" : "PARITY NOT ACHIEVED") : "NOT VALID FOR A PARITY CLAIM: regression baseline only" };
+    const meets = m.recall >= TARGETS.recall && (m.blocking_recall ?? 0) >= TARGETS.blocking_recall && m.consequence_recall >= TARGETS.consequence_recall && m.miss <= TARGETS.max_missed;
+    return { valid, reasons, achieved: valid && meets, label: valid ? (meets ? "PARITY ACHIEVED" : "PARITY NOT ACHIEVED") : "NO PARITY CLAIM: design-validation result (counts only)" };
 }
 // ── regression between runs ─────────────────────────────────────────────────
-const rank = (g) => (g === "EXACT" || g === "EQUIVALENT" ? 2 : g === "PARTIAL" ? 1 : 0);
+const rank = (g) => (g === "MATCH" ? 2 : g === "PARTIAL" ? 1 : 0);
 export function compareRuns(b, prev, next) {
     const regressions = [], improvements = [];
     const pm = new Map(prev.judgments.map((j) => [j.concern_id, j])), nm = new Map(next.judgments.map((j) => [j.concern_id, j]));
@@ -135,14 +137,14 @@ export function compareRuns(b, prev, next) {
             regressions.push(`${c.id}: ${p.grade} -> ${q.grade}  (${c.text.slice(0, 70)})`);
         else if (rank(q.grade) > rank(p.grade))
             improvements.push(`${c.id}: ${p.grade} -> ${q.grade}`);
-        else if (matched(p.grade) && c.severity === "BLOCKING" && p.derived_severity === "BLOCKING" && q.derived_severity !== "BLOCKING")
+        else if (p.grade === "MATCH" && c.severity === "BLOCKING" && p.derived !== null && q.derived !== null && prev.derived[p.derived]?.category === "BLOCKING" && next.derived[q.derived]?.category !== "BLOCKING")
             regressions.push(`${c.id}: still matched but no longer at BLOCKING severity`);
     }
     const a = computeMetrics(b, prev), z = computeMetrics(b, next);
-    if (z.concern_recall < a.concern_recall)
-        regressions.push(`concern recall fell ${a.concern_recall}% -> ${z.concern_recall}%`);
+    if (z.recall < a.recall)
+        regressions.push(`matched comments fell ${a.match} -> ${z.match}`);
     if ((z.blocking_recall ?? 0) < (a.blocking_recall ?? 0))
-        regressions.push(`blocking recall fell ${a.blocking_recall}% -> ${z.blocking_recall}%`);
+        regressions.push(`blocking comments matched fell ${a.blocking_recall}% -> ${z.blocking_recall}%`);
     return { regressions, improvements, ok: regressions.length === 0 };
 }
 // ── deterministic evidence checks ───────────────────────────────────────────
@@ -182,32 +184,25 @@ export function runEvidenceChecks(b, ws) {
 export function renderReport(b, run) {
     const m = computeMetrics(b, run), v = verdict(b, run, m);
     const f = (x) => (x === null ? "n/a" : `${x}%`);
-    const L = [
-        `CLIENT REVIEW PARITY: ${b.title}  [${b.id}, run ${run.run_id}]`,
-        `VERDICT: ${v.label}`, ...v.reasons.map((r) => `  - ${r}`),
-        "", "METRICS",
-        `  Concern recall (exact + equivalent):  ${m.concern_recall}%   (target >= ${TARGETS.concern_recall}%)   [lenient, partial = half: ${m.lenient_recall}%]`,
-        `  Concern precision:                    ${m.concern_precision}%   (${m.derived_findings} derived findings)`,
-        `  Blocking recall (severity must match):${f(m.blocking_recall)}   (target >= ${TARGETS.blocking_recall}%)`,
-        `  Blocking precision:                   ${f(m.blocking_precision)}`,
-        `  Business consequence recall:          ${m.consequence_recall}%   (target >= ${TARGETS.consequence_recall}%)`,
-        `  Architecture concern recall:          ${f(m.architecture_recall)}`,
-        `  Missed concerns:                      ${m.missed}   (target <= ${TARGETS.max_missed})`,
-        `  Grades: ${m.exact} exact, ${m.equivalent} equivalent, ${m.partial} partial, ${m.miss} miss of ${m.concerns}`,
-    ];
+    const L = [`CLIENT REVIEW PARITY: ${b.title}  [${b.id}, run ${run.run_id}]`, `RESULT: ${v.label}`, ...v.reasons.map((r) => `  - ${r}`), "", `COUNTS: ${m.match} MATCH, ${m.partial} PARTIAL, ${m.miss} MISS of ${m.comments} comments; ${m.derived_findings} findings were derived and sealed.`];
+    if (v.valid) {
+        L.push("", "PARITY METRICS (valid run)", `  Recall (MATCH):                 ${m.recall}%   (target >= ${TARGETS.recall}%)   [partial counted as half: ${m.lenient_recall}%]`, `  Precision:                      ${m.precision}%`, `  Blocking recall (severity too): ${f(m.blocking_recall)}   (target >= ${TARGETS.blocking_recall}%)`, `  Blocking precision:             ${f(m.blocking_precision)}`, `  Business consequence recall:    ${m.consequence_recall}%   (target >= ${TARGETS.consequence_recall}%)`, `  Architecture concern recall:    ${f(m.architecture_recall)}`, `  Among matches, agreement on: root cause ${f(m.dimension_agreement.root_cause)}, severity ${f(m.dimension_agreement.severity)}, remediation intent ${f(m.dimension_agreement.remediation)}`, `  Missed comments:                ${m.miss}   (target <= ${TARGETS.max_missed})`);
+    }
+    else
+        L.push("No recall, precision or parity percentages are reported for this run: it cannot support them.");
     if (Object.keys(m.steps).length)
         L.push("", "WHERE THE REASONING CHAIN FAILED (misses and partials)", ...Object.entries(m.steps).sort((a, c) => c[1] - a[1]).map(([s, n]) => `  ${s}: ${n}`));
-    L.push("", "PER CONCERN");
+    L.push("", "PER COMMENT");
     for (const c of b.concerns) {
         const j = run.judgments.find((x) => x.concern_id === c.id);
         if (!j) {
             L.push(`- ${c.id} [${c.severity}] NOT JUDGED  ${c.text.slice(0, 90)}`);
             continue;
         }
-        const cr = j.criteria;
+        const cr = j.criteria, yn = (x) => (x ? "Y" : "N");
         L.push(`- ${c.id} [${c.severity}/${c.kind}${c.fixed_in_code ? ", fixed in code" : ""}] ${j.grade}${j.downgraded_from ? ` (downgraded from ${j.downgraded_from})` : ""}  ${c.text.slice(0, 80)}`);
-        L.push(`    criteria: entity ${cr.entity ? "Y" : "N"}, root cause ${cr.root_cause ? "Y" : "N"}, consequence ${cr.consequence ? "Y" : "N"}, fix ${cr.fix === null ? "not recorded" : cr.fix ? "Y" : "N"}${j.derived !== null ? `; derived #${j.derived + 1} at ${j.derived_severity ?? "?"}` : ""}`);
-        if (j.grade === "MISS" || j.grade === "PARTIAL")
+        L.push(`    reached: ${j.reached}; entity ${yn(cr.entity)}, consequence ${yn(cr.consequence)}, unsupported state ${yn(cr.unsupported_state)}, comment ${yn(cr.comment)}${j.derived !== null ? `; derived #${j.derived + 1}` : ""}`);
+        if (j.grade !== "MATCH")
             L.push(`    diverged at: ${j.diverged_step}. ${j.note}\n    smallest improvement: ${j.smallest_improvement}`);
     }
     return L.join("\n");

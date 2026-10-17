@@ -9,6 +9,7 @@ import {
 } from "./review_maturity.js";
 import { reviewStalenessFor } from "./review_staleness.js";
 import { buildFeatureModel, renderFeatureModel } from "./feature_model.js";
+import { prepareUnseenPack } from "./unseen.js";
 import { mapFieldImpact, renderFieldImpact } from "./field_impact.js";
 import { uiGating, renderGating, endpointConsumers, renderEndpointConsumers, serviceOwnership, renderOwnership, parentCascade, renderCascade } from "./parity_lenses.js";
 import { seal, reveal, renderReveal } from "./calibration.js";
@@ -145,17 +146,46 @@ export function registerMaturityTools(server: any): void {
       action: z.enum(["seal", "reveal"]),
       findings: z.array(z.object({ title: z.string(), category: z.enum(["BLOCKING", "NON-BLOCKING", "QUESTION", "REQUIRES_DECISION"]), entity: z.string().optional(), text: z.string(), derived_from: z.string().optional() })).max(60).optional().describe("seal: the concerns you derived before seeing any client comment"),
       client_comments: z.array(z.object({ text: z.string(), category: z.string().optional() })).max(80).optional().describe("reveal: the client reviewer's comments, with blocking / non-blocking where known"),
-      overrides: z.array(z.object({ client: z.number().int().min(0), derived: z.number().int().min(0).nullable(), verdict: z.enum(["DERIVED", "PARTIAL", "MISSED"]) })).optional().describe("reveal: your confirmed pairings (0-based indexes) replacing the lexical proposals"),
+      overrides: z.array(z.object({ client: z.number().int().min(0), derived: z.number().int().min(0).nullable(), verdict: z.enum(["MATCH", "PARTIAL", "MISS"]) })).optional().describe("reveal: your judged pairings (0-based indexes) replacing the lexical proposals. MATCH needs the same entity, business consequence and unsupported state and a materially equivalent comment."),
+      client_comments_file: z.string().optional().describe("reveal: the .client.json written by parity/tools/ado-fetch.mjs (Azure DevOps review threads). Used instead of client_comments, so the comments never pass through the conversation before sealing."),
+      attestation: z.object({ saw_client_comments: z.boolean(), saw_post_review_findings: z.boolean() }).optional().describe("seal: your attestation, true or false, of whether you had seen the client comments or any post-review finding. Without it the run is not blind."),
+      input_pack: z.string().optional().describe("seal: the folder built by prepare_unseen_pack that you reviewed from. Without a valid, unseen-ready pack the run is not blind."),
     },
     async (a) => {
       try {
         const r = path.resolve(a.workspace_root);
         if (a.action === "seal") {
-          const s = seal(r, a.work_item_id, a.findings ?? []);
-          return ok(`SEALED ${s.count} derived concern(s) for ${a.work_item_id} at ${s.sealed_at} (sha256 ${s.sha256.slice(0, 16)}...). They cannot be edited. Only now may the client comments be looked at: call action=reveal.`);
+          const s = seal(r, a.work_item_id, a.findings ?? [], a.attestation ? { attestation: a.attestation, input_pack: a.input_pack } : undefined);
+          return ok(`SEALED ${s.count} derived concern(s) for ${a.work_item_id} at ${s.sealed_at} (sha256 ${s.sha256.slice(0, 16)}...). They cannot be edited. ${s.blind ? "Recorded as a BLIND run." : "Recorded as NOT blind: " + s.blind_reasons.join("; ") + "."} Only now may the client comments be looked at: call action=reveal.`);
         }
-        const res = reveal(r, a.work_item_id, a.client_comments ?? [], a.overrides ?? []);
-        return ok(renderReveal(res, a.client_comments ?? []));
+        let comments = a.client_comments ?? [];
+        if (a.client_comments_file) {
+          const f = JSON.parse(fs.readFileSync(path.resolve(a.client_comments_file), "utf-8"));
+          comments = (f.review?.comments ?? []).map((c: any) => ({ text: c.text + (c.discussion?.length ? " [thread: " + c.discussion.join(" / ") + "]" : ""), category: c.severity_hint === "UNSPECIFIED" ? undefined : c.severity_hint }));
+        }
+        const res = reveal(r, a.work_item_id, comments, a.overrides ?? []);
+        return ok(renderReveal(res, comments));
+      } catch (e) { return bad(e); }
+    }
+  );
+
+  server.tool(
+    "prepare_unseen_pack",
+    "Unseen-story calibration: builds the folder a calibration review may read, and nothing else. It contains the requirements (stating fields, plus user decisions answered before the cutoff), the decisions logged before the cutoff, the spec, and the CODE AT THE COMMIT THE CLIENT REVIEWED (git archive). It leaves out, with a recorded reason, PR summaries and narratives, ADO comments, investigations, retrospectives, progress logs, files-touched summaries, scenarios, later decisions and undated reasoning state. " +
+    "A repo without a ref is refused (HEAD already contains the fixes) unless allow_head is set, which makes the pack not unseen-ready. Review ONLY the returned folder, seal with calibrate_review (input_pack + attestation), and only then reveal the client comments. A story you already know is not an unseen story.",
+    {
+      source_root: z.string().describe("The workspace that holds .secufusion/ (the source of requirements and decisions)"),
+      out_dir: z.string().describe("A NEW empty folder for the pack"),
+      cutoff: z.string().describe("When the client review was received (ISO 8601). Later decisions are excluded."),
+      work_items: z.array(z.string()).min(1).max(10).describe("The story family, e.g. ['BUG-1469', 'TASK-1657', 'TASK-1658']"),
+      repos: z.array(z.object({ path: z.string(), name: z.string().optional(), ref: z.string().optional() })).min(1).max(12).describe("Each repo with the commit/tag/branch the client reviewed"),
+      allow_head: z.boolean().optional(),
+    },
+    async (a) => {
+      try {
+        const p = prepareUnseenPack({ source_root: path.resolve(a.source_root), out_dir: path.resolve(a.out_dir), cutoff: a.cutoff, work_items: a.work_items, repos: a.repos.map((x) => ({ ...x, path: path.resolve(x.path) })), allow_head: a.allow_head });
+        const L = [`UNSEEN PACK built at ${a.out_dir}  (${p.unseen_ready ? "UNSEEN-READY" : "NOT unseen-ready"})`, `Included (${p.included.length}):`, ...p.included.map((i) => `- ${i.path} [${i.kind}]${i.note ? " " + i.note : ""}`), `Excluded (${p.excluded.length}):`, ...p.excluded.slice(0, 25).map((e) => `- ${e.path}: ${e.reason}`), ...(p.warnings.length ? ["Warnings:", ...p.warnings.map((w) => "- " + w)] : []), "", "Review ONLY this folder. Seal with calibrate_review action=seal (input_pack + attestation) before any client comment is read."];
+        return ok(L.join(String.fromCharCode(10)));
       } catch (e) { return bad(e); }
     }
   );
