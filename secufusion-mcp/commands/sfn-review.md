@@ -1256,7 +1256,17 @@ Pass **`flags`**: the fields that identify ownership or status (for example `def
 
 **Then check how each uniqueness, cardinality and "never zero" invariant is actually enforced.** For the field behind it, call **`check_invariant_enforcement(workspace_root, fields)`**. It rates the field `DB_ENFORCED` (a unique, partial unique, check or exclude constraint), `LOCK_PROTECTED` (every write is in a method that takes a lock), `CHECK_THEN_ACT` (a write reads the field first with no lock and no constraint) or `CODE_ONLY`, and lists every write site, the writes in methods with no lock, and any concurrency test. `CHECK_THEN_ACT` and `CODE_ONLY` mean two actors can both pass the check: for an "exactly one" or "never zero" invariant that is a **zombie-state risk** (two owners, zero owners, orphans). The weakness is a demonstrated fact (cite `file:line` of the unprotected write and the absent constraint); the race it allows is your inference, so name the scenario (transfer vs transfer, transfer vs delete, create vs create) in REPRODUCTION. Lock detection is per method: if a write is in a helper, read the callers before you report it.
 
-Work through every lens below. A lens you did not examine is stated as not examined, never as clean.
+**Entity contracts, before the lenses.** For every entity the change touches (User, Tenant, IT Admin, Portal Administrator, Role, Group, Policy, Schedule, Notification, Subscription, Auth Configuration, ...), write a short contract from the code and the records, not from memory:
+- **Ownership**: who owns it, how ownership is created and transferred, whether it can disappear or duplicate.
+- **Authority**: which permissions, groups, roles, authorizers, menus, APIs, jobs and notifications depend on it (the AUTHORITY_COUPLING and ranked consumers of `check_entity_impact`).
+- **Lifecycle**: create, update, transfer, enable, disable, delete, restore, import, migration, bulk.
+- **Consistency**: which records must stay synchronized, which fields represent the same business object, and **what the source of truth is**.
+- **Audit**: createdAt, createdBy, updatedAt, updatedBy, ownership history, provenance.
+- **Dependencies**: IAM, Tenants, Events, Policy, Auth, browser extension, jobs, schedulers, reports, dashboards, exports, integrations.
+- **Tenancy**: self, child, parent, peer, platform, system context.
+A contract line you could not establish is written `NOT ESTABLISHED`. It is a gap, never an assumption of correctness.
+
+**Also call `get_relevant_invariants` and `check_decision_alignment` (STEP 0.2e)** so the invariant list and the decision list come from the project's memory, then work through every lens. A lens you did not examine is stated as not examined, never as clean.
 
 1. **Complete lifecycle.** Do not stop at the happy path. Create, read, update, transfer, enable, disable, archive, delete, restore, import, migration, bulk operations, scheduled execution, retry execution. For each: what happens **tomorrow** after it succeeds? After repeated use? After **years** of usage and as the data grows? What happens when the current owner leaves, the entity becomes inactive, is deleted, needs recovery? A transition the change leaves undefined for the entity it changes is a **lifecycle gap**.
 2. **State transitions.** Draw the state diagram. Which states exist today and after the change? Can invalid or impossible states be created? Can a state be **orphaned, duplicated or stuck**? Any unsupported state is a finding.
@@ -1269,6 +1279,15 @@ Work through every lens below. A lens you did not examine is stated as not exami
 9. **Product consistency.** Find the most similar features (and the platform's other ownership, admin, role and status checks, including `isAdmin`, `tenant.email`, `defaultUser`). Compare validation, permissions, UX, audit behavior, error handling, ownership rules. Why is this feature different? Any **unexplained inconsistency** is a finding. Look for hidden coupling.
 10. **UX.** Can the user find it? Understand it? Recover from a mistake? Does the action icon match reality? Does the UI expose the current state and **who owns what** clearly, and explain why an action failed?
 11. **Operations.** How would Support investigate this, Reporting interpret it, an Auditor explain it, an Administrator recover from a mistake? What breaks in existing dashboards, metrics and exports? What happens to existing data after release: what needs backfill, what becomes inconsistent history?
+12. **Zombie states.** Try to construct an impossible state and show the sequence from the code: an owner without permissions, permissions without an owner, orphaned records, duplicated ownership, an inactive platform owner, a schedule without a policy, a policy without a target, a group without an owner. Include the **deactivate, remove-from-group and delete paths of the very entity the change protects**: a guard on one lifecycle path does not cover the others. Every unsupported state is a finding.
+13. **UI failure paths.** Not only success. Validation failure, API failure (400, 403, 409, 500), retry, a stale grid, a stale dialog (lists loaded before the failure), stale cache, page refresh, navigation away, cancellation. For each: what does the user see, and is what they see still true? A state the user can act on that the server has already changed is a finding.
+14. **Historical data.** Rows created before the feature: production data, migrated, legacy and partial records. Does the new rule hold for them (for example a tenant with zero or two owners, a blank contact email, an audit column that is empty)? Is there a backfill or a verification query, and what does the code do when it meets a row that breaks the rule (including finders that expect exactly one result)?
+15. **Copy divergence.** The same rule copied across services (the `ALSO IN` lines of `check_entity_impact`): IAM, Tenants, Policy, Events, Auth. Was a fix applied in one copy and not the others? Compare the copies, and name the ones that diverge.
+16. **Support and operations.** After deployment, what will Support, Audit, Reporting and Operations see, and can they still explain the system state (who owns what, who changed it, when)?
+
+**Authority drift report.** Authority is reviewed separately from ownership. State, with `file:line`: can ownership and authority diverge; can a transfer cause authority **loss**; can it cause authority **escalation**; can identity and capability drift apart; can group membership conflict with ownership. Check every recorded decision that says identity and capability are *separate* against the AUTHORITY_COUPLING hits: where the flag itself is read by an authorizer, the premise of the decision is false for that scope, and that contradiction is a finding even though the decision was accepted.
+
+**Hostile principal architect.** Last, ignore implementation effort and assume the feature ships tomorrow. List the top reasons you would reject the PR (platform failures, ownership failures, authority drift, audit loss, tenancy violations, lifecycle gaps, operational surprises), each tied to a finding or to an UNVERIFIED item. If you cannot name any, say what you tried.
 
 **Findings.** Severity, in this mode's own words:
 - **CRITICAL**: security issues, tenant isolation failures, ownership violations, privilege escalation, data corruption.
@@ -1286,6 +1305,8 @@ BUSINESS IMPACT:
 LONG-TERM IMPACT:
 REPRODUCTION: {a scenario: the steps, the expected result, the actual result you can show from the code (file:line)}
 AFFECTED COMPONENTS: {services, UI, jobs, extension, reports}
+AFFECTED DECISIONS: {the recorded decisions it contradicts or weakens, e.g. UD-8, or none}
+AFFECTED INVARIANTS: {the invariants it breaks or leaves NOT DEMONSTRATED, or none}
 RECOMMENDED FIX:
 ```
 
@@ -1395,6 +1416,9 @@ After all passes are complete, produce the final report in this exact format:
 ### Change in business terms
 {The business problem, the entity, the state that changes, who can act, the systems affected, the assumptions that exist today.}
 
+### ENTITY CONTRACTS
+{One short contract per affected entity: ownership, authority, lifecycle, consistency (source of truth), audit, dependencies, tenancy. `NOT ESTABLISHED` where you could not show it.}
+
 ### FEATURE INVARIANTS
 | Invariant (what must always remain true) | Status | Source | Demonstrated |
 |---|---|---|---|
@@ -1406,6 +1430,9 @@ After all passes are complete, produce the final report in this exact format:
 ### Ownership, authority and tenancy
 {Ownership before and after; whether ownership and authority can diverge; elevation paths; the tenancy matrix (self, child, parent, peer, platform, system) with ALLOWED / DENIED / UNVERIFIED and whether that is as intended.}
 
+### Authority drift report
+{Ownership vs authority: divergence, loss on transfer, escalation on transfer, identity vs capability, group membership vs ownership, each with file:line; decisions whose premise the AUTHORITY_COUPLING hits contradict.}
+
 ### Concurrency and data integrity
 {The simultaneous-action pairs you evaluated and the invariants they could break; the audit fields and ownership history, and every write path that could erase or rewrite them.}
 
@@ -1414,6 +1441,12 @@ After all passes are complete, produce the final report in this exact format:
 
 ### UX and operations
 {Discoverability, recovery from mistakes, visibility of state and ownership; Support, Reporting, Audit and Administrator impact; existing data after release and any backfill.}
+
+### Zombie states, UI failure paths, historical data and copy divergence
+{The impossible states you tried to build and the sequences; what the user sees when each failure happens; what pre-existing rows do under the new rule; the copies that diverge. Or "examined, none found" with what you examined.}
+
+### Hostile principal architect: top reasons to reject
+{The ranked reasons, each tied to a finding or an UNVERIFIED item.}
 
 ### PESSIMISTIC FINDINGS
 {Each as a PESSIMISTIC FINDING block (Severity, Scope, Basis, Invariant, ROOT CAUSE, BUSINESS IMPACT, LONG-TERM IMPACT, REPRODUCTION, AFFECTED COMPONENTS, RECOMMENDED FIX). Those that are in scope, FACT-based, and CRITICAL or HIGH also appear in IN-SCOPE FINDINGS as blockers, referring back here.}
