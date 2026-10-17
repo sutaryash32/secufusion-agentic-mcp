@@ -7,6 +7,7 @@ import { loadDecisions, collectChange, checkDecisionAlignment, renderDecisionAli
 import { reviewStalenessFor } from "./review_staleness.js";
 import { buildFeatureModel, renderFeatureModel } from "./feature_model.js";
 import { mapFieldImpact, renderFieldImpact } from "./field_impact.js";
+import { uiGating, renderGating, endpointConsumers, renderEndpointConsumers, serviceOwnership, renderOwnership, parentCascade, renderCascade } from "./parity_lenses.js";
 import { seal, reveal, renderReveal } from "./calibration.js";
 const root = (w) => gitTop(w) ?? path.resolve(w);
 const ok = (t) => ({ content: [{ type: "text", text: t }] });
@@ -160,4 +161,46 @@ export function registerMaturityTools(server) {
             return bad(e);
         }
     });
+    server.tool("check_ui_gating", "UI Gating Matrix for /sfn-review. For one action (for example transfer ownership) it lists WHO THE SERVER LETS EXECUTE it (entry point, @PreAuthorize, the authorization checks in the handler and the service method it calls) beside WHO THE UI SHOWS it to (the hidden/disabled/can* gates around the action, and for each can* predicate where its input comes from: a lookup of the current user in a list, and what it returns when nothing is found). " +
+        "It raises the questions the two sides leave open: a caller the server accepts (an ancestor or parent tenant administrator) who is not in the list the UI derives its predicate from, a restriction with no UI gate, server conditions the UI does not mirror. Pattern-based and READ-ONLY; it lists both sides and you decide whether they agree.", {
+        workspace_root: z.string().describe("The workspace root (the folder that holds the services and the UI)"),
+        action: z.string().describe("A label for the action, e.g. 'transfer ownership'"),
+        server_hint: z.string().describe("A regex that finds the server entry point and service method, e.g. 'transfer-?ownership|transferOwnership'"),
+        ui_hint: z.string().describe("A regex that finds the UI gate and dialog, e.g. 'TransferOwnership|ownerToTransfer|canTransferOwnership'"),
+    }, async (a) => { try {
+        return ok(renderGating(uiGating(path.resolve(a.workspace_root), a)));
+    }
+    catch (e) {
+        return bad(e);
+    } });
+    server.tool("find_endpoint_consumers", "Endpoint Consumer Graph for /sfn-review. For each endpoint whose response or behavior the change alters (for example GET /users now includes the IT Admin), finds the server handlers and EVERY caller: UI screens, UI services, other services and the browser extension, following one hop through the wrapper functions that hold the URL. Each caller assumed a response; the change alters it. " +
+        "Pattern-based and READ-ONLY: a caller built from a variable URL, a gateway or a generated client is invisible, and no callers found is stated, never assumed.", {
+        workspace_root: z.string(),
+        endpoints: z.array(z.object({ method: z.string().optional(), path: z.string() })).min(1).max(6).describe("e.g. [{ method: 'GET', path: '/users' }]"),
+    }, async (a) => { try {
+        return ok(renderEndpointConsumers(endpointConsumers(path.resolve(a.workspace_root), { endpoints: a.endpoints })));
+    }
+    catch (e) {
+        return bad(e);
+    } });
+    server.tool("check_service_ownership", "Service Ownership Model for /sfn-review. For each entity: the table(s) it maps, which services map it, which service owns the table (the one whose migrations create and alter it), and which services WRITE it through its repository. A write from a service that does not own the table assumes a shared database and the owner's schema, constraints and rules (for example iam-api saving a Tenant that tenants-api owns). Pattern-based and READ-ONLY.", {
+        workspace_root: z.string(),
+        entities: z.array(z.string()).min(1).max(6).describe("Entity class names, e.g. ['Tenant', 'User']"),
+    }, async (a) => { try {
+        return ok(renderOwnership(serviceOwnership(path.resolve(a.workspace_root), { entities: a.entities })));
+    }
+    catch (e) {
+        return bad(e);
+    } });
+    server.tool("trace_parent_cascade", "Parent Cascade Analysis for /sfn-review. For a parent entity (Tenant) and its children (User): the parent transitions that remove or retire it (delete, deprovision, offboard, terminate ...), the child removals those transitions reach (repository delete that bypasses the service method, service delete, raw SQL, identity-provider removal), whether each path mentions the child guard (for example defaultUser), and database or mapping cascades (ON DELETE CASCADE, CascadeType.REMOVE) that remove children without any service code. A guard on the child's own delete protects nothing when the parent's lifecycle removes children another way. Pattern-based and READ-ONLY.", {
+        workspace_root: z.string(),
+        parent: z.string().describe("Parent entity, e.g. 'Tenant'"),
+        children: z.array(z.string()).min(1).max(5).describe("Child entities, e.g. ['User']"),
+        guard_terms: z.array(z.string()).max(5).optional().describe("Words that show the child guard is on the path, e.g. ['defaultUser', 'isDefaultUser']"),
+    }, async (a) => { try {
+        return ok(renderCascade(parentCascade(path.resolve(a.workspace_root), { parent: a.parent, children: a.children, guard_terms: a.guard_terms }), a.guard_terms ?? []));
+    }
+    catch (e) {
+        return bad(e);
+    } });
 }

@@ -56,10 +56,14 @@ export function mapFieldImpact(root, opts) {
     walk(root, files, { n: 9000 });
     const max = opts.max_per_field ?? 400;
     const out = opts.fields.map((field) => {
-        const variants = [...new Set([field, ...variantsOf(field)])].filter((v) => v.length >= 3);
+        // "tenant.email" is an entity attribute: it is read as tenant.getEmail(), tenant.email, tenantEmail, getTenantEmail, tenant_email
+        const dot = /^(\w+)\.(\w+)$/.exec(field);
+        const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+        const dotted = dot ? [`${dot[1]}.get${cap1(dot[2])}`, `${dot[1]}.set${cap1(dot[2])}`, `${dot[1]}.${dot[2]}`, `${dot[1]}${cap1(dot[2])}`, `get${cap1(dot[1])}${cap1(dot[2])}`, `${dot[1]}_${dot[2]}`] : [];
+        const variants = [...new Set(dot ? dotted : [field, ...variantsOf(field)])].filter((v) => v.length >= 3);
         return { field, variants, consumers: [], total: 0, by_service: {}, by_capability: {}, writers: 0, truncated: false };
     });
-    const res = out.map((f) => ({ f, re: new RegExp(`(?<![A-Za-z0-9_])(?:[a-z]+)?(?:${f.variants.map(esc).join("|")})(?![a-z0-9])`, "i"), set: new RegExp(`\\.set${esc(f.field.charAt(0).toUpperCase() + f.field.slice(1))}\\s*\\(|(^|[\\s.(,])(${f.variants.map(esc).join("|")})\\s*=(?!=)|\\bSET\\b[^;]*\\b(${f.variants.map(esc).join("|")})\\b`, "i") }));
+    const res = out.map((f) => ({ f, re: new RegExp(`(?<![A-Za-z0-9_])(?:[a-z]+)?(?:${f.variants.map(esc).join("|")})(?![a-z0-9])`, "i"), set: new RegExp(`\\.set${esc((f.field.includes(".") ? f.field.split(".")[1] : f.field).charAt(0).toUpperCase() + (f.field.includes(".") ? f.field.split(".")[1] : f.field).slice(1))}\\s*\\(|(^|[\\s.(,])(${f.variants.map(esc).join("|")})\\s*=(?!=)|\\bSET\\b[^;]*\\b(${f.variants.map(esc).join("|")})\\b`, "i") }));
     for (const abs of files) {
         const rel = path.relative(root, abs).split(path.sep).join("/");
         if (TEST.test(rel))
@@ -95,8 +99,21 @@ export function mapFieldImpact(root, opts) {
                 f.by_capability[cap] = (f.by_capability[cap] ?? 0) + 1;
                 if (kind === "write")
                     f.writers++;
+                // one hop of derivation: `String tenantDomain = extractDomain(tenant.getEmail());` makes tenantDomain a value that changes when the field changes
+                let derived;
+                const asg = kind === "read" ? /^\s*(?:final\s+)?(?:[\w<>\[\]?,.]+\s+)?(\w+)\s*=\s*(?:(\w[\w.]*)\()?.*$/.exec(l) : null;
+                if (asg && !/^(if|for|while|return|else)$/.test(asg[1]) && /=/.test(l) && !/==/.test(l.split("=")[0] + "=")) {
+                    const uses = [];
+                    for (let k = i + 1; k < Math.min(lines.length, i + 45) && uses.length < 4; k++) {
+                        if (COMMENT.test(lines[k]) || !new RegExp(`(?<![A-Za-z0-9_])${esc(asg[1])}(?![A-Za-z0-9_])`).test(lines[k]))
+                            continue;
+                        uses.push({ line: k + 1, text: lines[k].trim().slice(0, 140), decision: DECISION.test(lines[k]) });
+                    }
+                    if (uses.length)
+                        derived = { name: asg[1], via: asg[2] ?? "assignment", uses };
+                }
                 if (f.consumers.length < max)
-                    f.consumers.push({ service, file: rel, line: i + 1, text: l.trim().slice(0, 150), capability: cap, kind, decision });
+                    f.consumers.push({ service, file: rel, line: i + 1, text: l.trim().slice(0, 150), capability: cap, kind, decision, derived });
                 else
                     f.truncated = true;
             }
@@ -134,8 +151,16 @@ export function renderFieldImpact(r, perCap = 4) {
             const dec = cs.filter((c) => c.decision);
             L.push(`- ${cap}: ${f.by_capability[cap]} reference(s)${dec.length ? `, ${dec.length} inside a decision` : ""}`);
             const show = [...dec, ...cs.filter((c) => !c.decision)].filter((c, i, a) => a.findIndex((x) => x.file === c.file) === i).slice(0, perCap);
-            for (const c of show)
+            for (const c of show) {
                 L.push(`    ${c.service}  ${c.file.split("/").slice(-1)[0]}:${c.line}  ${c.kind === "write" ? "[WRITE] " : ""}${c.text}`);
+                if (c.derived) {
+                    L.push(`      DERIVED VALUE ${c.derived.name} (via ${c.derived.via}) changes when ${f.field} changes; it is used at:`);
+                    for (const u of c.derived.uses)
+                        L.push(`        :${u.line}  ${u.decision ? "[DECISION] " : ""}${u.text}`);
+                }
+            }
+            if (show.some((c) => c.derived?.uses.some((u) => u.decision)))
+                L.push("    consequence: a derived value that feeds a decision means the decision changes when the field does, for every actor the decision applies to. Name who is allowed or refused differently after the change.");
             L.push(`    ask: ${CONSEQUENCE_QUESTION[cap]}`);
         }
     }
