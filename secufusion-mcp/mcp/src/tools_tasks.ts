@@ -33,6 +33,7 @@ import { parseConfig, parseExternalEnv, ConfigurationFile } from "./parsers/conf
 import chokidar from "chokidar";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
+import { reviewStalenessFor, describeStaleness, STALE_NEXT } from "./review_staleness.js";
 import {
   PhilosophyVerdict, PhilosophyHint, PhilosophyRubric,
   ClassificationVerdict, ClassificationHint, ClassificationRubric,
@@ -622,6 +623,13 @@ server.tool(
         : ["philosophy", "intent", "classification", "requirement", "plan", "review"];
       const gateError = requireGates(getWorkspaceRoot(), work_item_id, needed as any, action === "initialize" ? "initialize the task" : "complete the task");
       if (gateError) return appendTelemetry(textResult(gateError, true), inputChars);
+      if (action === "complete") {
+        // the review only covers what it saw: code changed after the verdict has not been reviewed
+        const stale = reviewStalenessFor(getWorkspaceRoot(), work_item_id);
+        if (stale?.stale) {
+          return appendTelemetry(textResult(`⛔ REVIEW STALE: the review of ${displayRef(work_item_id)} passed, but code changed after it.\n${describeStaleness(stale)}\n\n${STALE_NEXT}`, true), inputChars);
+        }
+      }
     }
     
     if (action === "initialize") {

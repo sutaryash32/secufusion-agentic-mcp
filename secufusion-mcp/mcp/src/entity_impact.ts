@@ -12,10 +12,14 @@
 import fs from "fs";
 import path from "path";
 import { git, gitTop, pickBase } from "./diff_quality.js";
+import { variantsOf } from "./invariant_enforcement.js";
 
 export type Dep =
     | "OWNERSHIP_CHECK" | "ADMIN_CHECK" | "ROLE_OR_AUTHORITY_CHECK" | "STATUS_CHECK" | "TENANT_EMAIL" | "DEFAULT_USER"
-    | "AUDIT_FIELD" | "CACHE" | "EVENT" | "SCHEDULED_JOB" | "IMPORT_EXPORT" | "WRITE_PATH";
+    | "AUDIT_FIELD" | "CACHE" | "EVENT" | "SCHEDULED_JOB" | "IMPORT_EXPORT" | "WRITE_PATH" | "AUTHORITY_COUPLING";
+
+export type Criticality = "CRITICAL" | "MEDIUM" | "LOW";
+export interface RankedConsumer { file: string; service: string; criticality: Criticality; why: string; hits: number; categories: Dep[]; evidence: Hit[]; also_in?: string[] }
 
 const LINE_PATTERNS: Array<[Dep, RegExp]> = [
     ["OWNERSHIP_CHECK", /\b(isOwner|getOwner\w*|setOwner\w*|ownerId|owner_id|ownedBy|transferOwnership|changeOwner|newOwner|currentOwner)\b|\bowner\b/i],
@@ -31,6 +35,15 @@ const LINE_PATTERNS: Array<[Dep, RegExp]> = [
     ["WRITE_PATH", /(@(Post|Put|Patch|Delete)Mapping\b|\b(public|protected)\s+[\w<>\[\],.? ]+\s+(create|update|delete|remove|transfer|disable|enable|deactivate|reactivate|restore|assign|revoke|add|save|import|bulk|migrate|merge|move)\w*\s*\()|\b(router|app)\.(post|put|patch|delete)\(/i],
 ];
 
+// words that mark a line as part of an authorization decision
+const AUTH_CONTEXT = /(AccessDenied|Forbidden|Unauthorized|NotAuthorized|hasAuthority|hasAnyAuthority|hasRole|hasScope|callerHasScope|hasPermission|@PreAuthorize|@PostAuthorize|@Secured|@RolesAllowed|\bisAuthorized|\bcanAccess|\bcanManage|checkPermission|requireRole|requireAuth|\bisPlatformAdmin\w*|isCallerAncestorOrSelf|ParentChain\w*|authorize\w*\()/;
+// a field or method declaration that merely names the flag is not a use of it
+const PLAIN_DECLARATION = /^\s*(public|protected|private)\b(?!.*\b(return|if)\b)[^=]*[;{]\s*$/;
+// a trivial accessor (one-line getter or setter) or a bare `return field;` is not a decision either
+const ACCESSOR_LINE = /^\s*(?:(?:public|protected|private)\s+)?[\w<>\[\],.? ]+\s+(?:is|get|set|has)\w+\s*\([^)]*\)\s*\{\s*(?:return\s+(?:this\.)?[\w.]+\s*;|(?:this\.)?\w+\s*=\s*\w+\s*;)\s*\}\s*$|^\s*return\s+(?:this\.)?[\w.]+\s*;\s*$/;
+const AUTH_INFRA_FILE =/(Authorizer|Authoriz|Filter|Security|Guard|Interceptor)\w*\.(java|kt|ts|js)$/i;
+const LOW_FILE = /(Notif|Notifier|Mailer|Email|Report|Export|Dashboard)/i;
+const UI_FILE = /\.(jsx?|tsx?|mjs)$/;
 const CODE = /\.(java|kt|scala|groovy|jsx?|tsx?|mjs|py|go|cs|rb|php|sql|ya?ml|properties)$/;
 const SKIP_DIR = new Set(["node_modules", "dist", "build", "target", ".git", ".idea", ".vscode", "coverage", ".secufusion", ".mcp", "out", "bin"]);
 const TEST = /(^|\/)(src\/test|__tests__|tests?|spec)\/|\.(test|spec)\.[jt]sx?$|(Test|Tests|IT)\.java$/;
@@ -47,6 +60,7 @@ export interface ServiceInventory {
 export interface EntityImpactReport {
     root: string; terms: string[]; services: ServiceInventory[]; services_without_references: string[];
     trigger: { fired: boolean; matched: string[]; sources: string[] };
+    flags: string[]; ranked_consumers: RankedConsumer[];
     truncated: boolean; notes: string[];
 }
 
@@ -80,12 +94,15 @@ function walk(dir: string, out: string[], budget: { n: number }) {
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export function inventoryEntityImpact(workspaceRoot: string, opts: { terms: string[]; story_text?: string; base?: string; max_hits?: number }): EntityImpactReport {
+export function inventoryEntityImpact(workspaceRoot: string, opts: { terms: string[]; flags?: string[]; story_text?: string; base?: string; max_hits?: number; max_ranked?: number }): EntityImpactReport {
     const root = path.resolve(workspaceRoot);
     const terms = opts.terms.map((t) => t.trim()).filter(Boolean);
     const maxHits = opts.max_hits ?? 6;
-    const rep: EntityImpactReport = { root, terms, services: [], services_without_references: [], trigger: { fired: false, matched: [], sources: [] }, truncated: false, notes: [] };
-    const termRes = terms.map((t) => [t, new RegExp(`\\b${esc(t)}(s|es)?\\b`, "i")] as const);
+    const rep: EntityImpactReport = { root, terms, services: [], services_without_references: [], trigger: { fired: false, matched: [], sources: [] }, flags: (opts.flags ?? []).map((f) => f.trim()).filter(Boolean), ranked_consumers: [], truncated: false, notes: [] };
+    const allTerms = [...new Set([...terms, ...rep.flags])];
+    const flagRe = rep.flags.length ? new RegExp(rep.flags.flatMap((f) => variantsOf(f)).map(esc).join("|"), "i") : null;
+    const fileInfo = new Map<string, { service: string; cats: Set<Dep>; hits: Array<Hit & { dep: Dep }>; count: number }>();
+    const termRes = allTerms.map((t) => [t, new RegExp(`\\b${esc(t)}(s|es)?\\b`, "i")] as const);
     const budget = { n: MAX_FILES };
 
     for (const svc of serviceRoots(root)) {
@@ -98,7 +115,10 @@ export function inventoryEntityImpact(workspaceRoot: string, opts: { terms: stri
             inv.files_scanned++;
             const rel = path.relative(root, f).split(path.sep).join("/");
             const refsHere = termRes.filter(([, re]) => re.test(text));
-            if (!refsHere.length) continue;       // dependencies are only reported in files that talk about the entity
+            // a flag is matched by substring across its naming variants (isDefaultUser, findByTenantAndDefaultUser, default_user), not at word boundaries
+            const flagHits = flagRe ? (text.match(new RegExp(flagRe.source, "gi")) ?? []).length : 0;
+            if (!refsHere.length && !flagHits) continue;       // dependencies are only reported in files that talk about the entity or the flag
+            if (flagHits) inv.entity_references[`flag ${rep.flags.join("/")}`] = (inv.entity_references[`flag ${rep.flags.join("/")}`] ?? 0) + flagHits;
             for (const [t, re] of termRes) { const n = (text.match(new RegExp(re.source, "gi")) ?? []).length; if (n) inv.entity_references[t] = (inv.entity_references[t] ?? 0) + n; }
             if (TEST.test(rel)) { inv.tests_referencing_entity++; continue; }
             inv.entity_files.push(rel);
@@ -110,19 +130,59 @@ export function inventoryEntityImpact(workspaceRoot: string, opts: { terms: stri
                     inv.entity_definitions.push({ file: rel, audit_fields: [...new Set([...text.matchAll(/\b(createdAt|createdBy|updatedAt|updatedBy|created_at|created_by|updated_at|updated_by)\b/g)].map((m) => m[1]))] });
                 }
             }
+            const info = fileInfo.get(rel) ?? { service: inv.service, cats: new Set<Dep>(), hits: [], count: 0 };
+            fileInfo.set(rel, info);
+            const note = (dep: Dep, i: number, l: string) => {
+                inv.dep_counts[dep] = (inv.dep_counts[dep] ?? 0) + 1;
+                const hit = { file: rel, line: i + 1, text: l.trim().slice(0, 160) };
+                const arr = (inv.deps[dep] ??= []);
+                if (arr.length < maxHits) arr.push(hit);
+                info.cats.add(dep); info.count++;
+                if (info.hits.length < 40) info.hits.push({ ...hit, dep });
+            };
+            const authIdx: number[] = [];
+            lines.forEach((l, i) => { if (!/^\s*(\/\/|\*|\/\*|#|import\s)/.test(l) && AUTH_CONTEXT.test(l)) authIdx.push(i); });
             lines.forEach((l, i) => {
                 if (/^\s*(\/\/|\*|\/\*|#)/.test(l)) return;
-                for (const [dep, re] of LINE_PATTERNS) {
-                    if (!re.test(l)) continue;
-                    inv.dep_counts[dep] = (inv.dep_counts[dep] ?? 0) + 1;
-                    const arr = (inv.deps[dep] ??= []);
-                    if (arr.length < maxHits) arr.push({ file: rel, line: i + 1, text: l.trim().slice(0, 160) });
-                }
+                for (const [dep, re] of LINE_PATTERNS) if (re.test(l)) note(dep, i, l);
+                // authority coupling: a flag or field that identifies ownership or status is used inside an authorization decision
+                if (flagRe && flagRe.test(l) && !/^\s*(import\s|@)/.test(l) && !PLAIN_DECLARATION.test(l) && !ACCESSOR_LINE.test(l) && authIdx.some((a) => Math.abs(a - i) <= 8)) note("AUTHORITY_COUPLING", i, l);
             });
         }
         if (Object.keys(inv.entity_references).length) rep.services.push(inv); else rep.services_without_references.push(inv.service);
     }
     if (budget.n <= 0) { rep.truncated = true; rep.notes.push(`Stopped after ${MAX_FILES} files; the inventory is partial.`); }
+
+    // rank the consumers: what to read first
+    const MEDIUM_CATS: Dep[] = ["WRITE_PATH", "STATUS_CHECK", "OWNERSHIP_CHECK", "EVENT", "SCHEDULED_JOB", "CACHE", "TENANT_EMAIL", "ADMIN_CHECK", "ROLE_OR_AUTHORITY_CHECK", "DEFAULT_USER"];
+    for (const [file, info] of fileInfo) {
+        if (!info.count) continue;
+        const cats = [...info.cats];
+        let crit: Criticality, why: string;
+        if (cats.includes("AUTHORITY_COUPLING")) {
+            crit = "CRITICAL"; why = "the flag appears inside an authorization decision: moving or changing it moves who may act";
+        } else if (AUTH_INFRA_FILE.test(file) && info.hits.length) {
+            crit = "CRITICAL"; why = "authorization infrastructure reads it";
+        } else if (cats.some((c) => MEDIUM_CATS.includes(c))) {
+            crit = "MEDIUM"; why = "it writes, checks the status or ownership of, or reacts to this data";
+        } else { crit = "LOW"; why = "it only carries audit fields or imports/exports the data"; }
+        if (crit !== "LOW" && LOW_FILE.test(path.basename(file)) && !cats.includes("AUTHORITY_COUPLING")) { crit = "LOW"; why = "a notification, report or export that follows the data"; }
+        if (crit === "CRITICAL" && UI_FILE.test(file)) { crit = "MEDIUM"; why = "UI gating on the flag: a UX / authority mismatch risk, not a security boundary"; }
+        const ev = [...info.hits].sort((a, b) => (a.dep === "AUTHORITY_COUPLING" ? 0 : 1) - (b.dep === "AUTHORITY_COUPLING" ? 0 : 1)).slice(0, 2).map(({ dep: _d, ...h }) => h);
+        rep.ranked_consumers.push({ file, service: info.service, criticality: crit, why, hits: info.count, categories: cats, evidence: ev });
+    }
+    const crank: Record<Criticality, number> = { CRITICAL: 0, MEDIUM: 1, LOW: 2 };
+    rep.ranked_consumers.sort((a, b) => crank[a.criticality] - crank[b.criticality] || b.hits - a.hits || a.file.localeCompare(b.file));
+    // the same file name in several services at the same criticality is one rule copied around: show it once, listing the copies
+    // (copies of a rule drift apart; that is a finding to check, and it keeps the worklist short)
+    const merged: RankedConsumer[] = []; const byName = new Map<string, RankedConsumer>();
+    for (const c of rep.ranked_consumers) {
+        const key = `${path.basename(c.file)}|${c.criticality}`;
+        const first = byName.get(key);
+        if (first && first.service !== c.service) { (first.also_in ??= []).push(`${c.service}/${path.basename(c.file)}`); first.hits += c.hits; }
+        else { const copy = { ...c }; if (!first) byName.set(key, copy); merged.push(copy); }
+    }
+    rep.ranked_consumers = merged.slice(0, opts.max_ranked ?? 15);
     rep.services.sort((a, b) => Object.values(b.entity_references).reduce((x, y) => x + y, 0) - Object.values(a.entity_references).reduce((x, y) => x + y, 0));
 
     const texts: Array<{ source: string; text: string }> = [];
@@ -142,6 +202,7 @@ export function inventoryEntityImpact(workspaceRoot: string, opts: { terms: stri
 }
 
 const LABEL: Record<Dep, string> = {
+    AUTHORITY_COUPLING: "Authority coupling (the flag appears in an authorization decision)",
     OWNERSHIP_CHECK: "Ownership checks", ADMIN_CHECK: "Admin checks", ROLE_OR_AUTHORITY_CHECK: "Role / authority / membership checks", STATUS_CHECK: "Status checks",
     TENANT_EMAIL: "tenant.email usage", DEFAULT_USER: "defaultUser usage", AUDIT_FIELD: "Audit fields", CACHE: "Caches and client-side stores", EVENT: "Events produced or consumed",
     SCHEDULED_JOB: "Scheduled and async jobs", WRITE_PATH: "Write paths (endpoints and mutating methods)", IMPORT_EXPORT: "Imports / exports",
@@ -150,7 +211,7 @@ const LABEL: Record<Dep, string> = {
 export function renderEntityImpact(r: EntityImpactReport): string {
     const head =
         `## ENTITY IMPACT INVENTORY\n` +
-        `Entity terms: ${r.terms.join(", ") || "none"} · services referencing it: ${r.services.length} · without references: ${r.services_without_references.join(", ") || "none"}\n` +
+        `Entity terms: ${r.terms.join(", ") || "none"}${r.flags.length ? ` · flags checked for authority coupling: ${r.flags.join(", ")}` : ""} · services referencing it: ${r.services.length} · without references: ${r.services_without_references.join(", ") || "none"}\n` +
         `Pessimistic-review trigger: ${r.trigger.fired ? "FIRED" : "not fired"}${r.trigger.matched.length ? ` (${r.trigger.matched.join(", ")}; from ${r.trigger.sources.join(", ")})` : ""}\n` +
         (r.notes.length ? r.notes.map((n) => `Note: ${n}`).join("\n") + "\n" : "");
     if (!r.services.length) return head + "\nNo service references the entity.\n";
@@ -166,5 +227,11 @@ export function renderEntityImpact(r: EntityImpactReport): string {
         }
         return lines.join("\n");
     });
-    return head + "\n" + blocks.join("\n\n") + "\n";
+    const rank = r.ranked_consumers.length
+        ? `### RANKED CONSUMERS: read these first\n` +
+          `Critical = the flag is inside an authorization decision or authorization infrastructure reads it; Medium = it writes, checks status or ownership, or reacts to the data; Low = audit fields, imports/exports, notifications.` +
+          (r.flags.length ? "" : ` (No flags were given, so authority coupling was not checked: pass the fields that identify ownership or status, e.g. defaultUser, owner.)`) + "\n" +
+          r.ranked_consumers.map((c) => `- [${c.criticality}] ${c.file}  (${c.service}; ${c.hits} hit(s); ${c.categories.join(", ")})\n    why: ${c.why}${c.also_in?.length ? `\n    ALSO IN ${c.also_in.length} other service(s): ${c.also_in.join(", ")}: the same rule appears copied across services, so check the copies agree` : ""}\n${c.evidence.map((h) => `    ${h.file.split("/").pop()}:${h.line}  ${h.text}`).join("\n")}`).join("\n")
+        : "";
+    return head + "\n" + (rank ? rank + "\n\n" : "") + blocks.join("\n\n") + "\n";
 }

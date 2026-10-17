@@ -15,6 +15,7 @@ import { analyzeDiffQuality, applyAcknowledgements, blockingFindings, checkScope
 import { loadTraceability, addTraceabilityLink, traceForward, traceReverse, findTraceabilityGaps } from "./traceability_engine.js";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
+import { takeReviewSnapshot, saveReviewSnapshot, reviewStalenessFor, describeStaleness, STALE_NEXT } from "./review_staleness.js";
 import { RequirementVerdict, RequirementHint, RequirementRubric, PlanVerdict, PlanHint, PlanRubric, ReviewVerdict, ReviewHint, ReviewRubric, } from "./verdicts.js";
 import { getWorkspaceRoot, resolve, readJson, writeFile, specEvidence, textResult, TASKS_DIR, resolveTaskFolder, getEcosystemRoot, getDnaPath } from "./shared.js";
 const PLAN_CREATED_HEADER = ["Plan created.", "", "Confirmed exploration this plan MUST honour (decisions are the user's, not yours to change):", ""].join(String.fromCharCode(10));
@@ -607,6 +608,11 @@ export function registerSpecTools(server) {
             recordGate(wsRoot, work_item_id, "review", passed, outcome.source, passed ? rv.summary
                 : dqBlocking.length ? `diff noise: ${dqBlocking.map((f) => `${f.finding} in ${f.file}`).join("; ")}`
                     : unjudged.length ? `${unjudged.length} criteria not judged` : rv.summary);
+            // remember exactly what was reviewed, so a later change makes this verdict stale; a verdict that is not an approval records nothing
+            try {
+                saveReviewSnapshot(wsRoot, work_item_id, passed ? takeReviewSnapshot(workspace_root) : null);
+            }
+            catch { /* staleness tracking is best effort */ }
             return textResult(`${passed ? "✅" : "⛔"} Review ${passed ? "APPROVED" : "CHANGES REQUIRED"} — ${work_item_id} (judged by ${outcome.source})\n${rv.summary}\n\n` +
                 rv.criteria.map((c) => `- [${c.status}] ${c.criterion}${c.evidence.length ? `\n    evidence: ${c.evidence.join("; ")}` : ""}`).join("\n") +
                 (unjudged.length ? `\n\n⚠️ Criteria missing from the judgment (copy them verbatim):\n${unjudged.map((c) => `- ${c}`).join("\n")}` : "") +
@@ -631,8 +637,11 @@ export function registerSpecTools(server) {
             return g ? `${g.status === "PASSED" ? "✅" : "⛔"} ${p.padEnd(15)} ${g.source.padEnd(10)} ${g.summary}` : `⬜ ${p.padEnd(15)} not done`;
         });
         const next = nextPhase(wsRoot, work_item_id);
+        const stale = !next ? reviewStalenessFor(wsRoot, work_item_id) : null;
         return textResult(`## Spec status — ${work_item_id}\n\n${rows.join("\n")}\n\n` +
-            (next ? `**Next:** ${nextStepHint(next)}` : `**All gates passed.** manage_task action=complete is allowed.`));
+            (next ? `**Next:** ${nextStepHint(next)}`
+                : stale?.stale ? `⚠️ **REVIEW STALE.** All gates passed, but files changed after the review:\n${describeStaleness(stale)}\n\n**Next:** ${STALE_NEXT} manage_task action=complete is blocked until then.`
+                    : `**All gates passed.** manage_task action=complete is allowed.`));
     });
     server.tool("get_change_context", "Retrieves the consolidated deterministic change context for the host LLM before it writes code.", {
         workspace_root: z.string().describe("Root directory of the workspace"),

@@ -84,7 +84,11 @@ check("scope drift: the controller is a core story file, not drift", /### CORE S
 r = await call("check_scope_drift", { base: "main" });
 check("scope drift without a story says it cannot classify (does not call everything drift)", r.text.includes("could not be classified against a story") && !/^SCOPE DRIFT$/m.test(r.text), r.text.slice(0, 400));
 
-check("check_entity_impact is registered", tools.has("check_entity_impact"));
+check("check_entity_impact and check_invariant_enforcement are registered", tools.has("check_entity_impact") && tools.has("check_invariant_enforcement"));
+r = await call("check_invariant_enforcement", { fields: ["count"] });
+check("invariant enforcement: the map is produced through the server, names the field's variants, and states what an 'exactly one' invariant needs", !r.err && r.text.includes("INVARIANT ENFORCEMENT MAP") && r.text.includes("### count") && r.text.includes("Enforcement:") && /exactly one per tenant/.test(r.text) && g(dir, "status", "--porcelain") === "", r.text.slice(0, 500));
+r = await call("check_entity_impact", { entity_terms: ["Event"], flags: ["count"], story_text: "transfer ownership" });
+check("entity impact accepts flags and reports them", !r.err && /flags checked for authority coupling: count/.test(r.text), r.text.slice(0, 300));
 r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Let an admin transfer ownership of an event to another member" });
 check("entity impact: the whole workspace is inventoried per service with file:line evidence, the trigger fires, and nothing changes", !r.err && r.text.includes("ENTITY IMPACT INVENTORY") && r.text.includes("Pessimistic-review trigger: FIRED") && /### [\w.-]+  \(\d+ files scanned; 1 non-test files reference the entity/.test(r.text) && /References: Event=\d+/.test(r.text) && /a hit is not a defect/i.test(r.text) && g(dir, "rev-parse", "HEAD") === head && g(dir, "status", "--porcelain") === "", r.text.slice(0, 700));
 r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Change the colour of the save button", format: "json" });

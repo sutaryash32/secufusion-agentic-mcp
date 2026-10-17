@@ -6,6 +6,7 @@ import { analyzeMergeRegressions, renderMergeReport } from "./merge_regression.j
 import { analyzeBehaviorChanges, renderBehaviorReport } from "./behavior_change.js";
 import { analyzeScopeDrift, renderScopeDrift } from "./scope_drift.js";
 import { inventoryEntityImpact, renderEntityImpact } from "./entity_impact.js";
+import { mapInvariantEnforcement, renderEnforcement } from "./invariant_enforcement.js";
 import { getEcosystemRoot, resolveTaskFolder, resolve, TASKS_DIR } from "./shared.js";
 import { gatherIntentSources } from "./intent_evidence.js";
 import { loadRequirement } from "./requirement_manager.js";
@@ -45,6 +46,28 @@ export function registerReviewTools(server: any): void {
   );
 
   server.tool(
+    "check_invariant_enforcement",
+    "Invariant Enforcement Map for /sfn-review's pessimistic mode. For the field behind an invariant (for example `defaultUser` for 'exactly one IT Admin per tenant'), finds every write to it in the workspace, any database constraint on it (unique, partial unique, check, exclude), any lock or version guard around the writers, whether the writers read the field first (check-then-act), and whether a concurrency test exists, and rates it: " +
+    "DB_ENFORCED, LOCK_PROTECTED, CHECK_THEN_ACT, CODE_ONLY or NO_WRITES_FOUND. CHECK_THEN_ACT and CODE_ONLY mean two concurrent actors can both pass the check: a zombie-state risk (two owners, zero owners, orphans). " +
+    "It is evidence, not a verdict: compare the rating with what the invariant needs. Pattern-based and READ-ONLY; lock detection is per file.",
+    {
+      workspace_root: z.string().describe("The workspace root (for a multi-repo workspace, the folder that holds the services)"),
+      fields: z.array(z.string()).min(1).max(8).describe("The field(s) behind the invariant, camelCase or snake_case, e.g. ['defaultUser', 'owner_id']"),
+      max_hits: z.number().int().min(1).max(25).optional().describe("Sample hits shown per section (default 6)."),
+      format: z.enum(["blocks", "json"]).optional().describe("blocks (default) or json"),
+    },
+    async ({ workspace_root, fields, max_hits, format }) => {
+      try {
+        const report = mapInvariantEnforcement(workspace_root, { fields, max_hits });
+        if (format === "json") return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
+        return { content: [{ type: "text", text: renderEnforcement(report) }] };
+      } catch (e: any) {
+        return { isError: true, content: [{ type: "text", text: `Error: ${e.message}` }] };
+      }
+    }
+  );
+
+  server.tool(
     "check_entity_impact",
     "Deterministic helper for /sfn-review's PRODUCT-CENTRIC PESSIMISTIC REVIEW (ownership, role, admin, tenancy, permission and lifecycle stories). Searches the WHOLE workspace, every service and not just the changed files, for everything that depends on the entity being changed: " +
     "ownership checks, admin checks (isAdmin), role/authority/membership checks, status checks, tenant.email and defaultUser usage, audit fields (createdAt/createdBy/updatedAt/updatedBy) on the entity definitions, write paths (endpoints and mutating methods), caches, produced/consumed events, scheduled jobs and imports/exports, grouped per service, " +
@@ -53,14 +76,16 @@ export function registerReviewTools(server: any): void {
     {
       workspace_root: z.string().describe("The workspace root (for a multi-repo workspace, the folder that holds the services)"),
       entity_terms: z.array(z.string()).min(1).max(8).describe("Names of the entity or entities being changed, as they appear in code, e.g. ['Group', 'Tenant', 'owner']"),
+      flags: z.array(z.string()).max(8).optional().describe("Fields or flags that identify ownership or status and might be used in authorization, e.g. ['defaultUser', 'isAdmin', 'owner']. When given, every use of one near an authorization decision is flagged AUTHORITY_COUPLING and ranked CRITICAL."),
+      max_ranked: z.number().int().min(1).max(40).optional().describe("How many ranked consumers to list first (default 15)."),
       story_text: z.string().optional().describe("The story's title, description and acceptance criteria; used for the trigger check"),
       base: z.string().optional().describe("Git ref for the diff used in the trigger check. Default: merge-base with the default branch."),
       max_hits: z.number().int().min(1).max(25).optional().describe("Sample hits shown per dependency per service (default 6)."),
       format: z.enum(["blocks", "json"]).optional().describe("blocks (default) or json"),
     },
-    async ({ workspace_root, entity_terms, story_text, base, max_hits, format }) => {
+    async ({ workspace_root, entity_terms, flags, max_ranked, story_text, base, max_hits, format }) => {
       try {
-        const report = inventoryEntityImpact(workspace_root, { terms: entity_terms, story_text, base, max_hits });
+        const report = inventoryEntityImpact(workspace_root, { terms: entity_terms, flags, max_ranked, story_text, base, max_hits });
         if (format === "json") return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
         return { content: [{ type: "text", text: renderEntityImpact(report) }] };
       } catch (e: any) {

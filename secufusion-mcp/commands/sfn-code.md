@@ -18,6 +18,8 @@ Task: **$ARGUMENTS**
 3. Read `.agents/coder.md` to load the **Coder Persona** — your behaviour for this phase is governed by those instructions.
 4. Before writing ANY file, follow **ARTIFACT PLACEMENT, ONE HOME PER DOCUMENT** in `.agents/AGENTS.md`: decide the document's type and use its single home, search before you create, state the preflight line, never overwrite an MCP-generated file, and log every file with `manage_task` `log_file_touched`.
 
+> **Changes after review are unreviewed changes.** When `/sfn-review` approves, the server records the exact content of every changed file. If you change any file after that verdict (a fix, a polish, a "small" UI tweak), the review is **STALE**: `spec_status` says so and `manage_task action=complete` is refused until `/sfn-review` has reviewed what changed and recorded a fresh verdict. Tell the user when you change code after a review.
+
 ## Phase 1 — Load Rejected Patterns Memory
 
 Call `get_pattern_from_task(work_item_id: "$ARGUMENTS")` to retrieve any rejected patterns logged for this task. If patterns exist, internalize them as hard constraints — **do not repeat them under any circumstances.**

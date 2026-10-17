@@ -168,6 +168,15 @@ const SAMPLING = V;
     r = await call(c, "check_diff_quality", { workspace_root: dir });
     check("after the fix the diff is clean", r.text.includes("no diff-quality findings") || !r.text.includes("LINE_ENDING_CHANGE"), r.text.slice(0, 400));
 
+    // Post-review change detection: big.ts was edited (normalized) AFTER the review approved it, so the verdict no longer covers the code.
+    r = await call(c, "spec_status", { work_item_id: id });
+    check("spec_status: a file changed after the review makes the review STALE, naming it", r.text.includes("REVIEW STALE") && r.text.includes("big.ts") && !r.text.includes("allowed."), r.text);
+    r = await call(c, "manage_task", { action: "complete", work_item_id: id });
+    check("completing is blocked while the review is stale, and says how to fix it", r.err && r.text.includes("REVIEW STALE") && r.text.includes("big.ts") && r.text.includes("Re-run /sfn-review"), r.text.slice(0, 400));
+    r = await call(c, "verify_against_spec", { workspace_root: dir, work_item_id: id, judgment: V.review });
+    check("re-reviewing records a fresh verdict over the current code", r.text.includes("APPROVED") && !r.text.includes("CHANGES REQUIRED"), r.text.slice(0, 300));
+    r = await call(c, "spec_status", { work_item_id: id });
+    check("after the fresh review the ledger is current again", !r.text.includes("REVIEW STALE"), r.text);
     r = await call(c, "spec_status", { work_item_id: id });
     check("spec_status: all gates passed", r.text.includes("All gates passed"), r.text);
     // The PR summary is an engineering change summary: problem, investigation, root cause, options, design, resolved issues, before/after, tests, risks, impact.

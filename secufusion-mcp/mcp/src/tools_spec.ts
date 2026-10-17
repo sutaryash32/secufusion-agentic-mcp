@@ -38,6 +38,7 @@ import { parseConfig, parseExternalEnv, ConfigurationFile } from "./parsers/conf
 import chokidar from "chokidar";
 import { judge, judgmentParam, loadJudgment, hashOf } from "./judge.js";
 import { recordGate, requireGates, readLedger, nextPhase, nextStepHint, PHASES } from "./gates.js";
+import { takeReviewSnapshot, saveReviewSnapshot, reviewStalenessFor, describeStaleness, STALE_NEXT } from "./review_staleness.js";
 import {
   PhilosophyVerdict, PhilosophyHint, PhilosophyRubric,
   ClassificationVerdict, ClassificationHint, ClassificationRubric,
@@ -657,6 +658,8 @@ server.tool(
             passed ? rv.summary
             : dqBlocking.length ? `diff noise: ${dqBlocking.map((f) => `${f.finding} in ${f.file}`).join("; ")}`
             : unjudged.length ? `${unjudged.length} criteria not judged` : rv.summary);
+        // remember exactly what was reviewed, so a later change makes this verdict stale; a verdict that is not an approval records nothing
+        try { saveReviewSnapshot(wsRoot, work_item_id, passed ? takeReviewSnapshot(workspace_root) : null); } catch { /* staleness tracking is best effort */ }
 
         return textResult(
             `${passed ? "✅" : "⛔"} Review ${passed ? "APPROVED" : "CHANGES REQUIRED"} — ${work_item_id} (judged by ${outcome.source})\n${rv.summary}\n\n` +
@@ -690,9 +693,12 @@ server.tool(
       return g ? `${g.status === "PASSED" ? "✅" : "⛔"} ${p.padEnd(15)} ${g.source.padEnd(10)} ${g.summary}` : `⬜ ${p.padEnd(15)} not done`;
     });
     const next = nextPhase(wsRoot, work_item_id);
+    const stale = !next ? reviewStalenessFor(wsRoot, work_item_id) : null;
     return textResult(
         `## Spec status — ${work_item_id}\n\n${rows.join("\n")}\n\n` +
-        (next ? `**Next:** ${nextStepHint(next)}` : `**All gates passed.** manage_task action=complete is allowed.`)
+        (next ? `**Next:** ${nextStepHint(next)}`
+            : stale?.stale ? `⚠️ **REVIEW STALE.** All gates passed, but files changed after the review:\n${describeStaleness(stale)}\n\n**Next:** ${STALE_NEXT} manage_task action=complete is blocked until then.`
+            : `**All gates passed.** manage_task action=complete is allowed.`)
     );
   }
 );

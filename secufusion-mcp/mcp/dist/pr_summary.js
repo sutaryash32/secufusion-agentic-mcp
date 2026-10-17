@@ -13,6 +13,7 @@ import path from "path";
 import { loadRequirement } from "./requirement_manager.js";
 import { loadPlan } from "./implementation_plan.js";
 import { readLedger } from "./gates.js";
+import { reviewStalenessFor } from "./review_staleness.js";
 import { loadTestResults } from "./test_engine.js";
 import { displayRef } from "./work_item_ref.js";
 export const NARRATIVE_FILE = "pr-narrative.json";
@@ -118,7 +119,7 @@ export function renderPrSummary(i) {
     // ── 10 Risks and release
     const migrations = [...(plan?.database_changes || []), ...(plan?.event_changes || [])];
     const s10 = section(10, "Remaining risks and release considerations", [
-        review ? `**Review verdict:** ${review.status}${review.summary ? `: ${review.summary}` : ""}` : "**Review verdict:** not recorded.",
+        review ? `**Review verdict:** ${review.status}${review.summary ? `: ${review.summary}` : ""}${i.staleness?.stale ? ` (**STALE**: ${i.staleness.changed.length + i.staleness.added.length + i.staleness.reverted.length} file(s) changed after the review, so part of this change was never reviewed)` : ""}` : "**Review verdict:** not recorded.",
         plan?.risks?.length ? `**Risks identified in the plan**\n${bullets(plan.risks)}` : "",
         plan?.blockers?.length ? `**Blockers**\n${bullets(plan.blockers)}` : "",
         [...(req?.unknowns || []), ...(plan?.unknowns || [])].length ? `**Open unknowns**\n${bullets([...(req?.unknowns || []), ...(plan?.unknowns || [])])}` : "",
@@ -163,5 +164,11 @@ export function buildPrSummary(opts) {
         tests,
         narrative: opts.narrative ?? loadNarrative(opts.taskDir),
         completedAt: opts.completedAt,
+        staleness: (() => { try {
+            return reviewStalenessFor(opts.workspaceRoot, opts.id);
+        }
+        catch {
+            return null;
+        } })(),
     });
 }
