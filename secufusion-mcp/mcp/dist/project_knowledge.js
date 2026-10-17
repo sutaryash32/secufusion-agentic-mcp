@@ -17,7 +17,7 @@ import { globToRe } from "./diff_quality.js";
  * authoritative; `proposed` entries are visible but labelled unreviewed.
  */
 export const KNOWLEDGE_DIR = ".mcp";
-export const CATEGORIES = ["architecture", "adr", "patterns", "known-exceptions", "lessons-learned", "operational"];
+export const CATEGORIES = ["architecture", "adr", "patterns", "known-exceptions", "lessons-learned", "operational", "decisions", "invariants"];
 export const STATUSES = ["proposed", "accepted", "superseded", "deprecated"];
 export const CATEGORY_PURPOSE = {
     architecture: "System design, service relationships, domain terminology, entity ownership, data flow",
@@ -26,7 +26,11 @@ export const CATEGORY_PURPOSE = {
     "known-exceptions": "Intentional inconsistencies, legacy constraints, backward-compatibility decisions, accepted technical debt",
     "lessons-learned": "Incidents, review findings, historical bugs, investigation outcomes, common false positives",
     operational: "Deployment constraints, migration knowledge, environment-specific behaviour, risk areas",
+    decisions: "Product and architecture decisions a person made (UD-n): what is allowed or prohibited, and the guardrail that protects it",
+    invariants: "Rules that must always hold (one IT Admin per tenant): domain, source, write paths, how each is enforced",
 };
+/** Optional structured fields for `decisions` and `invariants` entries, stored in the entry's metadata. */
+export const EXTRA_KEYS = ["ref", "domain", "decided_by", "guardrail", "fields", "enforcement", "write_paths"];
 // ── frontmatter (a small, strict subset: scalars and string lists) ──────────
 const FM = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 function parseValue(raw) {
@@ -91,6 +95,7 @@ function metaLines(e) {
         `source: ${j(e.source)}`,
         `date: ${e.date}`,
         `supersedes: ${j(e.supersedes)}`,
+        ...Object.entries(e.extra ?? {}).filter(([k]) => EXTRA_KEYS.includes(k)).map(([k, v]) => `${k}: ${j(v)}`),
     ];
 }
 export function serializeEntry(e) {
@@ -193,6 +198,7 @@ export function loadKnowledge(workspaceRoot) {
                 id, title, category: cat, status: (STATUSES.includes(status) ? status : "proposed"),
                 tags: asList(meta.tags), applies_to: asList(meta.applies_to), source, date: String(meta.date ?? ""),
                 supersedes: asList(meta.supersedes), file: rel, body,
+                extra: Object.fromEntries(EXTRA_KEYS.filter((k) => meta[k] !== undefined && meta[k] !== "").map((k) => [k, meta[k]])),
             });
         }
     }
@@ -431,6 +437,34 @@ Tests, reviews, validation and acceptance criteria.
 
 **Common misreading / false positive.** The wrong conclusion people draw from the symptoms.`,
     },
+    decisions: {
+        status: "proposed", tags: '["decision"]',
+        guide: `# <The decision in one line, e.g. Deleting the current IT Admin is prohibited>
+
+**Decision.** What was decided, and what is therefore prohibited or required.
+
+**Decided by.** The person and where they said it (their own words). A decision nobody made is not a decision.
+
+**Guardrail.** The code, test or check that protects it. The metadata field guardrail lists terms that identify code touching it.
+
+**Why.** The reasoning and the alternative rejected.
+
+**Revisit when.** The condition under which a person should reconsider.`,
+    },
+    invariants: {
+        status: "proposed", tags: '["invariant"]',
+        guide: `# <The rule, e.g. Exactly one IT Admin (defaultUser) per tenant>
+
+**Rule.** What must always be true.
+
+**Source.** Where the rule comes from: a decision (UD-n), an ADR, a requirement, a constraint.
+
+**Fields.** The field(s) that carry it (metadata fields), so the server can scan write paths and enforcement.
+
+**Enforcement.** How it is meant to be enforced: TEST, LOCK, DB or CODE (metadata enforcement), and what is known today.
+
+**Write paths.** Where the state can change (metadata write_paths), including provisioning and migrations.`,
+    },
     operational: {
         status: "proposed", tags: '["deployment"]',
         guide: `# <Deployment, migration, environment or runtime fact>
@@ -554,6 +588,7 @@ export function createEntry(workspaceRoot, n) {
         id, title: n.title.trim(), category: n.category, status,
         tags: n.tags ?? [], applies_to: n.applies_to ?? [], source: n.source.trim(),
         date: new Date().toISOString().slice(0, 10), supersedes: n.supersedes ?? [], body,
+        extra: n.extra && Object.keys(n.extra).length ? n.extra : undefined,
     };
     const rel = `${KNOWLEDGE_DIR}/${n.category}/${id}.md`;
     const abs = path.join(workspaceRoot, rel);
@@ -632,6 +667,8 @@ found, and WHICH assumptions are dangerous.
 | \`known-exceptions/\` | Intentional inconsistencies, legacy constraints, accepted technical debt |
 | \`lessons-learned/\` | Incidents, review findings, historical bugs, common false positives |
 | \`operational/\` | Deployment constraints, migration knowledge, environment behaviour, risk areas |
+| \`decisions/\` | Decisions a person made (UD-n): allowed, prohibited, and the guardrail that protects them |
+| \`invariants/\` | Rules that must always hold, with domain, source, write paths and enforcement |
 | \`release-history/\` | Change-driven release notes and the snapshots they compare against |
 
 \`agents.md\` (if present) stays lightweight: workflow rules and engineering philosophy only.

@@ -93,6 +93,17 @@ r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Le
 check("entity impact: the whole workspace is inventoried per service with file:line evidence, the trigger fires, and nothing changes", !r.err && r.text.includes("ENTITY IMPACT INVENTORY") && r.text.includes("Pessimistic-review trigger: FIRED") && /### [\w.-]+  \(\d+ files scanned; 1 non-test files reference the entity/.test(r.text) && /References: Event=\d+/.test(r.text) && /a hit is not a defect/i.test(r.text) && g(dir, "rev-parse", "HEAD") === head && g(dir, "status", "--porcelain") === "", r.text.slice(0, 700));
 r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Change the colour of the save button", format: "json" });
 check("entity impact: a cosmetic story text contributes no trigger signal (json)", !JSON.parse(r.text).trigger.sources.includes("story text"), r.text.slice(0, 400));
+// review maturity: confidence, decision registry, invariant catalog
+check("the three maturity tools are registered", ["score_review_confidence", "check_decision_alignment", "get_relevant_invariants"].every((n) => tools.has(n)));
+r = await call("score_review_confidence", { work_item_id: "STORY-X", findings_count: 0, invariants_inferred: 2, cross_service_scan: "not_run", pessimistic_trigger_fired: true });
+check("confidence: an unexamined pessimistic review is LOW, says so, and is saved next to the gate ledger", !r.err && /CONFIDENCE SCORE: LOW/.test(r.text) && /CONFIDENCE EXPLANATION:/.test(r.text) && /not evidence of correctness/.test(r.text) && fs.existsSync(path.join(dir, ".secufusion", "gates", "STORY-X.confidence.json")), r.text.slice(0, 400));
+put(dir, ".secufusion/tasks/STORY-X/decisions.json", JSON.stringify([{ id: 1, decision: "UD-1: the eventCount accessor must not change. User decision.", rationale: "User statement: keep count()", logged_at: "x" }]));
+r = await call("check_decision_alignment", { terms: ["eventCount"], base: "main" });
+check("decision registry: a recorded decision the diff touches is surfaced with signals and the four verdicts, read-only", !r.err && /DECISION ALIGNMENT:/.test(r.text) && /UD-1/.test(r.text) && /ALIGNS \/ VIOLATES \/ PARTIALLY ALIGNS \/ UNVERIFIED/.test(r.text) && g(dir, "rev-parse", "HEAD") === head, r.text.slice(0, 500));
+r = await call("record_project_knowledge", { category: "invariants", title: "Event count stays one", body: "**Rule.** count() returns the single event count.", source: "UD-1", tags: ["event"], applies_to: ["count", "event"], meta: { domain: "Event", fields: ["count"], enforcement: ["CODE"] } });
+check("an invariant is recorded through the knowledge tool, as proposed, with structured fields", !r.err && /PROPOSED invariants knowledge/.test(r.text), r.text);
+r = await call("get_relevant_invariants", { terms: ["event", "count"], fields: ["count"], base: "main" });
+check("invariant catalog: the recorded invariant is retrieved with source, enforcement and a classification (never CONFIRMED on code-only)", !r.err && /INVARIANT CATALOG: 1 invariant/.test(r.text) && /CLASSIFICATION: PROPOSED/.test(r.text) && /SOURCE:/.test(r.text) && /ENFORCEMENT TYPE:/.test(r.text), r.text.slice(0, 600));
 await c.close();
 fs.rmSync(dir, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);

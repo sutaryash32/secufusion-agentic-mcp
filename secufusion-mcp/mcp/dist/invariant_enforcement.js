@@ -168,7 +168,11 @@ export function mapInvariantEnforcement(workspaceRoot, opts) {
                 // database constraints
                 const win = lines.slice(Math.max(0, i - 2), i + 3).join(" ");
                 if (mention.test(l) && (DB_FILE.test(rel) || /@(Column|Table|Check|UniqueConstraint|Index)\b/.test(win))) {
-                    const kind = DB_KIND.find(([, re]) => re.test(win))?.[0];
+                    // a constraint counts only when the line that carries it names the field (or opens a column list that continues onto this line):
+                    // a CHECK on the NEXT column of a CREATE TABLE is not a constraint on this one
+                    const prev = i > 0 && /\b(UNIQUE|CHECK|EXCLUDE|INDEX)\b[^;]*\(\s*$/i.test(lines[i - 1]) ? lines[i - 1] : "";
+                    const own = [prev, ...lines.slice(Math.max(0, i - 2), i + 3).filter((x) => mention.test(x))].join(" ");
+                    const kind = DB_KIND.find(([, re]) => re.test(own))?.[0];
                     if (kind)
                         fe.db.push({ file: rel, line: i + 1, text: l.trim().slice(0, 160), kind: kind + (/\bWHERE\b/i.test(win) ? " (partial)" : "") });
                     else if (WEAK_DB.test(win))

@@ -225,7 +225,7 @@ const dim = (cov, d) => cov.find((c) => c.dimension === d);
 {
     const root = tmp();
     const created = scaffoldKnowledge(root);
-    check("scaffold creates one template per category under .mcp/templates/", CATEGORIES.every((c) => fs.existsSync(path.join(root, ".mcp", "templates", `${c}.md`))) && created.filter((c) => c.includes("templates/")).length === 6, created.join());
+    check("scaffold creates one template per category under .mcp/templates/", CATEGORIES.every((c) => fs.existsSync(path.join(root, ".mcp", "templates", `${c}.md`))) && created.filter((c) => c.includes("templates/")).length === CATEGORIES.length, created.join());
     check("each template is a valid entry skeleton that says what a good entry answers", CATEGORIES.every((c) => {
         const p = parseEntryText(fs.readFileSync(path.join(root, ".mcp", "templates", `${c}.md`), "utf8"));
         return !!p && p.meta.category === c && p.meta.status === "proposed" && p.body.length > 150;

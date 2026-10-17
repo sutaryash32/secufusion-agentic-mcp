@@ -156,5 +156,12 @@ const before = JSON.stringify(fs.readdirSync(ws));
 mapInvariantEnforcement(ws, { fields: ["nickname"] });
 check("the map is read-only", JSON.stringify(fs.readdirSync(ws)) === before);
 check("no fields: nothing is claimed", mapInvariantEnforcement(ws, { fields: [] }).fields.length === 0 && /No fields were given/.test(renderEnforcement(mapInvariantEnforcement(ws, { fields: [] }))));
+// a CHECK on the NEXT column of a CREATE TABLE must not be credited to this column (found on a real schema: created_by rated DB_ENFORCED)
+write(ws, "svc2/db/V9__devices.sql", "CREATE TABLE device (\n    status varchar(20) NOT NULL,\n    stamp_owner uuid,\n    stamp_state varchar(10),\n    CONSTRAINT chk_state CHECK (stamp_state IN ('A','B'))\n);\nCREATE TABLE tenant_x (\n    email text,\n    UNIQUE (email)\n);\n");
+const nb = mapInvariantEnforcement(ws, { fields: ["stampOwner", "stampState", "email"] });
+const nbf = (f) => nb.fields.find((x) => x.field === f);
+check("a CHECK on the neighbouring column is not credited to this column", nbf("stampOwner").db.length === 0, JSON.stringify(nbf("stampOwner").db));
+check("a CHECK that names the column still counts", nbf("stampState").db.some((d) => d.kind.startsWith("CHECK")), JSON.stringify(nbf("stampState").db));
+check("UNIQUE (column) still counts", nbf("email").db.some((d) => d.kind.startsWith("UNIQUE")), JSON.stringify(nbf("email").db));
 fs.rmSync(ws, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);

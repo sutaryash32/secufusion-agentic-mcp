@@ -163,13 +163,14 @@ export function registerKnowledgeTools(server) {
         status: z.enum(["proposed", "accepted"]).optional(),
         user_statement: z.string().optional().describe("Required with status=accepted: the user's own words confirming this is true."),
         id: z.string().optional(),
+        meta: z.record(z.union([z.string(), z.array(z.string())])).optional().describe("For category decisions or invariants only: ref (UD-1), domain (Tenant), decided_by, guardrail (terms that identify code touching a decision), fields (field names behind an invariant), enforcement (TEST/LOCK/DB/CODE), write_paths."),
     }, async (a) => {
         try {
             if (a.status === "accepted" && !a.user_statement?.trim()) {
                 return text("⛔ status=accepted needs user_statement: quote the user confirming this knowledge. Otherwise record it as proposed.", true);
             }
             const root = knowledgeRoot(a.workspace_root);
-            const r = createEntry(root, { category: a.category, title: a.title, body: a.body, source: a.source, tags: a.tags, applies_to: a.applies_to, supersedes: a.supersedes, status: a.status, id: a.id });
+            const r = createEntry(root, { category: a.category, title: a.title, body: a.body, source: a.source, tags: a.tags, applies_to: a.applies_to, supersedes: a.supersedes, status: a.status, id: a.id, extra: a.meta });
             return text(`✅ Recorded ${r.entry.status.toUpperCase()} ${r.entry.category} knowledge \`${r.id}\` → ${r.file}\n` +
                 (r.entry.status === "proposed" ? `It is labelled unreviewed until a person accepts it (set_knowledge_status or edit \`status:\`).\n` : "") +
                 `Commit it with the code so it stays with the project.`);
