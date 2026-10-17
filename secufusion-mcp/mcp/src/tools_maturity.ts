@@ -8,6 +8,8 @@ import {
   relevantInvariants, candidateInvariants, renderInvariants, scoreConfidence,
 } from "./review_maturity.js";
 import { reviewStalenessFor } from "./review_staleness.js";
+import { buildFeatureModel, renderFeatureModel } from "./feature_model.js";
+import { seal, reveal, renderReveal } from "./calibration.js";
 
 const root = (w: string) => gitTop(w) ?? path.resolve(w);
 const ok = (t: string) => ({ content: [{ type: "text", text: t }] });
@@ -105,6 +107,52 @@ export function registerMaturityTools(server: any): void {
           fs.writeFileSync(p, JSON.stringify({ at: new Date().toISOString(), level: c.level, score: c.score, caps: c.caps, input: { ...input, stale } }, null, 2));
         }
         return ok(a.format === "json" ? JSON.stringify(c, null, 2) : c.explanation);
+      } catch (e) { return bad(e); }
+    }
+  );
+
+  server.tool(
+    "build_feature_model",
+    "Builds the review's model of a feature BEFORE any diff is judged. Discovers the work item family (the story, its child tasks, the item it was split from), the primary business entities (given, or proposed from tags), the lifecycle transitions that EXIST in the workspace per entity with file:line (create, update, transfer, enable/disable, delete, plus status changes and membership changes performed inside generic update methods) and whether each performing method ever mentions the ownership/status flag, the capability dependencies (code that decides authority from the entity or flag), the cross-service graph with rules copied across services, and a REVIEW MATRIX that lists every transition against every contract clause (ownership, authority, lifecycle, consistency/source of truth, audit, dependencies, tenancy). Transitions with no path are listed too: an absent path is a lifecycle question. " +
+    "Pattern-based and READ-ONLY. It builds the questions; you answer them, and read a lead before calling it a finding.",
+    {
+      workspace_root: z.string().describe("The workspace root (for a multi-repo workspace, the folder that holds the services and .secufusion/)"),
+      work_item_id: z.string().describe("The story or task id, e.g. STORY-1656 or TASK-1657"),
+      entities: z.array(z.string()).max(8).optional().describe("The primary business entities as they appear in file names, e.g. ['User', 'Tenant', 'Group']. Omit to have them proposed from tags."),
+      flags: z.array(z.string()).max(8).optional().describe("Fields that identify ownership or status, e.g. ['defaultUser', 'isAdmin']"),
+      story_text: z.string().optional(),
+      format: z.enum(["blocks", "json"]).optional(),
+    },
+    async (a) => {
+      try {
+        const m = buildFeatureModel(path.resolve(a.workspace_root), { work_item_id: a.work_item_id, entities: a.entities, flags: a.flags, story_text: a.story_text });
+        if (a.format === "json") { const { impact, ...rest } = m; return ok(JSON.stringify(rest, null, 2)); }
+        return ok(renderFeatureModel(m));
+      } catch (e) { return bad(e); }
+    }
+  );
+
+  server.tool(
+    "calibrate_review",
+    "Calibration: would this review have written the same comments as the client reviewer? A blind protocol enforced by files. action=seal records your own derived concerns (BLOCKING / NON-BLOCKING / QUESTION / REQUIRES_DECISION, each with the model line it was derived from) and hashes them; it is refused once client comments exist. " +
+    "action=reveal then adds the client's comments (refused without an intact seal) and reports PARITY: derived / partial / missed, blocking recall, severity differences, and the concerns you raised that the client did not. Matching is lexical and only proposes pairings: confirm or override with `overrides`. For every MISSED comment, state which contract, transition or capability would have produced it.",
+    {
+      workspace_root: z.string(),
+      work_item_id: z.string(),
+      action: z.enum(["seal", "reveal"]),
+      findings: z.array(z.object({ title: z.string(), category: z.enum(["BLOCKING", "NON-BLOCKING", "QUESTION", "REQUIRES_DECISION"]), entity: z.string().optional(), text: z.string(), derived_from: z.string().optional() })).max(60).optional().describe("seal: the concerns you derived before seeing any client comment"),
+      client_comments: z.array(z.object({ text: z.string(), category: z.string().optional() })).max(80).optional().describe("reveal: the client reviewer's comments, with blocking / non-blocking where known"),
+      overrides: z.array(z.object({ client: z.number().int().min(0), derived: z.number().int().min(0).nullable(), verdict: z.enum(["DERIVED", "PARTIAL", "MISSED"]) })).optional().describe("reveal: your confirmed pairings (0-based indexes) replacing the lexical proposals"),
+    },
+    async (a) => {
+      try {
+        const r = path.resolve(a.workspace_root);
+        if (a.action === "seal") {
+          const s = seal(r, a.work_item_id, a.findings ?? []);
+          return ok(`SEALED ${s.count} derived concern(s) for ${a.work_item_id} at ${s.sealed_at} (sha256 ${s.sha256.slice(0, 16)}...). They cannot be edited. Only now may the client comments be looked at: call action=reveal.`);
+        }
+        const res = reveal(r, a.work_item_id, a.client_comments ?? [], a.overrides ?? []);
+        return ok(renderReveal(res, a.client_comments ?? []));
       } catch (e) { return bad(e); }
     }
   );
