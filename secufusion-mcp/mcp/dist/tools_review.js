@@ -5,6 +5,7 @@ import { fixLineEndings } from "./line_ending_fix.js";
 import { analyzeMergeRegressions, renderMergeReport } from "./merge_regression.js";
 import { analyzeBehaviorChanges, renderBehaviorReport } from "./behavior_change.js";
 import { analyzeScopeDrift, renderScopeDrift } from "./scope_drift.js";
+import { inventoryEntityImpact, renderEntityImpact } from "./entity_impact.js";
 import { getEcosystemRoot, resolveTaskFolder, resolve, TASKS_DIR } from "./shared.js";
 import { gatherIntentSources } from "./intent_evidence.js";
 import { loadRequirement } from "./requirement_manager.js";
@@ -34,6 +35,27 @@ export function registerReviewTools(server) {
             });
             const anyPreview = results.some((r) => r.ok && !r.applied && r.lines_changed > 0);
             return { content: [{ type: "text", text: lines.join("\n") + (anyPreview ? "\n\nPreview only. Show this to the user; to write, call again with apply=true and their user_statement." : "") + (apply && results.some((r) => r.applied) ? "\n\nRe-run check_diff_quality to confirm the findings are gone." : "") }] };
+        }
+        catch (e) {
+            return { isError: true, content: [{ type: "text", text: `Error: ${e.message}` }] };
+        }
+    });
+    server.tool("check_entity_impact", "Deterministic helper for /sfn-review's PRODUCT-CENTRIC PESSIMISTIC REVIEW (ownership, role, admin, tenancy, permission and lifecycle stories). Searches the WHOLE workspace, every service and not just the changed files, for everything that depends on the entity being changed: " +
+        "ownership checks, admin checks (isAdmin), role/authority/membership checks, status checks, tenant.email and defaultUser usage, audit fields (createdAt/createdBy/updatedAt/updatedBy) on the entity definitions, write paths (endpoints and mutating methods), caches, produced/consumed events, scheduled jobs and imports/exports, grouped per service, " +
+        "plus every reference to the entity terms and the services that never mention them. It also reports whether the pessimistic-review TRIGGER fired from the story text and the diff. " +
+        "Pattern-based and READ-ONLY: a hit is not a defect and no hit is not proof of absence; you judge what each dependency assumes about the entity and whether the change preserves it.", {
+        workspace_root: z.string().describe("The workspace root (for a multi-repo workspace, the folder that holds the services)"),
+        entity_terms: z.array(z.string()).min(1).max(8).describe("Names of the entity or entities being changed, as they appear in code, e.g. ['Group', 'Tenant', 'owner']"),
+        story_text: z.string().optional().describe("The story's title, description and acceptance criteria; used for the trigger check"),
+        base: z.string().optional().describe("Git ref for the diff used in the trigger check. Default: merge-base with the default branch."),
+        max_hits: z.number().int().min(1).max(25).optional().describe("Sample hits shown per dependency per service (default 6)."),
+        format: z.enum(["blocks", "json"]).optional().describe("blocks (default) or json"),
+    }, async ({ workspace_root, entity_terms, story_text, base, max_hits, format }) => {
+        try {
+            const report = inventoryEntityImpact(workspace_root, { terms: entity_terms, story_text, base, max_hits });
+            if (format === "json")
+                return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
+            return { content: [{ type: "text", text: renderEntityImpact(report) }] };
         }
         catch (e) {
             return { isError: true, content: [{ type: "text", text: `Error: ${e.message}` }] };

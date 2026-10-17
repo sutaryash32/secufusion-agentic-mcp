@@ -84,6 +84,11 @@ check("scope drift: the controller is a core story file, not drift", /### CORE S
 r = await call("check_scope_drift", { base: "main" });
 check("scope drift without a story says it cannot classify (does not call everything drift)", r.text.includes("could not be classified against a story") && !/^SCOPE DRIFT$/m.test(r.text), r.text.slice(0, 400));
 
+check("check_entity_impact is registered", tools.has("check_entity_impact"));
+r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Let an admin transfer ownership of an event to another member" });
+check("entity impact: the whole workspace is inventoried per service with file:line evidence, the trigger fires, and nothing changes", !r.err && r.text.includes("ENTITY IMPACT INVENTORY") && r.text.includes("Pessimistic-review trigger: FIRED") && /### [\w.-]+  \(\d+ files scanned; 1 non-test files reference the entity/.test(r.text) && /References: Event=\d+/.test(r.text) && /a hit is not a defect/i.test(r.text) && g(dir, "rev-parse", "HEAD") === head && g(dir, "status", "--porcelain") === "", r.text.slice(0, 700));
+r = await call("check_entity_impact", { entity_terms: ["Event"], story_text: "Change the colour of the save button", format: "json" });
+check("entity impact: a cosmetic story text contributes no trigger signal (json)", !JSON.parse(r.text).trigger.sources.includes("story text"), r.text.slice(0, 400));
 await c.close();
 fs.rmSync(dir, { recursive: true, force: true });
 process.exit(failures ? 1 : 0);

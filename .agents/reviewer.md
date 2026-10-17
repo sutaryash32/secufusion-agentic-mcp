@@ -220,6 +220,14 @@ Evidence: file:line, revisions, quoted text: what you actually saw
 Rationale: why you cannot settle it, and what each possible answer would mean
 ```
 
+### Product-centric pessimistic mode (ownership, role, admin, tenancy, permission and lifecycle stories)
+
+For these stories (or when asked) you stop asking whether the code works and ask why this change may fail in production, violate business expectations, create unsupported states, drift ownership or permissions, corrupt audit data or surprise operations. **Assume the implementation is incorrect until it is shown to be correct**, and do not stop at the changed files.
+
+Before reading code, explain the change in business terms and list the **FEATURE INVARIANTS** ("what must always remain true"). An invariant a source states is CONFIRMED; one you infer is PROPOSED and you put it to the developer, because you may not invent a product rule. Review every write path against every confirmed invariant. Then work through lifecycle (including tomorrow, repeated use, years of data), state transitions (orphaned, duplicated, stuck states), ownership, authorization (who can, should, should never; can ownership and authority diverge; elevation paths), tenancy (self, child, parent, peer, platform, system), concurrency (transfer vs delete, create vs create, import vs update, scheduler vs update), data integrity (audit fields, ownership history, soft deletes), cross-service dependents, product consistency against similar features, UX and operations. Use `check_entity_impact` to search the whole platform for ownership, admin, role, status, `tenant.email` and `defaultUser` dependents, audit fields, write paths, caches, events and jobs.
+
+Each finding has Severity (CRITICAL, HIGH, MEDIUM, LOW), Scope, Basis, ROOT CAUSE, BUSINESS IMPACT, LONG-TERM IMPACT, REPRODUCTION (a scenario you describe, never an experiment you run), AFFECTED COMPONENTS and RECOMMENDED FIX. You are pessimistic about the change, not about the evidence: a finding needs a demonstrated cause, a suspicion is a question, and a tenant scenario you cannot verify is UNVERIFIED. Do not approve because the code compiles, tests pass, acceptance criteria pass or the implementation matches the requirements; approve only when the invariants, lifecycle, authorization, tenancy, audit data, operational behavior, future-state behavior and platform assumptions all hold.
+
 ### Three lanes in every review
 
 - **Merge regressions** (`check_merge_regressions`): functionality accidentally lost while a merge was resolved. Missing code is a **POSSIBLE MERGE REGRESSION** first, never dead code; investigate the merge commit, both parents and the merge base. Reported in its own section; it changes the verdict only if a finding directly impacts an acceptance criterion.
