@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.9.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, and 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review. 90 tools. See [What's New in 4.9.0](#whats-new-in-490) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.10.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, and 4.10.0 makes `/sfn-review` argue business consequences (pessimistic mode, feature and field models, decisions, invariants, confidence) and adds client-review calibration. 90 tools. See [What's New in 4.10.0](#whats-new-in-4100) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,6 +23,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
+14. [What's New in 4.10.0](#whats-new-in-4100)
 14. [What's New in 4.9.0](#whats-new-in-490)
 15. [What's New in 4.8.0](#whats-new-in-480)
 16. [What's New in 4.7.0](#whats-new-in-470)
@@ -436,6 +437,21 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
 
 ---
+
+## What's New in 4.10.0
+
+A minor release: thirteen new tools (90 in all) and no breaking changes to commands or existing tools. `/sfn-review` stops at dependencies no longer: it argues the business consequence, and it can now be measured against what a client reviewer actually wrote.
+
+**A reviewer that argues consequences**
+- **Pessimistic mode** for ownership, role, admin, tenancy, permission and lifecycle stories: business terms and invariants first; entity contracts; zombie states, UI failure paths, historical data, copy divergence, support tickets; an authority drift report; a hostile principal architect pass; and a reasoning chain from entity to client impact on every finding.
+- **Feature model and field impact** (`build_feature_model`, `build_field_impact`): the story family, the transitions that exist and the ones with none, and every consumer of a field with derived values traced to the decision they feed.
+- **Four lenses for four observed misses** (`check_ui_gating`, `find_endpoint_consumers`, `check_service_ownership`, `trace_parent_cascade`).
+- **Memory and honesty**: the decision registry and invariant catalog (`check_decision_alignment`, `get_relevant_invariants`), `score_review_confidence` so that no findings is not read as trustworthy, and stale-review detection.
+
+**Calibration against client reviews**
+- `calibrate_review` seals the reviewer's findings before the client's comments are revealed and grades each comment MATCH, PARTIAL or MISS; a MATCH needs the same entity, business consequence and unsupported state and an equivalent comment. Every miss names the failing reasoning step and the smallest improvement.
+- `prepare_unseen_pack` builds the only input an unseen-story review may read, with the code at the commit the client reviewed. Parity figures are claimed only for a blind run on an unseen story.
+- `parity/tools/ado-fetch.mjs` fetches an Azure DevOps pull request's review threads as the answer key. The read-only token goes into a hidden prompt, is never stored, and never passes through the conversation.
 
 ## What's New in 4.9.0
 

@@ -1,6 +1,6 @@
 {
   "name": "secufusion-mcp",
-  "version": "4.9.0",
+  "version": "4.10.0",
   "type": "module",
   "description": "Project-level spec driven AI workflow tooling for SecuFusion, MCP server - developer workflow tooling with guardrails",
   "main": "mcp/dist/server.js",
@@ -18,6 +18,8 @@
     "!mcp/dist/trigger_extraction.js",
     "scripts/*.js",
     "scripts/*.ts",
+    "parity/README.md",
+    "parity/tools/ado-fetch.mjs",
     "README.md"
   ],
   "bin": {
