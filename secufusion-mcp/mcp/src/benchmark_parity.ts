@@ -55,8 +55,8 @@ const fix = { diverged_step: "Review formulation", smallest_improvement: "x" } a
     check("blocking recall requires the matched finding to be BLOCKING too: matched at the wrong severity does not count", m.blocking_recall === 50, `${m.blocking_recall}`);
     check("blocking precision: derived BLOCKING findings that matched a client BLOCKING comment", m.blocking_precision === 50, `${m.blocking_precision}`);
     check("precision: matched findings over derived findings", m.precision === 66.7, `${m.precision}`);
-    check("business consequence recall comes from the consequence criterion", m.consequence_recall === 50, `${m.consequence_recall}`);
-    check("architecture recall is over the architecture comments only", m.architecture_recall === 33.3, `${m.architecture_recall}`);
+    check("business consequence recall comes from the consequence criterion", m.consequence_recall === 75, `${m.consequence_recall}`);
+    check("architecture recall is over the architecture comments only", m.architecture_recall === 66.7, `${m.architecture_recall}`);
     const v = verdict(b, run, m);
     check("a valid run below target: not achieved, percentages shown", v.valid && !v.achieved && v.label === "PARITY NOT ACHIEVED" && /Recall \(MATCH\)/.test(renderReport(b, run)));
     const perfect = mkRun([J("A", "MATCH", 0, "comment", ALL), J("B", "MATCH", 1, "comment", ALL), J("D", "MATCH", 2, "comment", ALL), J("E", "MATCH", 2, "comment", ALL)]);
