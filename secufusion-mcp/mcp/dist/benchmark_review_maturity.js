@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { createEntry, loadKnowledge, scaffoldKnowledge, CATEGORIES } from "./project_knowledge.js";
 import { loadDecisions, collectChange, checkDecisionAlignment, renderDecisionAlignment, relevantInvariants, candidateInvariants, renderInvariants, classify, scoreConfidence, } from "./review_maturity.js";
+import { mapFieldImpact, renderFieldImpact } from "./field_impact.js";
 /** Review maturity: decision registry, invariant catalog, confidence scoring. */
 let failures = 0;
 function check(name, cond, detail = "") {
@@ -137,5 +138,35 @@ const mk = (title, fields, enforcement, status, domain = "Tenant") => createEntr
     const na = scoreConfidence({ invariants_confirmed: 2, cross_service_scan: "n/a", test_evidence: "ran_and_passed", db_constraints: "n/a", concurrency: "n/a", lifecycle: "n/a", authority: "n/a" });
     check("dimensions that do not apply are excluded, not counted as gaps", na.level === "HIGH" && na.dimensions.filter((d) => d.score === null).length === 5, na.explanation);
     check("the explanation names each dimension and what would raise confidence", /Cross-service scan/.test(dec.explanation) && /CONFIDENCE SCORE: MEDIUM/.test(dec.explanation) && /CONFIDENCE EXPLANATION:/.test(dec.explanation) && /To raise confidence:/.test(blind.explanation));
+}
+// ── field impact model ───────────────────────────────────────────────────────────────────────
+{
+    const fw = tmp();
+    put(fw, "svc-a/src/main/java/com/x/ParentChainAuthorizer.java", "class ParentChainAuthorizer {\n  boolean isPlatformAdmin(String id) {\n    return repo.findByTenantAndDefaultUser(id, true).filter(u -> u.isActive()).isPresent();\n  }\n}\n");
+    put(fw, "svc-a/src/main/java/com/x/UserService.java", "class UserService {\n  void promote(User u) {\n    u.setDefaultUser(true);\n  }\n  UsersDto map(User u, UsersDto dto) {\n    dto.setDefaultUser(u.isDefaultUser());\n    return dto;\n  }\n  // defaultUser is documented here\n}\n");
+    put(fw, "svc-a/src/main/java/com/x/UserRepository.java", "interface UserRepository {\n  Optional<User> findByTenantAndDefaultUser(String t, boolean defaultUser);\n}\n");
+    put(fw, "web/src/modules/Users/Grid.jsx", "export const Grid = ({ row }) => row.defaultUser && <b>IT ADMIN</b>;\n");
+    put(fw, "svc-a/src/test/java/com/x/UserServiceTest.java", "class UserServiceTest { void t() { u.setDefaultUser(true); } }\n");
+    const r = mapFieldImpact(fw, { fields: ["defaultUser"] });
+    const f = r.fields[0];
+    const caps = (c) => f.consumers.filter((x) => x.capability === c);
+    check("consumers are classified by what they do with the field: authority, persistence, UI", caps("AUTHORITY").length >= 1 && /ParentChainAuthorizer/.test(caps("AUTHORITY")[0].file) && caps("PERSISTENCE").length >= 1 && caps("UI").length === 1, JSON.stringify(f.by_capability));
+    check("a real write is a write; a DTO mapper, a comment and a test are not counted as writers or consumers", f.writers === 1 && !f.consumers.some((c) => /documented here|UserServiceTest/.test(c.text + c.file)) && !f.consumers.some((c) => c.kind === "write" && /dto\.set/.test(c.text)), JSON.stringify(f.consumers.map((c) => c.kind + ":" + c.text)));
+    check("consumers carry service and file:line, and decision lines are marked", f.consumers.every((c) => c.service && c.line > 0) && f.consumers.some((c) => c.decision), "");
+    const txt = renderFieldImpact(r);
+    check("the report asks the consequence question per capability and says a dependency is not a finding", /FIELD IMPACT MODEL/.test(txt) && /ask: who gains or loses the right to act/.test(txt) && /A dependency is not a finding/.test(txt));
+    const none = renderFieldImpact(mapFieldImpact(fw, { fields: ["noSuchField"] }));
+    check("a field nothing consumes says so instead of claiming it is unused", /No consumers found/.test(none) && /do not assume it is unused/.test(none));
+    const filt = mapFieldImpact(fw, { fields: ["defaultUser"], file_filter: ["Grid"] }).fields[0];
+    check("file_filter scopes a generic field to one entity's files", filt.consumers.length === 1 && /Grid/.test(filt.consumers[0].file));
+}
+// ── completeness feeds confidence ────────────────────────────────────────────────────────────
+{
+    const strong = { invariants_confirmed: 4, cross_service_scan: "complete", test_evidence: "ran_and_passed", db_constraints: "verified", concurrency: "covered", lifecycle: "covered", authority: "covered" };
+    check("no UNKNOWN completeness answers keeps a strong review HIGH", scoreConfidence({ ...strong, completeness_unknown: 0 }).level === "HIGH");
+    const one = scoreConfidence({ ...strong, completeness_unknown: 1 });
+    check("one UNKNOWN answer caps a strong review at MEDIUM and says why", one.level === "MEDIUM" && one.caps.some((c) => /1 of the 10 completeness questions/.test(c)), one.explanation);
+    check("four UNKNOWN answers make it LOW", scoreConfidence({ ...strong, completeness_unknown: 4 }).level === "LOW");
+    check("leaving the completeness check out entirely does not change an existing score", scoreConfidence(strong).level === "HIGH");
 }
 process.exit(failures ? 1 : 0);

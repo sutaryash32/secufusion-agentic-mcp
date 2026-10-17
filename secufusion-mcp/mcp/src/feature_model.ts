@@ -165,7 +165,7 @@ export function scanTransitions(root: string, entities: string[], flags: string[
 
 // ── the model ───────────────────────────────────────────────────────────────
 
-export const CONTRACT_CLAUSES = ["ownership", "authority", "lifecycle", "consistency (source of truth)", "audit", "dependencies", "tenancy"] as const;
+export const CONTRACT_CLAUSES = ["ownership", "authority", "lifecycle", "consistency (source of truth)", "audit", "dependencies", "tenancy", "UI", "operations"] as const;
 export const ALL_TRANSITIONS = ["create", "update", "transfer", "enable/disable", "status change", "membership change", "delete", "restore", "import/migrate", "bulk"] as const;
 
 export interface FeatureModel {

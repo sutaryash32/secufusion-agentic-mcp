@@ -357,7 +357,7 @@ export interface ConfidenceInput {
     test_evidence?: "ran_and_passed" | "exists_not_run" | "none" | "n/a";
     db_constraints?: "verified" | "unknown" | "n/a";
     concurrency?: Level; lifecycle?: Level; authority?: Level;
-    unverified?: number; requires_decision?: number; stale?: boolean; pessimistic_trigger_fired?: boolean; findings_count?: number;
+    unverified?: number; requires_decision?: number; completeness_unknown?: number; stale?: boolean; pessimistic_trigger_fired?: boolean; findings_count?: number;
 }
 export interface Dimension { name: string; score: number | null; note: string }
 export interface Confidence { level: "HIGH" | "MEDIUM" | "LOW"; score: number; dimensions: Dimension[]; caps: string[]; raise: string[]; explanation: string }
@@ -388,6 +388,8 @@ export function scoreConfidence(i: ConfidenceInput): Confidence {
     dims.push({ name: "UNVERIFIED items", score: unv === 0 ? 2 : unv <= 2 ? 1 : 0, note: `${unv}` });
     dims.push({ name: "REQUIRES_DECISION items", score: rd === 0 ? 2 : rd <= 1 ? 1 : 0, note: `${rd} open: a person must decide` });
 
+    const cu = i.completeness_unknown;
+    if (cu !== undefined) dims.push({ name: "Completeness check (10 questions)", score: cu === 0 ? 2 : cu <= 2 ? 1 : 0, note: `${cu} of 10 answered UNKNOWN` });
     const scored = dims.filter((d) => d.score !== null);
     const raw = scored.length ? Math.round((scored.reduce((n, d) => n + (d.score as number), 0) / (scored.length * 2)) * 100) : 0;
     let level: "HIGH" | "MEDIUM" | "LOW" = raw >= 80 ? "HIGH" : raw >= 50 ? "MEDIUM" : "LOW";
@@ -402,6 +404,8 @@ export function scoreConfidence(i: ConfidenceInput): Confidence {
     if (rd >= 3 || unv >= 5) cap("LOW", `too much is undecided or unverified (${rd} decision(s), ${unv} unverified)`);
     else if (rd >= 1 || unv >= 3) cap("MEDIUM", `${rd} decision(s) await a person and ${unv} item(s) are UNVERIFIED`);
     if (totalInv > 0 && inf + nd > conf) cap("MEDIUM", "more invariants are inferred or not demonstrated than confirmed");
+    if (cu !== undefined && cu >= 4) cap("LOW", `${cu} of the 10 completeness questions are UNKNOWN`);
+    else if (cu !== undefined && cu >= 1) cap("MEDIUM", `${cu} of the 10 completeness questions are UNKNOWN`);
     if (cs === "partial" || cs === "not_run") cap("MEDIUM", "the cross-service scan is not complete");
     if (i.pessimistic_trigger_fired && (i.concurrency ?? "none") === "none") cap("MEDIUM", "pessimistic story with no concurrency analysis");
 

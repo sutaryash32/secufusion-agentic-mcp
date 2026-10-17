@@ -6,6 +6,7 @@ import { gitTop } from "./diff_quality.js";
 import { loadDecisions, collectChange, checkDecisionAlignment, renderDecisionAlignment, relevantInvariants, candidateInvariants, renderInvariants, scoreConfidence, } from "./review_maturity.js";
 import { reviewStalenessFor } from "./review_staleness.js";
 import { buildFeatureModel, renderFeatureModel } from "./feature_model.js";
+import { mapFieldImpact, renderFieldImpact } from "./field_impact.js";
 import { seal, reveal, renderReveal } from "./calibration.js";
 const root = (w) => gitTop(w) ?? path.resolve(w);
 const ok = (t) => ({ content: [{ type: "text", text: t }] });
@@ -80,6 +81,7 @@ export function registerMaturityTools(server) {
         lifecycle: z.enum(["covered", "partial", "none", "n/a"]).optional(),
         authority: z.enum(["covered", "partial", "none", "n/a"]).optional(),
         unverified: z.number().int().min(0).optional(), requires_decision: z.number().int().min(0).optional(),
+        completeness_unknown: z.number().int().min(0).max(10).optional().describe("How many of the 10 review-completeness questions you could only answer UNKNOWN (ownership, authority, lifecycle, data consistency, audit, UI vs backend, service divergence, platform assumptions, supportability, client concerns). Any UNKNOWN reduces confidence."),
         pessimistic_trigger_fired: z.boolean().optional(), findings_count: z.number().int().min(0).optional(),
         format: z.enum(["blocks", "json"]).optional(),
     }, async (a) => {
@@ -137,6 +139,22 @@ export function registerMaturityTools(server) {
             }
             const res = reveal(r, a.work_item_id, a.client_comments ?? [], a.overrides ?? []);
             return ok(renderReveal(res, a.client_comments ?? []));
+        }
+        catch (e) {
+            return bad(e);
+        }
+    });
+    server.tool("build_field_impact", "Field Impact Model for /sfn-review. For each field the change affects (defaultUser, tenant.email, status, createdBy, groups, roles ...): every consumer across the workspace (service, file:line, read or write), classified by what it does with the value: AUTHORITY (inside an authorizer or an authorization decision), API, UI, PERSISTENCE, EVENT, AUDIT, REPORT or plain LOGIC, with the question that turns each class of dependency into a business consequence. " +
+        "A dependency is not a finding: you must argue the consequence (who loses access, what the user sees, which rows disagree) from what each consumer does. DTO mappers, comments, logs and tests are not counted. Pattern-based and READ-ONLY.", {
+        workspace_root: z.string().describe("The workspace root (for a multi-repo workspace, the folder that holds the services)"),
+        fields: z.array(z.string()).min(1).max(8).describe("Fields the change affects, camelCase or snake_case, e.g. ['defaultUser', 'status', 'createdBy']"),
+        per_capability: z.number().int().min(1).max(15).optional().describe("Sample consumers shown per capability (default 4)"),
+        file_filter: z.array(z.string()).max(8).optional().describe("Only files whose NAME contains one of these (case-insensitive), e.g. ['User'] to scope a generic field like status to one entity"),
+        format: z.enum(["blocks", "json"]).optional(),
+    }, async (a) => {
+        try {
+            const r = mapFieldImpact(path.resolve(a.workspace_root), { fields: a.fields, file_filter: a.file_filter });
+            return ok(a.format === "json" ? JSON.stringify(r, null, 2) : renderFieldImpact(r, a.per_capability ?? 4));
         }
         catch (e) {
             return bad(e);

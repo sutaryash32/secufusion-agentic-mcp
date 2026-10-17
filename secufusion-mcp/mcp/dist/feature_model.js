@@ -193,7 +193,7 @@ export function scanTransitions(root, entities, flags) {
     return { rows: [...rows.values()], files_scanned: files.length };
 }
 // ── the model ───────────────────────────────────────────────────────────────
-export const CONTRACT_CLAUSES = ["ownership", "authority", "lifecycle", "consistency (source of truth)", "audit", "dependencies", "tenancy"];
+export const CONTRACT_CLAUSES = ["ownership", "authority", "lifecycle", "consistency (source of truth)", "audit", "dependencies", "tenancy", "UI", "operations"];
 export const ALL_TRANSITIONS = ["create", "update", "transfer", "enable/disable", "status change", "membership change", "delete", "restore", "import/migrate", "bulk"];
 const WORKFLOW_TAGS = /^(backend|frontend|bug|feature|task|story|split-from-.*|(story|task|bug|us)-\d+)$/i;
 const pascal = (s) => s.split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join("");

@@ -403,6 +403,9 @@ export function scoreConfidence(i) {
     const unv = i.unverified ?? 0, rd = i.requires_decision ?? 0;
     dims.push({ name: "UNVERIFIED items", score: unv === 0 ? 2 : unv <= 2 ? 1 : 0, note: `${unv}` });
     dims.push({ name: "REQUIRES_DECISION items", score: rd === 0 ? 2 : rd <= 1 ? 1 : 0, note: `${rd} open: a person must decide` });
+    const cu = i.completeness_unknown;
+    if (cu !== undefined)
+        dims.push({ name: "Completeness check (10 questions)", score: cu === 0 ? 2 : cu <= 2 ? 1 : 0, note: `${cu} of 10 answered UNKNOWN` });
     const scored = dims.filter((d) => d.score !== null);
     const raw = scored.length ? Math.round((scored.reduce((n, d) => n + d.score, 0) / (scored.length * 2)) * 100) : 0;
     let level = raw >= 80 ? "HIGH" : raw >= 50 ? "MEDIUM" : "LOW";
@@ -426,6 +429,10 @@ export function scoreConfidence(i) {
         cap("MEDIUM", `${rd} decision(s) await a person and ${unv} item(s) are UNVERIFIED`);
     if (totalInv > 0 && inf + nd > conf)
         cap("MEDIUM", "more invariants are inferred or not demonstrated than confirmed");
+    if (cu !== undefined && cu >= 4)
+        cap("LOW", `${cu} of the 10 completeness questions are UNKNOWN`);
+    else if (cu !== undefined && cu >= 1)
+        cap("MEDIUM", `${cu} of the 10 completeness questions are UNKNOWN`);
     if (cs === "partial" || cs === "not_run")
         cap("MEDIUM", "the cross-service scan is not complete");
     if (i.pessimistic_trigger_fired && (i.concurrency ?? "none") === "none")

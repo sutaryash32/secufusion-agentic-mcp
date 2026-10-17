@@ -224,7 +224,7 @@ The project already decided things, and already knows some of its invariants. Do
 
 ### 0.2f: Feature model first (pessimistic mode, and whenever you are asked to reproduce a client review)
 
-Before you read the diff, call `build_feature_model(workspace_root, work_item_id, entities, flags)`. It discovers the work item family (the story, its child tasks, the item it was split from), lists the lifecycle transitions that EXIST for each entity with `file:line` (including status and membership changes made inside a generic update, and whether the method ever mentions the ownership flag), the capability dependencies, the cross-service graph with copied rules, and a review matrix: **every transition against every contract clause** (ownership, authority, lifecycle, consistency and source of truth, audit, dependencies, tenancy). A transition with no path is a lifecycle question ("what state results?"), not a clean bill. Work through the matrix; a lead (a method that never mentions the flag) is read before it is called a finding. Name the entities yourself: tags are only a proposal.
+**Review is forbidden until the story family is loaded:** the parent bug, the story, the backend and frontend tasks, related tasks, and for each its decisions, requirements, investigation, scenarios, PR narrative and existing findings. Never review a task in isolation. Before you read the diff, call `build_feature_model(workspace_root, work_item_id, entities, flags)`. It discovers the work item family (the story, its child tasks, the item it was split from), lists the lifecycle transitions that EXIST for each entity with `file:line` (including status and membership changes made inside a generic update, and whether the method ever mentions the ownership flag), the capability dependencies, the cross-service graph with copied rules, and a review matrix: **every transition against every contract clause** (ownership, authority, lifecycle, consistency and source of truth, audit, dependencies, tenancy). A transition with no path is a lifecycle question ("what state results?"), not a clean bill. Work through the matrix; a lead (a method that never mentions the flag) is read before it is called a finding. Name the entities yourself: tags are only a proposal.
 
 **Calibration.** When the goal is to see whether this review reproduces a client reviewer's comments, the order is fixed and enforced by the server: derive your concerns from the feature model and the code (BLOCKING / NON-BLOCKING / QUESTION / REQUIRES_DECISION, each with the model line it came from), **seal** them with `calibrate_review action=seal`, and only then **reveal** the client comments with `action=reveal`. Do not read the client's comments, earlier review findings or review-finding records first, and say so if you already had. Report parity as derived / partial / missed. The lexical pairings are proposals: confirm each, and for every missed comment name the contract, transition or capability that should have produced it.
 
@@ -1270,6 +1270,8 @@ Pass **`flags`**: the fields that identify ownership or status (for example `def
 - **Audit**: createdAt, createdBy, updatedAt, updatedBy, ownership history, provenance.
 - **Dependencies**: IAM, Tenants, Events, Policy, Auth, browser extension, jobs, schedulers, reports, dashboards, exports, integrations.
 - **Tenancy**: self, child, parent, peer, platform, system context.
+- **UI**: what the user sees for each state and each failure, which actions are offered to whom, and whether the UI and the backend agree on who may do what.
+- **Operations**: how Support, Audit and Operations would explain the state, recover from a mistake and see who changed what.
 A contract line you could not establish is written `NOT ESTABLISHED`. It is a gap, never an assumption of correctness.
 
 **Also call `get_relevant_invariants` and `check_decision_alignment` (STEP 0.2e)** so the invariant list and the decision list come from the project's memory, then work through every lens. A lens you did not examine is stated as not examined, never as clean.
@@ -1291,7 +1293,19 @@ A contract line you could not establish is written `NOT ESTABLISHED`. It is a ga
 15. **Copy divergence.** The same rule copied across services (the `ALSO IN` lines of `check_entity_impact`): IAM, Tenants, Policy, Events, Auth. Was a fix applied in one copy and not the others? Compare the copies, and name the ones that diverge.
 16. **Support and operations.** After deployment, what will Support, Audit, Reporting and Operations see, and can they still explain the system state (who owns what, who changed it, when)?
 
+**Field impact model, and the reasoning chain every finding must show.** For each field the change touches (for example `defaultUser`, `tenant.email`, `status`, `createdAt`, `createdBy`, `groups`, `roles`), call `build_field_impact(workspace_root, fields, file_filter?)`: every consumer (service, `file:line`, read or write) classified as authority, API, UI, persistence, event, audit, report or logic. A dependency is not a finding. **A finding needs the business consequence, argued from what each consumer does with the value**, and the reasoning is written out, with no jump from evidence to conclusion:
+
+```
+ENTITY -> FIELD -> CONSUMERS -> CAPABILITY -> LIFECYCLE TRANSITION -> BROKEN INVARIANT -> BUSINESS CONSEQUENCE -> CLIENT IMPACT -> FINDING
+```
+
+Example: IT Admin -> defaultUser -> ParentChainAuthorizer -> platform administration -> status change -> the owner must remain active -> platform admin disabled -> operators lose platform access -> BLOCKING. A link you cannot show with `file:line` is written UNKNOWN, and the finding is an INFERENCE or a QUESTION, not a blocker.
+
+**Support ticket simulation.** Write the tickets Support would receive after release ("I transferred ownership but lost access", "the IT Admin disappeared", "the owner cannot manage users", "the audit dates changed", "the portal shows different owners") and trace each to the code that produces it, or say that nothing in the code produces it. A ticket you cannot trace and cannot explain away is an operations finding.
+
 **Authority drift report.** Authority is reviewed separately from ownership. State, with `file:line`: can ownership and authority diverge; can a transfer cause authority **loss**; can it cause authority **escalation**; can identity and capability drift apart; can group membership conflict with ownership. Check every recorded decision that says identity and capability are *separate* against the AUTHORITY_COUPLING hits: where the flag itself is read by an authorizer, the premise of the decision is false for that scope, and that contradiction is a finding even though the decision was accepted.
+
+**Completeness check.** Before you finish, answer all ten, and write UNKNOWN where you cannot show it: (1) can ownership become invalid; (2) can authority become invalid; (3) can the lifecycle create unsupported states; (4) can data become inconsistent; (5) can audit history become misleading; (6) can the UI diverge from the backend; (7) can service behavior diverge between services; (8) can platform assumptions break; (9) can Support struggle to explain the state; (10) would a client reviewer raise concerns. Every UNKNOWN lowers confidence: pass the count as `completeness_unknown` to `score_review_confidence`.
 
 **Hostile principal architect.** Last, ignore implementation effort and assume the feature ships tomorrow. List the top reasons you would reject the PR (platform failures, ownership failures, authority drift, audit loss, tenancy violations, lifecycle gaps, operational surprises), each tied to a finding or to an UNVERIFIED item. If you cannot name any, say what you tried.
 
@@ -1311,6 +1325,7 @@ BUSINESS IMPACT:
 LONG-TERM IMPACT:
 REPRODUCTION: {a scenario: the steps, the expected result, the actual result you can show from the code (file:line)}
 AFFECTED COMPONENTS: {services, UI, jobs, extension, reports}
+REASONING CHAIN: {ENTITY -> FIELD -> CONSUMERS -> CAPABILITY -> LIFECYCLE TRANSITION -> BROKEN INVARIANT -> BUSINESS CONSEQUENCE -> CLIENT IMPACT, each link with file:line or UNKNOWN}
 AFFECTED DECISIONS: {the recorded decisions it contradicts or weakens, e.g. UD-8, or none}
 AFFECTED INVARIANTS: {the invariants it breaks or leaves NOT DEMONSTRATED, or none}
 RECOMMENDED FIX:
@@ -1447,6 +1462,15 @@ After all passes are complete, produce the final report in this exact format:
 
 ### UX and operations
 {Discoverability, recovery from mistakes, visibility of state and ownership; Support, Reporting, Audit and Administrator impact; existing data after release and any backfill.}
+
+### Field impact and reasoning chains
+{From `build_field_impact`: per field, the consumers by capability and the consequence you argued from them. Each finding carries its REASONING CHAIN.}
+
+### Support tickets
+{The tickets Support would receive and the code each traces to, or "nothing in the code explains it".}
+
+### Completeness check
+{The ten answers (YES / NO / UNKNOWN with the evidence); the number of UNKNOWNs feeds the confidence score.}
 
 ### Zombie states, UI failure paths, historical data and copy divergence
 {The impossible states you tried to build and the sequences; what the user sees when each failure happens; what pre-existing rows do under the new rule; the copies that diverge. Or "examined, none found" with what you examined.}

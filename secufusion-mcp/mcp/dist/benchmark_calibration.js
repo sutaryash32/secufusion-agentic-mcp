@@ -53,7 +53,7 @@ put(ws, "svc-a/src/test/java/com/x/UserServiceTest.java", "public class UserServ
     const txt = renderFeatureModel(m);
     check("the model lists the family, entities, existing transitions, absent transitions, capability, graph and a review matrix", ["## 1. Work item family", "## 2. Primary business entities", "## 3. Lifecycle transitions", "## 4. Transitions with NO path", "## 5. Capability dependencies", "## 6. Cross-service dependency graph", "## 7. Review matrix"].every((h) => txt.includes(h)), txt.slice(0, 300));
     check("a transition with no path is listed as a lifecycle question, not skipped", m.missing.some((x) => x.entity === "User" && x.transition === "restore") && /NO PATH/.test(txt));
-    check("every transition is checked against every contract clause", /check against ownership, authority, lifecycle, consistency \(source of truth\), audit, dependencies, tenancy/.test(txt));
+    check("every transition is checked against every contract clause", /check against ownership, authority, lifecycle, consistency \(source of truth\), audit, dependencies, tenancy, UI, operations/.test(txt));
     check("entities proposed from tags are marked for confirmation", /confirm/.test(renderFeatureModel(buildFeatureModel(ws, { work_item_id: "STORY-10" }))));
 }
 // ── calibration: blind protocol ─────────────────────────────────────────────
