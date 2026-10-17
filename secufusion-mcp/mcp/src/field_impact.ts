@@ -130,7 +130,7 @@ export function renderFieldImpact(r: { fields: FieldImpact[]; files_scanned: num
             const cs = f.consumers.filter((c) => c.capability === cap);
             const dec = cs.filter((c) => c.decision);
             L.push(`- ${cap}: ${f.by_capability[cap]} reference(s)${dec.length ? `, ${dec.length} inside a decision` : ""}`);
-            const show = [...dec, ...cs.filter((c) => !c.decision)].filter((c, i, a) => a.findIndex((x) => x.file === c.file) === i).slice(0, perCap);
+            const show = [...dec, ...cs.filter((c) => !c.decision)].filter((c, i, a) => a.findIndex((x) => x.file === c.file && x.kind === c.kind) === i).slice(0, perCap);
             for (const c of show) {
                 L.push(`    ${c.service}  ${c.file.split("/").slice(-1)[0]}:${c.line}  ${c.kind === "write" ? "[WRITE] " : ""}${c.text}`);
                 if (c.derived) {

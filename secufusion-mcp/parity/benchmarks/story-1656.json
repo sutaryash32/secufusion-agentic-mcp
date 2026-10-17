@@ -1,0 +1,376 @@
+{
+  "id": "story-1656",
+  "title": "STORY-1656 Tenant IT Admin ownership transfer and lifecycle (BUG-1469, TASK-1657, TASK-1658)",
+  "story_chain": [
+    "BUG-1469",
+    "TASK-1657",
+    "TASK-1658"
+  ],
+  "workspace_hint": "secufi_full (sfn-iam-api, sfn-tenants-api, sfn-policy-api, sfn-web-ui)",
+  "pre_fix_available": false,
+  "limitation": "The branches hold a single squashed commit that already contains the fixes for review findings 1, 2, 6, 7, 10 and the delete/transfer race. Their concerns can only be derived as a risk class or a question from this code. Severity is recorded only for the concerns whose record states it; the rest are UNSPECIFIED. The client comments are as recorded in decisions.json, requirements and investigation.md (paraphrased), not the original review thread.",
+  "concerns": [
+    {
+      "id": "C01",
+      "text": "The IT Admin email guard turns a null or blank email into a misleading 'email cannot be changed' error instead of leaving it to the normal 'Email is required' validation.",
+      "severity": "NON-BLOCKING",
+      "kind": "implementation",
+      "entity": "User / IT Admin email guard",
+      "consequence": "A user sees a wrong reason for a rejected edit; validation behavior of the existing endpoints changes.",
+      "expected_fix": "Skip a null or blank email in the guard and let the normal validation run.",
+      "fixed_in_code": true,
+      "evidence_checks": [],
+      "source": "TASK-1657 decisions #7 (review finding 1)"
+    },
+    {
+      "id": "C02",
+      "text": "The transfer looked the caller up by email, which can throw on case-variant duplicate rows or match another tenant; caller authorization must be by id, and the caller's tenant must be the acting tenant or an ancestor so MSSP parent administrators can still act.",
+      "severity": "BLOCKING",
+      "kind": "implementation",
+      "entity": "Caller (User) authorization",
+      "consequence": "Wrong or failing caller resolution: an unauthorized caller could pass, or a legitimate parent administrator fail.",
+      "expected_fix": "Controller passes the caller id; service reloads by primary key and checks acting-tenant-or-ancestor.",
+      "fixed_in_code": true,
+      "evidence_checks": [],
+      "source": "TASK-1657 decisions #6 (review finding 2)"
+    },
+    {
+      "id": "C03",
+      "text": "Concurrent transfers from the same IT Admin could both succeed and leave two IT Admins.",
+      "severity": "BLOCKING",
+      "kind": "implementation",
+      "entity": "Tenant / Default User",
+      "consequence": "A tenant with two IT Admins; every rule that assumes exactly one is wrong.",
+      "expected_fix": "Pessimistic write lock on the tenant row first, validate after the lock, convert contention to a 409.",
+      "fixed_in_code": true,
+      "evidence_checks": [
+        {
+          "tool": "check_invariant_enforcement",
+          "args": {
+            "fields": [
+              "defaultUser"
+            ]
+          },
+          "must_match": [
+            "Enforcement: CHECK_THEN_ACT",
+            "UserService\\.java:\\d+\\s+via lockTenantForOwnershipChange"
+          ],
+          "note": "the transfer writes are lock-protected; other writers are not"
+        }
+      ],
+      "source": "TASK-1657 decisions #5 (review finding 6)"
+    },
+    {
+      "id": "C04",
+      "text": "The transfer action was hidden from parent (MSSP) administrators because the UI looked the caller up in the tenant's own user list.",
+      "severity": "UNSPECIFIED",
+      "kind": "implementation",
+      "entity": "Portal Access UI / transfer action",
+      "consequence": "A parent administrator the server allows never sees the action.",
+      "expected_fix": "Do not hide the action when the caller is not in the list; let the server decide.",
+      "fixed_in_code": true,
+      "evidence_checks": [
+        {
+          "tool": "check_ui_gating",
+          "args": {
+            "action": "transfer ownership",
+            "server_hint": "transfer-?ownership|transferOwnership",
+            "ui_hint": "TransferOwnership|ownerToTransfer|canTransferOwnership"
+          },
+          "must_match": [
+            "isSameOrAncestorTenant",
+            "NOT in that list",
+            "fallback when nothing is found: return self \\? isPortalAdminUser\\(self\\) : true"
+          ]
+        }
+      ],
+      "source": "TASK-1657 investigation s6 item 5 (review finding 7)"
+    },
+    {
+      "id": "C05",
+      "text": "Stale grid after a failed transfer.",
+      "severity": "UNSPECIFIED",
+      "kind": "implementation",
+      "entity": "Portal Access UI / grid and dialog",
+      "consequence": "The user acts on data the server has already changed.",
+      "expected_fix": "Refresh the list when the dialog closes after a failure.",
+      "fixed_in_code": true,
+      "evidence_checks": [],
+      "source": "TASK-1657 investigation s6 item 6 (review finding 10)"
+    },
+    {
+      "id": "C06",
+      "text": "deleteUser read the default-user flag without a lock: a delete racing a transfer could remove the user who had just become IT Admin, including their Keycloak account, leaving the tenant with no IT Admin.",
+      "severity": "BLOCKING",
+      "kind": "implementation",
+      "entity": "User / delete",
+      "consequence": "A tenant with no IT Admin and a deleted identity.",
+      "expected_fix": "Row lock on the users a delete and a transfer act on.",
+      "fixed_in_code": true,
+      "evidence_checks": [],
+      "source": "TASK-1657 decisions #8"
+    },
+    {
+      "id": "C07",
+      "text": "The IT Admin row shows '-' for Created: tenants-api builds the admin without createdAt, updatedAt or createdBy.",
+      "severity": "UNSPECIFIED",
+      "kind": "implementation",
+      "entity": "User (provisioned IT Admin) audit",
+      "consequence": "The audit metadata of the provisioned IT Admin is missing now that the row is visible.",
+      "expected_fix": "Set the audit fields in the admin skeleton.",
+      "fixed_in_code": true,
+      "evidence_checks": [
+        {
+          "tool": "check_entity_impact",
+          "args": {
+            "entity_terms": [
+              "Tenant"
+            ],
+            "flags": [
+              "defaultUser"
+            ],
+            "story_text": "tenant it admin ownership transfer"
+          },
+          "must_match": [
+            "TenantService\\.java[\\s\\S]{0,400}ALSO IN 1 other service"
+          ],
+          "note": "the provisioning logic is copied across services"
+        }
+      ],
+      "source": "TASK-1657 investigation s7"
+    },
+    {
+      "id": "C08",
+      "text": "Single source of truth: the tenant IT Admin must be resolved everywhere from the transferred ownership state (users.default_user); the new owner must be reflected consistently across the platform.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "IT Admin / Tenant",
+      "consequence": "Different services show or authorize different owners.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "build_field_impact",
+          "args": {
+            "fields": [
+              "defaultUser"
+            ]
+          },
+          "must_match": [
+            "defaultUser",
+            "6 service\\(s\\)",
+            "FIELD IMPACT MODEL"
+          ]
+        }
+      ],
+      "source": "BUG-1469 decisions #2"
+    },
+    {
+      "id": "C09",
+      "text": "The Tenant Details Admin Email must always represent the current Tenant IT Admin: on transfer update tenant.email to the new owner's email; the Portal Access IT Admin and the Tenant Details Admin Email must never point to different people.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant.email / IT Admin",
+      "consequence": "The portal shows different owners in different places.",
+      "expected_fix": "Update tenant.email in the same transaction as the transfer.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "build_field_impact",
+          "args": {
+            "fields": [
+              "tenant.email"
+            ],
+            "per_capability": 40
+          },
+          "must_match": [
+            "UserService\\.java:\\d+\\s+\\[WRITE\\] tenant\\.setEmail"
+          ]
+        }
+      ],
+      "source": "BUG-1469 decisions #4"
+    },
+    {
+      "id": "C10",
+      "text": "Exactly one defaultUser per tenant is enforced in code, not by a database constraint; a database-level at-most-one-default-user rule was not added.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant / Default User",
+      "consequence": "Any writer that bypasses the code path can create two or zero IT Admins.",
+      "expected_fix": "A partial unique index on the default user per tenant (needs a manual migration).",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "check_invariant_enforcement",
+          "args": {
+            "fields": [
+              "defaultUser"
+            ]
+          },
+          "must_match": [
+            "Database constraints: none found",
+            "Enforcement: CHECK_THEN_ACT"
+          ]
+        }
+      ],
+      "source": "TASK-1657 decisions #4 and #5"
+    },
+    {
+      "id": "C11",
+      "text": "Tenants whose tenant.email already differs from their IT Admin's email stay misaligned until their first transfer (no backfill).",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant.email (existing data)",
+      "consequence": "Existing production tenants behave differently from new ones.",
+      "fixed_in_code": false,
+      "evidence_checks": [],
+      "source": "TASK-1657 decisions #4, BUG-1469 UD-10"
+    },
+    {
+      "id": "C12",
+      "text": "Tenant.email is written from sfn-iam-api and this assumes a shared database with sfn-tenants-api; not verified that every environment uses the same database.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant (service ownership)",
+      "consequence": "A transfer silently depends on the deployment topology and the owner's schema.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "check_service_ownership",
+          "args": {
+            "entities": [
+              "Tenant"
+            ]
+          },
+          "must_match": [
+            "owner sfn-tenants-api",
+            "CROSS-SERVICE WRITE from sfn-iam-api",
+            "same database in every environment"
+          ]
+        }
+      ],
+      "source": "TASK-1657 decisions #4, investigation s8"
+    },
+    {
+      "id": "C13",
+      "text": "Ownership transfer moves only the IT Admin identity (defaultUser) while Portal Administration capabilities come from group membership: a transfer to any ACTIVE user can leave the new IT Admin without Portal Administration permissions while the previous owner stays an administrator.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "IT Admin / Portal Administrator",
+      "consequence": "Identity and capability drift apart.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "check_entity_impact",
+          "args": {
+            "entity_terms": [
+              "Tenant"
+            ],
+            "flags": [
+              "defaultUser",
+              "isAdmin"
+            ],
+            "story_text": "tenant it admin ownership transfer"
+          },
+          "must_match": [
+            "\\[CRITICAL\\][^\\n]*ParentChainAuthorizer\\.java",
+            "AUTHORITY_COUPLING"
+          ]
+        }
+      ],
+      "source": "BUG-1469 UD-8"
+    },
+    {
+      "id": "C14",
+      "text": "Updating tenant.email to the new owner's email changes the tenant's email domain, which three services treat as always-allowed for extension enrollment and which the portal uses to block cross-domain user creation.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant.email / email domain",
+      "consequence": "Who may enroll extensions and create users changes silently when the owner changes.",
+      "expected_fix": "Reject a transfer that would change the domain.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "build_field_impact",
+          "args": {
+            "fields": [
+              "tenant.email"
+            ]
+          },
+          "must_match": [
+            "EnrollmentPrincipalGuard\\.java:\\d+",
+            "DERIVED VALUE tenantDomain",
+            "allowed\\.add\\(tenantDomain\\)"
+          ]
+        }
+      ],
+      "source": "BUG-1469 UD-9"
+    },
+    {
+      "id": "C15",
+      "text": "Editing the IT Admin's email in Portal Access changes users.email and Keycloak but not tenant.email, so the tenant email and the IT Admin can drift apart.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "IT Admin email / Tenant.email",
+      "consequence": "The mirrored email diverges through the second writer.",
+      "expected_fix": "Block editing the IT Admin's email in Portal Access.",
+      "fixed_in_code": true,
+      "evidence_checks": [],
+      "source": "BUG-1469 UD-10"
+    },
+    {
+      "id": "C16",
+      "text": "Not verified: whether other screens that list users call GET /users and now show the IT Admin.",
+      "severity": "UNSPECIFIED",
+      "kind": "implementation",
+      "entity": "GET /users consumers",
+      "consequence": "Counts, dropdowns and selection lists elsewhere change.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "find_endpoint_consumers",
+          "args": {
+            "endpoints": [
+              {
+                "method": "GET",
+                "path": "/users"
+              }
+            ]
+          },
+          "must_match": [
+            "OverviewTab\\.jsx:\\d+[^\\n]*wrapper getUsers",
+            "CreateGroup\\.jsx:\\d+[^\\n]*wrapper getUsers"
+          ]
+        }
+      ],
+      "source": "TASK-1657 investigation s8"
+    },
+    {
+      "id": "C17",
+      "text": "Not verified: whether tenants-api tenant deprovisioning removes users in a way that bypasses the new delete guard.",
+      "severity": "UNSPECIFIED",
+      "kind": "architecture",
+      "entity": "Tenant deprovisioning / User guard",
+      "consequence": "Deleting a tenant removes its IT Admin with no guard, ownership or audit step.",
+      "fixed_in_code": false,
+      "evidence_checks": [
+        {
+          "tool": "trace_parent_cascade",
+          "args": {
+            "parent": "Tenant",
+            "children": [
+              "User"
+            ],
+            "guard_terms": [
+              "defaultUser",
+              "isDefaultUser"
+            ]
+          },
+          "must_match": [
+            "\\(in hardDeleteTenant\\)\\s+DOES NOT MENTION defaultUser"
+          ]
+        }
+      ],
+      "source": "TASK-1657 investigation s8"
+    }
+  ]
+}

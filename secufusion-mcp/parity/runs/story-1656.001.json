@@ -1,0 +1,338 @@
+{
+  "run_id": "001",
+  "benchmark_id": "story-1656",
+  "at": "2026-10-17T14:43:56.682Z",
+  "blind": false,
+  "require_fix": false,
+  "contamination": "The reviewer had read the recorded code-review findings in decisions.json and had reviewed this story earlier in the same session; BUG-1469 post-review rules and UD-8/9/10 questions were in the inputs. The sealed list predates the client comments being re-read for scoring, but it is not blind. Sealed findings recorded no recommended fix, so the fix criterion is 'not recorded' and not required.",
+  "derived": [
+    {
+      "title": "IT Admin can be deactivated through the ordinary user update",
+      "category": "BLOCKING",
+      "entity": "User (IT Admin)",
+      "text": "updateUser applies the status sent by the client to any user, including the IT Admin (defaultUser). Platform-admin recognition requires an ACTIVE default user (isPlatformAdmin in ParentChainAuthorizer, copied to four services), so deactivating the master tenant's IT Admin removes platform administration silently. The lifecycle contract has a disable transition that no guard covers. Business impact: tenant left with an inactive owner, unsupported state; nobody can recover through the product."
+    },
+    {
+      "title": "IT Admin can be removed from admin groups, leaving no Portal Administrator who can transfer",
+      "category": "BLOCKING",
+      "entity": "Portal Administrator / Admin Group",
+      "text": "Group membership is edited through updateUser/ensureGroups/updateUserGroups with no check for the IT Admin or the last Portal Administrator. Transfer requires a Portal Administrator caller, so removing the last admin from the admin group makes ownership transfer impossible: ownership and authority diverge and the tenant is stuck. UD-8 accepts identity and capability being separate but not lockout."
+    },
+    {
+      "title": "Ownership is authority in the platform, so UD-8 'identity and capability are separate' is false for the platform tenant",
+      "category": "BLOCKING",
+      "entity": "IT Admin / Platform Administrator",
+      "text": "Several authorizers (ParentChainAuthorizer, TenantContextFilter, JwtTenantUserValidationFilter, TenantPrivacyLevelService, AuthConfigService, DashboardService) read defaultUser to decide who may act. Transferring ownership to any ACTIVE user, with no group or role change, therefore hands platform administration (on a master tenant) or other authority to a user who holds no Portal Administration permission, and the caller can be any Portal Administrator of an ancestor tenant. Authority escalation through ownership."
+    },
+    {
+      "title": "Exactly-one IT Admin per tenant has no database backstop and other writers bypass the transfer lock",
+      "category": "BLOCKING",
+      "entity": "Tenant / Default User",
+      "text": "Requirement: a tenant must always have exactly one defaultUser. Transfer takes a tenant lock, but createUser promotes the first user with check-then-act and tenant provisioning (tenants-api and policy-api) sets defaultUser independently; there is no unique or partial unique constraint. Two concurrent writers, or a retry, can produce two or zero IT Admins. Includes transfer vs transfer, transfer vs delete and create vs create."
+    },
+    {
+      "title": "tenant.email can differ from the IT Admin: three sources of truth",
+      "category": "BLOCKING",
+      "entity": "Tenant / IT Admin",
+      "text": "Decision: Tenant Details Admin Email must always represent the current IT Admin. Transfer updates tenant.email only when the tenant already has a contact email; tenant creation sets tenant.email and the admin email from separate request fields; existing tenants are explicitly not reconciled. users.default_user, tenant.email and the Keycloak user are three records for one business object with no declared source of truth. Existing production tenants will behave differently from new ones."
+    },
+    {
+      "title": "Provisioned IT Admin has no createdAt/createdBy, so the Created column is blank once the row is visible",
+      "category": "BLOCKING",
+      "entity": "User (provisioned IT Admin)",
+      "text": "BUG-1469 makes the provisioned IT Admin visible in Portal Access. That row is built by tenant provisioning, which sets no audit metadata, unlike a user created through the API. The audit contract (createdAt, createdBy) is broken for every pre-existing tenant, and the same provisioning code is copied in more than one service."
+    },
+    {
+      "title": "The provisioning logic is copied across services, so a fix lands in one copy only",
+      "category": "NON-BLOCKING",
+      "entity": "Tenant",
+      "text": "TenantService.buildAdminSkeleton exists in tenants-api and policy-api (and createUser in iam-api). Any change to how the IT Admin is created must be applied to every copy; nothing checks they agree."
+    },
+    {
+      "title": "Existing tenants with zero or several default users break the new rule and may break authorization lookups",
+      "category": "NON-BLOCKING",
+      "entity": "Tenant / Default User",
+      "text": "Rows created before the feature are not verified or backfilled. A tenant with two defaultUser rows makes finders that expect one result fail in every service that authorizes through them; a tenant with none has no owner to transfer from."
+    },
+    {
+      "title": "May a parent or MSSP administrator replace a child tenant's IT Admin and contact email?",
+      "category": "REQUIRES_DECISION",
+      "entity": "Tenant / Portal Administrator",
+      "text": "The caller's tenant may be the acting tenant or an ancestor. Tenancy contract for child/parent/peer/platform is not stated in the requirements. A parent administrator can silently change a child tenant's owner and tenant.email with no notification to the child."
+    },
+    {
+      "title": "A failed transfer or a lock conflict leaves a stale dialog and grid",
+      "category": "NON-BLOCKING",
+      "entity": "Portal Access UI",
+      "text": "The dialog keeps the candidate list it loaded; after a failure (conflict, target no longer ACTIVE, source no longer IT Admin) the user can retry against stale data and the grid is refreshed only on dismiss. If the transfer succeeds and the delete fails, the transfer stays committed and the grid must reflect it."
+    },
+    {
+      "title": "What happens when a tenant has no contact email at transfer time, and which status code do new rejections use?",
+      "category": "REQUIRES_DECISION",
+      "entity": "Tenant",
+      "text": "The decision records assumptions awaiting confirmation: a tenant with no contact email keeps it empty on transfer; the new rejections return 400. Both are product behavior nobody confirmed."
+    },
+    {
+      "title": "No ownership history: support cannot say who was IT Admin when, or who transferred",
+      "category": "NON-BLOCKING",
+      "entity": "IT Admin",
+      "text": "A transfer rewrites two flags and updatedBy/updatedAt; there is no ownership history or audit event, and no notification to either user (deferred). Support, audit and reporting cannot reconstruct the previous owner."
+    },
+    {
+      "title": "Keycloak is not changed, so the previous owner keeps realm-admin and the new owner has none",
+      "category": "QUESTION",
+      "entity": "IT Admin / Keycloak",
+      "text": "UD-7 moves only the database flag. The tenant realm admin created at provisioning stays with the previous owner, who can still be deleted or kept. Is it acceptable for platform behavior that the identity provider and the database disagree about who the tenant admin is?"
+    },
+    {
+      "title": "Bulk delete and self-delete are enforced in the UI only",
+      "category": "QUESTION",
+      "entity": "User / Portal Access UI",
+      "text": "The decisions say the IT Admin is excluded from bulk delete in the UI and the no-self-delete rule is UI-only. The server refuses to delete the IT Admin (409) but a bulk API call mixing the IT Admin with others: does it abort the batch or skip? Can a logged-in user delete themselves through the API?"
+    },
+    {
+      "title": "Transfer and delete race: delete of the new owner or of the old owner while a transfer is in flight",
+      "category": "NON-BLOCKING",
+      "entity": "User",
+      "text": "deleteUser reads the IT Admin flag then deletes; a transfer in flight can make the target the IT Admin after the delete passed its check, or delete the target mid-transfer. Verify the row locks cover both orders and that Keycloak deletion, which happens before the database delete, cannot strand a deleted-in-Keycloak user."
+    }
+  ],
+  "derived_sha256": "fa2bc433ae2ae3f5ed3e40941f8edf5531c86824a5506a23051c999fdb84c5d9",
+  "judgments": [
+    {
+      "concern_id": "C01",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Never examined the email validation that runs after the new guard (validateUserFields); the run used only the feature model, not the diff-level behavior-change lane.",
+      "diverged_step": "Consumer discovery",
+      "smallest_improvement": "None new: run the existing check_behavior_changes lane in every pessimistic review; the guard is a diff-level behavior change."
+    },
+    {
+      "concern_id": "C02",
+      "grade": "PARTIAL",
+      "derived": 8,
+      "derived_severity": "REQUIRES_DECISION",
+      "criteria": {
+        "entity": true,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Raised the parent-administrator tenancy question, not the flaw of resolving the caller by email.",
+      "diverged_step": "Field discovery",
+      "smallest_improvement": "None from this code: the email lookup was already replaced by an id lookup. Needs pre-fix code."
+    },
+    {
+      "concern_id": "C03",
+      "grade": "PARTIAL",
+      "derived": 3,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": false,
+        "consequence": true,
+        "fix": null
+      },
+      "note": "Derived the exactly-one risk and the missing DB backstop, not the transfer-vs-transfer defect, because the lock is already present in this code.",
+      "diverged_step": "Lifecycle reasoning",
+      "smallest_improvement": "None from this code: check_invariant_enforcement already rates the pre-fix transfer write CHECK_THEN_ACT. Needs pre-fix code."
+    },
+    {
+      "concern_id": "C04",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Never compared who sees the action in the UI with who the server lets execute it.",
+      "diverged_step": "Authority reasoning",
+      "smallest_improvement": "check_ui_gating (built after this run). On post-fix code it raises the question and shows the fallback; the original defect needs pre-fix code."
+    },
+    {
+      "concern_id": "C05",
+      "grade": "EQUIVALENT",
+      "derived": 9,
+      "derived_severity": "NON-BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C06",
+      "grade": "EQUIVALENT",
+      "derived": 14,
+      "derived_severity": "NON-BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C07",
+      "grade": "EXACT",
+      "derived": 5,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C08",
+      "grade": "PARTIAL",
+      "derived": 4,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": false,
+        "consequence": true,
+        "fix": null
+      },
+      "note": "Framed the single-source-of-truth concern around tenant.email; the client's concern is that every service resolves the owner from users.default_user.",
+      "diverged_step": "Consumer discovery",
+      "smallest_improvement": "build_field_impact (built after this run) lists every resolver of defaultUser; whether each reads default_user is still the reviewer's judgment."
+    },
+    {
+      "concern_id": "C09",
+      "grade": "EQUIVALENT",
+      "derived": 4,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C10",
+      "grade": "EQUIVALENT",
+      "derived": 3,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C11",
+      "grade": "EQUIVALENT",
+      "derived": 4,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C12",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Did not enumerate who WRITES Tenant outside the service that owns its table.",
+      "diverged_step": "Consumer discovery",
+      "smallest_improvement": "check_service_ownership (built after this run)."
+    },
+    {
+      "concern_id": "C13",
+      "grade": "EQUIVALENT",
+      "derived": 2,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": true,
+        "consequence": true,
+        "fix": null
+      },
+      "note": ""
+    },
+    {
+      "concern_id": "C14",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Saw the tenant.email consumers but never followed the derived domain into the enrollment allow-list.",
+      "diverged_step": "Consequence derivation",
+      "smallest_improvement": "Derived-value tracing in build_field_impact (built after this run)."
+    },
+    {
+      "concern_id": "C15",
+      "grade": "PARTIAL",
+      "derived": 4,
+      "derived_severity": "BLOCKING",
+      "criteria": {
+        "entity": true,
+        "root_cause": false,
+        "consequence": true,
+        "fix": null
+      },
+      "note": "Found that tenant.email can drift, not that the user-edit path is a second writer of the mirrored email.",
+      "diverged_step": "Consumer discovery",
+      "smallest_improvement": "Mirrored-field detection (not built): pair fields assigned from one another (users.email and tenant.email) and list every writer of each."
+    },
+    {
+      "concern_id": "C16",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "No caller graph for the changed endpoint.",
+      "diverged_step": "Consumer discovery",
+      "smallest_improvement": "find_endpoint_consumers (built after this run)."
+    },
+    {
+      "concern_id": "C17",
+      "grade": "MISS",
+      "derived": null,
+      "criteria": {
+        "entity": false,
+        "root_cause": false,
+        "consequence": false,
+        "fix": null
+      },
+      "note": "Enumerated the entity's own transitions, not the parent's delete/deprovision that removes the children.",
+      "diverged_step": "Lifecycle reasoning",
+      "smallest_improvement": "trace_parent_cascade (built after this run)."
+    }
+  ]
+}
