@@ -87,7 +87,7 @@ export function registerDeliveryTools(server) {
         }
     });
     server.tool("verify_findings", "Adversarial verification. Hands candidate findings (with the real code around each) to a model whose job is to REFUTE them: find the guard, test, caller or constraint that makes the finding wrong, or the fact that makes it worse. Each finding gets confirm, downgrade or reject; a finding with no decision stays but is marked unverified and possible. " +
-        "mode=same: the reviewing model checks itself. mode=cross: a DIFFERENT model checks it (SFN_VERIFY_ENGINE=openai|anthropic with its API key, or you supply `judgment` from another model); a cross check may lower a severity, never raise one, and its reasons are kept separate so a human sees both opinions. Up to 40 findings per call. READ-ONLY: nothing is stored.", {
+        "mode=same: the reviewing model checks itself. mode=cross: a second, independent opinion supplied by you as `judgment` (for example from another model); a cross check may lower a severity, never raise one, and its reasons are kept separate so a human sees both opinions. Up to 40 findings per call. READ-ONLY: nothing is stored.", {
         workspace_root: z.string().describe("The repository root the findings' file paths are relative to"),
         findings: z.array(findingIn).min(1).max(40),
         mode: z.enum(["same", "cross"]).optional(),
@@ -114,12 +114,11 @@ export function registerDeliveryTools(server) {
                 supplied: judgment,
                 reinvoke: "verify_findings",
                 persist: false,
-                engineRole: m === "cross" ? "verify" : "primary",
             });
             if (outcome.status !== "ok")
                 return ok(outcome.text);
             const r = applyDecisions(findings, outcome.verdict.decisions, m);
-            return json({ mode: m, answered_by: outcome.source, ...r, note: m === "cross" && outcome.source !== "engine" ? "Cross mode answered by the same client model unless SFN_VERIFY_ENGINE is set or you supplied another model's judgment: that is a second look, not an independent one." : undefined });
+            return json({ mode: m, answered_by: outcome.source, ...r, note: m === "cross" && outcome.source === "sampling" ? "Cross mode was answered by the model you are logged into, the same one that reviewed: that is a second look, not an independent one. For an independent check, supply `judgment` from another model." : undefined });
         }
         catch (e) {
             return fail(e);
@@ -334,7 +333,7 @@ export function registerDeliveryTools(server) {
             return fail(e);
         }
     });
-    server.tool("get_engine_status", "Shows which LLM engines are configured for headless use (CI, pre-push, command line): the primary engine (SFN_ENGINE) and the verification engine (SFN_VERIFY_ENGINE), their models and whether the API key is present. Never prints a key. Inside an editor the client's own model is used through sampling and none of this is needed. A cross-model check needs the verify engine to be the OTHER provider. READ-ONLY.", {}, async () => {
+    server.tool("get_engine_status", "Shows which LLM engines are configured for headless use (CI, pre-push, command line): the primary engine (SFN_ENGINE) and the verification engine (SFN_VERIFY_ENGINE), their models and whether the API key is present. Never prints a key. This is for the command line only (sfn-ci); inside an editor the review ALWAYS uses the model you are logged into and these settings are ignored. A cross-model check needs the verify engine to be the OTHER provider. READ-ONLY.", {}, async () => {
         const line = (role) => { const r = createEngine({ role }); return r.engine ? `${role}: ${r.engine.provider} / ${r.engine.model}` : `${role}: off (${r.reason})`; };
         const p = createEngine({ role: "primary" }), v = createEngine({ role: "verify" });
         return ok([line("primary"), line("verify"), p.engine && v.engine && p.engine.provider === v.engine.provider ? "note: both engines are the same provider, so the verification is not independent." : p.engine && v.engine ? "cross-model verification is available." : "", "Prompts are sent to the provider you configure; an engine is off until you set it on purpose."].filter(Boolean).join("\n"));

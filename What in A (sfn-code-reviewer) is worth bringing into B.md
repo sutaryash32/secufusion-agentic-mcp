@@ -102,10 +102,10 @@ New to B in 4.15.0: DB-008 to DB-011, SEC-004/006/010/016/017/018, CON-006/011, 
 verify_findings(workspace_root, findings[], mode?, judgment?)
 ```
 - `findings`: up to 40, each with `ruleId, severity, confidence, file, line, anchor, title, problem, failureScenario, suggestion`.
-- `mode: "same"` (default): the reviewing model checks itself. `mode: "cross"`: a **different** model checks it; it may lower a severity and never raise one, and its reasons are stored separately.
+- `mode: "same"` (default): the model you are logged into checks the findings. `mode: "cross"`: you supply the judgment of a different model as `judgment`; it may lower a severity and never raise one, and its reasons are stored separately. Without a supplied judgment, cross mode is answered by the logged-in model and the result says it is not independent.
 - Each finding gets `confirm`, `downgrade` or `reject`. A finding with no decision is kept but marked unverified and `possible`: silence is not confirmation.
 
-**Where the answer comes from.** In an editor, the client's model. With `SFN_VERIFY_ENGINE` set, that engine answers (use the other provider for a real second opinion). Otherwise the tool returns a "judgment required" request that the calling model answers and sends back as `judgment`. Nothing is stored.
+**Where the answer comes from.** Always the model you are logged into (the editor's session). If your client cannot be asked directly, the tool returns a "judgment required" request that the calling model answers and sends back as `judgment`. No API key, and no setting can route it elsewhere. Nothing is stored.
 
 ### 4.4 `merge_review_runs` — consensus
 
@@ -242,12 +242,23 @@ Installed with the package (`bin: sfn-ci`).
 
 ---
 
-## 6. Engines: running the model outside an editor
+## 6. Engines: only for `sfn-ci` (pipelines and hooks)
 
-Inside Claude Code the client's model answers (sampling). In a hook or pipeline there is none, so set an engine:
+**In the editor, the review ALWAYS uses the model you are logged into.** `/sfn-review`, `verify_findings` and every other judgment tool use your Claude session. They need no API key, and none of the variables below changes that: the shared judgment code does not read them (a test proves it never calls a provider).
+
+The variables below exist for one case only: `sfn-ci review` in a pipeline or hook, where there is no editor and no logged-in model.
 
 | Variable | Meaning |
 |---|---|
+| `SFN_ENGINE` | `anthropic` or `openai`: the engine `sfn-ci review` uses |
+| `SFN_MODEL` | optional model id (defaults: `claude-opus-5-5`, `gpt-5`) |
+| `SFN_VERIFY_ENGINE`, `SFN_VERIFY_MODEL` | the engine `sfn-ci review` uses to verify: **use the other provider** for an independent check |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (or the aliases `SFN_ANTHROPIC_KEY`, `SFN_OPENAI_KEY`) | keys, read from the environment only. The Azure template maps the pipeline secret to the alias |
+| `SFN_ANTHROPIC_BASE_URL`, `SFN_OPENAI_BASE_URL` | proxy or test server |
+
+**Nothing is sent to a provider unless you set these on purpose.** When set and `sfn-ci review` runs, the diff and rules are sent to that provider. The quick-check gate needs none of this.
+
+---|---|
 | `SFN_ENGINE` | `anthropic` or `openai`: the primary engine |
 | `SFN_MODEL` | optional model id (defaults: `claude-opus-5-5`, `gpt-5`) |
 | `SFN_VERIFY_ENGINE`, `SFN_VERIFY_MODEL` | the engine for verification: **use the other provider** for an independent check |

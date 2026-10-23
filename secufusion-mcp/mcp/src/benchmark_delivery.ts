@@ -223,19 +223,22 @@ const F = (o: Partial<Finding> = {}): Finding => ({ ruleId: "SEC-003", severity:
 }
 {
     // The judgment engine: with no client sampling, a configured engine answers; with a verify engine and cross mode, the OTHER provider does.
+    // In the editor the review ALWAYS uses the model the user is logged into. Configured engines (API keys) are for the command line only and must never be reached from the judgment protocol.
     const realFetch = globalThis.fetch;
     const hits: string[] = [];
-    globalThis.fetch = (async (url: string, init: any) => { hits.push(String(url)); return { ok: true, json: async () => (/anthropic/.test(String(url)) ? { content: [{ type: "text", text: '{"v":"from-anthropic"}' }] } : { choices: [{ message: { content: '{"v":"from-openai"}' } }] }) }; }) as any;
+    globalThis.fetch = (async (url: string) => { hits.push(String(url)); throw new Error("the judgment protocol must not call a provider"); }) as any;
     const prev = { ...process.env };
-    Object.assign(process.env, { SFN_ENGINE: "anthropic", ANTHROPIC_API_KEY: "k1", SFN_VERIFY_ENGINE: "openai", OPENAI_API_KEY: "k2" });
+    Object.assign(process.env, { SFN_ENGINE: "anthropic", [KEY.anthropic]: "k1", SFN_VERIFY_ENGINE: "openai", [KEY.openai]: "k2" });
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), "jdg-"));
-    const spec = (role) => ({ kind: "k", subject: "s", role: "r", rubric: ["x"], evidence: {}, schema: z.object({ v: z.string() }), schemaHint: "{}", reinvoke: "t", persist: false, engineRole: role });
-    const p = await judge({}, ws, spec("primary")), v = await judge({ server: { getClientCapabilities: () => ({ sampling: {} }) } }, ws, spec("verify"));
-    check("judge: with no client model the configured engine answers; a cross check goes to the verify engine even when sampling exists", p.status === "ok" && p.source === "engine" && p.verdict.v === "from-anthropic" && v.status === "ok" && v.verdict.v === "from-openai" && /openai/.test(hits[1]));
-    for (const k of ["SFN_ENGINE", "ANTHROPIC_API_KEY", "SFN_VERIFY_ENGINE", "OPENAI_API_KEY"]) delete process.env[k];
-    const none = await judge({}, ws, spec("primary"));
-    check("judge: with neither a client model nor an engine it still asks the calling model (unchanged behaviour)", none.status === "needs_judgment");
+    const spec = { kind: "k", subject: "s", role: "r", rubric: ["x"], evidence: {}, schema: z.object({ v: z.string() }), schemaHint: "{}", reinvoke: "t", persist: false };
+    const client = { server: { getClientCapabilities: () => ({ sampling: {} }), createMessage: async () => ({ content: { type: "text", text: '{"v":"from-client"}' } }) } };
+    const viaClient = await judge(client, ws, spec);
+    const noClient = await judge({}, ws, spec);
+    check("judge: with a client model it answers (sampling), even though engines are configured; no provider is called", viaClient.status === "ok" && viaClient.source === "sampling" && viaClient.verdict.v === "from-client" && hits.length === 0);
+    check("judge: with no client model it asks the calling model (the one the user is logged into); configured engines are ignored and no provider is called", noClient.status === "needs_judgment" && hits.length === 0);
+    check("judge: the shared judgment code does not know about engines at all", !/createEngine|engine\.js|process\.env/.test(fs.readFileSync(path.join(here, "judge.js"), "utf8")));
     globalThis.fetch = realFetch; Object.assign(process.env, prev);
+    for (const k of ["SFN_ENGINE", "SFN_VERIFY_ENGINE", KEY.anthropic, KEY.openai]) if (!(k in prev)) delete process.env[k];
 }
 
 // ============ headless review ============

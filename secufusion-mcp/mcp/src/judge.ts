@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { z, ZodType } from "zod";
-import { createEngine } from "./engine.js";
 
 /**
  * LLM judgment engine.
@@ -17,7 +16,7 @@ import { createEngine } from "./engine.js";
  *   3. neither   - the tool returns `needs_judgment`; nothing is recorded.
  */
 
-export type JudgmentSource = "sampling" | "caller" | "engine";
+export type JudgmentSource = "sampling" | "caller";
 
 export interface JudgmentSpec<T> {
     kind: string;
@@ -32,8 +31,6 @@ export interface JudgmentSpec<T> {
     reinvoke: string;
     /** Default true. Pass false for READ-ONLY tools: the verdict is returned to the caller and nothing is written. */
     persist?: boolean;
-    /** "verify" asks for the verification engine (SFN_VERIFY_ENGINE) when one is configured, so a different model than the reviewer can check the finding. */
-    engineRole?: "primary" | "verify";
 }
 
 export type JudgmentOutcome<T> =
@@ -144,38 +141,20 @@ export async function judge<T>(server: any, root: string, spec: JudgmentSpec<T>)
         }
     }
 
-    const { system, user } = buildPrompt(spec);
-    const answer = async (text: string, source: JudgmentSource): Promise<JudgmentOutcome<T>> => {
-        const verdict = spec.schema.parse(extractJson(text));
-        if (spec.persist !== false) persist(root, spec, verdict, source);
-        return { status: "ok", verdict, source };
-    };
-
-    // A configured verification engine wins when a cross-model check was asked for.
-    if (spec.engineRole === "verify") {
-        const v = createEngine({ role: "verify" });
-        if (v.engine) {
-            try { return await answer(await v.engine.complete({ system, user, maxTokens: 2500 }), "engine"); }
-            catch (e: any) { return needsJudgment(spec, `verification engine failed: ${e?.message ?? e}`); }
-        }
-    }
-
     const canSample = !!server?.server?.getClientCapabilities?.()?.sampling;
-    if (!canSample) {
-        // No client model (CI, hook, command line): use the configured engine, if the user turned one on.
-        const p = createEngine({ role: "primary" });
-        if (!p.engine) return needsJudgment(spec);
-        try { return await answer(await p.engine.complete({ system, user, maxTokens: 2500 }), "engine"); }
-        catch (e: any) { return needsJudgment(spec, `engine failed: ${e?.message ?? e}`); }
-    }
+    if (!canSample) return needsJudgment(spec);
 
+    const { system, user } = buildPrompt(spec);
     try {
         const res = await server.server.createMessage({
             systemPrompt: system,
             messages: [{ role: "user", content: { type: "text", text: user } }],
             maxTokens: 2500,
         });
-        return await answer(res?.content?.type === "text" ? res.content.text : "", "sampling");
+        const text = res?.content?.type === "text" ? res.content.text : "";
+        const verdict = spec.schema.parse(extractJson(text));
+        if (spec.persist !== false) persist(root, spec, verdict, "sampling");
+        return { status: "ok", verdict, source: "sampling" };
     } catch (e: any) {
         return needsJudgment(spec, `sampling failed: ${e?.message ?? e}`);
     }
