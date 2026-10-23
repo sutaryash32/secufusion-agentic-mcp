@@ -22,7 +22,7 @@ parameters:
     type: string
   - name: package            # pin a version; a gate you did not pin can change under you
     type: string
-    default: secufusion-mcp@4.15.0
+    default: secufusion-mcp@4.15.1
   - name: baseBranch
     type: string
     default: origin/develop

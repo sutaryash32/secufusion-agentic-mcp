@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.15.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.15.0 brings the sfn-code-reviewer's quick check, rule catalog, adversarial verification, SARIF and HTML reports, CI templates, live-schema and dependency audits, release readiness, eval corpus and metrics, and 4.14.0 adds a deterministic guard that an applied migration is never edited, renamed or deleted, and 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 122 tools. See [What's New in 4.15.0](#whats-new-in-4150), [What's New in 4.14.0](#whats-new-in-4140), [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.15.1** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.15.0 brings the sfn-code-reviewer's quick check, rule catalog, adversarial verification, SARIF and HTML reports, CI templates, live-schema and dependency audits, release readiness, eval corpus and metrics, and 4.14.0 adds a deterministic guard that an applied migration is never edited, renamed or deleted, and 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 122 tools. See [What's New in 4.15.1](#whats-new-in-4151), [What's New in 4.15.0](#whats-new-in-4150), [What's New in 4.14.0](#whats-new-in-4140), [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,33 +23,34 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.15.0](#whats-new-in-4150)
-15. [What's New in 4.14.0](#whats-new-in-4140)
-16. [What's New in 4.13.0](#whats-new-in-4130)
-17. [What's New in 4.12.0](#whats-new-in-4120)
-18. [What's New in 4.11.0](#whats-new-in-4110)
-19. [What's New in 4.10.0](#whats-new-in-4100)
-20. [What's New in 4.9.0](#whats-new-in-490)
-21. [What's New in 4.8.0](#whats-new-in-480)
-22. [What's New in 4.7.0](#whats-new-in-470)
-23. [What's New in 4.6.0](#whats-new-in-460)
-24. [What's New in 4.5.0](#whats-new-in-450)
-25. [What's New in 4.4.0](#whats-new-in-440)
-26. [What's New in 4.3.0](#whats-new-in-430)
-27. [What's New in 4.2.0](#whats-new-in-420)
-28. [What's New in 4.1.0](#whats-new-in-410)
-29. [What's New in 4.0.0](#whats-new-in-400)
-30. [Upgrading from 3.x](#upgrading-from-3x)
-31. [Getting Started](#getting-started)
-32. [New Contributor Guide](#new-contributor-guide)
-33. [Contributing Knowledge](#contributing-knowledge)
-34. [Release Notes Philosophy](#release-notes-philosophy)
-35. [Tool Reference](#tool-reference)
-36. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-37. [Development](#development)
-38. [Status and Known Limitations](#status-and-known-limitations)
-39. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-40. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.15.1](#whats-new-in-4151)
+15. [What's New in 4.15.0](#whats-new-in-4150)
+16. [What's New in 4.14.0](#whats-new-in-4140)
+17. [What's New in 4.13.0](#whats-new-in-4130)
+18. [What's New in 4.12.0](#whats-new-in-4120)
+19. [What's New in 4.11.0](#whats-new-in-4110)
+20. [What's New in 4.10.0](#whats-new-in-4100)
+21. [What's New in 4.9.0](#whats-new-in-490)
+22. [What's New in 4.8.0](#whats-new-in-480)
+23. [What's New in 4.7.0](#whats-new-in-470)
+24. [What's New in 4.6.0](#whats-new-in-460)
+25. [What's New in 4.5.0](#whats-new-in-450)
+26. [What's New in 4.4.0](#whats-new-in-440)
+27. [What's New in 4.3.0](#whats-new-in-430)
+28. [What's New in 4.2.0](#whats-new-in-420)
+29. [What's New in 4.1.0](#whats-new-in-410)
+30. [What's New in 4.0.0](#whats-new-in-400)
+31. [Upgrading from 3.x](#upgrading-from-3x)
+32. [Getting Started](#getting-started)
+33. [New Contributor Guide](#new-contributor-guide)
+34. [Contributing Knowledge](#contributing-knowledge)
+35. [Release Notes Philosophy](#release-notes-philosophy)
+36. [Tool Reference](#tool-reference)
+37. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+38. [Development](#development)
+39. [Status and Known Limitations](#status-and-known-limitations)
+40. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+41. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -440,6 +441,18 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.15.1
+
+A patch release. No new tools (122 in all), no breaking changes.
+
+- **The editor always uses the model you are logged into.** `/sfn-review` and every judgment tool (`verify_findings` included) answer through your Claude session, with no API key and no setting that can change that. The shared judgment code no longer reads any engine variable or calls a provider, and a test proves it. `SFN_ENGINE` and `SFN_VERIFY_ENGINE` are used only by `sfn-ci review`, in a pipeline or a hook, where there is no editor.
+- `verify_findings` with `mode: cross` takes another model's answer as `judgment`; without one it is answered by the logged-in model and says it is not an independent check.
+- The Azure template maps the pipeline secret to `SFN_ANTHROPIC_KEY` / `SFN_OPENAI_KEY`, which the engine accepts as aliases for the provider's own variables.
+- Test credentials are built at runtime and the "committed secret" eval fixture uses a `{{S}}` placeholder filled with a random value when the case is built, so no secret-shaped text is stored in the repository.
+- Release 4.15.0 was tagged by mistake on the 4.13.0 commit; 4.15.1 supersedes it.
 
 ---
 

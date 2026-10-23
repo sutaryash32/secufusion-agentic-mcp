@@ -6,7 +6,7 @@
 steps:
   - task: NodeTool@0
     inputs: { versionSpec: 20.x }
-  - script: npm install -g secufusion-mcp@4.15.0
+  - script: npm install -g secufusion-mcp@4.15.1
     displayName: Install SecuFusion review tools
   - script: |
       mkdir -p "$(Build.ArtifactStagingDirectory)/release"

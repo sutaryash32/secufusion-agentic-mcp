@@ -9,7 +9,7 @@ permissions:
   contents: read
   security-events: write     # to upload SARIF
 env:
-  SFN_PACKAGE: secufusion-mcp@4.15.0
+  SFN_PACKAGE: secufusion-mcp@4.15.1
   SFN_REVIEW: 'false'        # 'true' to run the headless review
 jobs:
   review:
