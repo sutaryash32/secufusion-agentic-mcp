@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.13.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 104 tools. See [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.14.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.14.0 adds a deterministic guard that an applied migration is never edited, renamed or deleted, and 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 105 tools. See [What's New in 4.14.0](#whats-new-in-4140), [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,31 +23,32 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.13.0](#whats-new-in-4130)
-15. [What's New in 4.12.0](#whats-new-in-4120)
-16. [What's New in 4.11.0](#whats-new-in-4110)
-17. [What's New in 4.10.0](#whats-new-in-4100)
-18. [What's New in 4.9.0](#whats-new-in-490)
-19. [What's New in 4.8.0](#whats-new-in-480)
-20. [What's New in 4.7.0](#whats-new-in-470)
-21. [What's New in 4.6.0](#whats-new-in-460)
-22. [What's New in 4.5.0](#whats-new-in-450)
-23. [What's New in 4.4.0](#whats-new-in-440)
-24. [What's New in 4.3.0](#whats-new-in-430)
-25. [What's New in 4.2.0](#whats-new-in-420)
-26. [What's New in 4.1.0](#whats-new-in-410)
-27. [What's New in 4.0.0](#whats-new-in-400)
-28. [Upgrading from 3.x](#upgrading-from-3x)
-29. [Getting Started](#getting-started)
-30. [New Contributor Guide](#new-contributor-guide)
-31. [Contributing Knowledge](#contributing-knowledge)
-32. [Release Notes Philosophy](#release-notes-philosophy)
-33. [Tool Reference](#tool-reference)
-34. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-35. [Development](#development)
-36. [Status and Known Limitations](#status-and-known-limitations)
-37. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-38. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.14.0](#whats-new-in-4140)
+15. [What's New in 4.13.0](#whats-new-in-4130)
+16. [What's New in 4.12.0](#whats-new-in-4120)
+17. [What's New in 4.11.0](#whats-new-in-4110)
+18. [What's New in 4.10.0](#whats-new-in-4100)
+19. [What's New in 4.9.0](#whats-new-in-490)
+20. [What's New in 4.8.0](#whats-new-in-480)
+21. [What's New in 4.7.0](#whats-new-in-470)
+22. [What's New in 4.6.0](#whats-new-in-460)
+23. [What's New in 4.5.0](#whats-new-in-450)
+24. [What's New in 4.4.0](#whats-new-in-440)
+25. [What's New in 4.3.0](#whats-new-in-430)
+26. [What's New in 4.2.0](#whats-new-in-420)
+27. [What's New in 4.1.0](#whats-new-in-410)
+28. [What's New in 4.0.0](#whats-new-in-400)
+29. [Upgrading from 3.x](#upgrading-from-3x)
+30. [Getting Started](#getting-started)
+31. [New Contributor Guide](#new-contributor-guide)
+32. [Contributing Knowledge](#contributing-knowledge)
+33. [Release Notes Philosophy](#release-notes-philosophy)
+34. [Tool Reference](#tool-reference)
+35. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+36. [Development](#development)
+37. [Status and Known Limitations](#status-and-known-limitations)
+38. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+39. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -438,6 +439,16 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.14.0
+
+A minor release: one new tool (105 in all), no breaking changes.
+
+- **`check_applied_migrations`**: an applied migration is history. An environment that already ran it never sees an edit, so an edited, renamed or deleted migration leaves environments with different schemas and nothing fails. The tool compares the change with the base branch and reports, with no model and no judgment: an applied migration that was edited, renamed or deleted (BLOCKER), a new migration that reuses a version number already taken (BLOCKER), and one numbered below the head of its series (WARNING). It works for Flyway-style versioned SQL (repeatable `R__` migrations may change), Rails, Django, Alembic, EF Core (the model snapshot is ignored), Prisma and generic `migrations/` folders, compares versions inside one series and never across services, and includes uncommitted and untracked files.
+- `/sfn-review` PASS 0 calls it first (new check 0F) and now triggers on a migration file of any framework, not only `.sql`. This was the one migration rule that the sfn-code-reviewer quick check had and the review did not. The same tool is the building block for a no-model check at push time.
+- `AGENTS.md` no longer claims a pre-PR check is "automated in `run_pre_pr_checks`": that tool no longer exists. It names `/sfn-review` PASS 0 and `check_applied_migrations` instead.
 
 ---
 
@@ -937,6 +948,7 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | `discover_review_context` | Context completeness report for a review with no task: sources found and missing, a coverage score, the branch and commit hints about the intent (work type, references, ambiguity), task folders that may explain the diff (candidates, never adopted silently), draft contexts from earlier reviews, and a provisional reference |
 | `reason_about_intent` | Intent reasoning for a review with no task: the model investigates (competing hypotheses, product-aware reading of the diff, its own reads), every citation is verified, confidence comes from the evidence (unsupported claims capped at 40, contradictions cost 25, a close runner-up is ambiguity), and the questions are cut to what the protocol allows |
 | `record_draft_task_context` | The temporary task context for a review with no task (BE-, FE-, FS-, EXT-, INFRA-TASK-Dnnn): entries marked CONFIRMED (needs the developer's words), INFERRED (needs its evidence) or UNKNOWN, plus the knowledge captured at the end; preview by default; never touches the task registry |
+| `check_applied_migrations` | Guard that an applied migration is immutable: edited, renamed or deleted after it existed on the base (BLOCKER), a reused version (BLOCKER), a version below the head (WARNING); Flyway-style SQL, Rails, Django, Alembic, EF Core, Prisma, generic; no model |
 | `check_platform_facts` | A document's topic table, named paths and service list checked against the code in any language; contradictions carry file:line, what cannot be seen is UNVERIFIED |
 | `validate_finding_evidence` | Evidence gate, any language: the cited file exists inside the workspace, the line exists and the quoted code is there; unsupported findings are DROP; an optional proof test makes a finding PROVEN or REFUTED |
 | `check_tenant_flow` | Tenant-flow leads in Java, Kotlin, JavaScript, TypeScript, Python, C#, Go, Ruby, PHP and SQL: data access with no tenant predicate, lookups by id alone, tenant ids taken from a request with no guard; confidence from entity ownership and global scoping signals |

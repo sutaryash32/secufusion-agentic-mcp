@@ -456,7 +456,7 @@ Whatever a pass finds is then classified by story scope in STEP 3C before it can
 
 ### PASS 0 — Migration Review
 
-**Trigger: any `.sql` file in scope, OR any `@Entity` / `@Column` / `@Table` change in Java files**
+**Trigger: any `.sql` file in scope, OR any `@Entity` / `@Column` / `@Table` change in Java files, OR a migration file of any other framework (Rails, Django, Alembic, EF Core, Prisma, ...)**
 
 Read `.secufusion-migrations.json`. If not found, derive conventions from existing `.sql`
 files in `src/main/resources/db/migration/` for the affected service.
@@ -523,6 +523,18 @@ PASS 0E — MIGRATION: {filename} — conventions correct
    ACTION REQUIRED before deploying: Run manually against PostgreSQL:
    psql -U <user> -d <database> -f {filename}
 ```
+
+**F — Applied migrations are immutable**
+Call `check_applied_migrations(workspace_root)` first. It compares the change with the base branch, in any migration framework (Flyway-style SQL, Rails, Django, Alembic, EF Core, Prisma, generic `migrations/` folders), and needs no judgment from you. A migration that exists on the base is treated as applied. An environment that already ran it will never see an edit, so a changed, renamed or deleted one leaves environments with different schemas and nothing fails.
+
+```
+FINDING 0F — MIGRATION: Applied migration changed
+   File: {file}   Base: {base}
+   What: edited | renamed | deleted
+   Fix: revert it, and put the change in a new migration with the next version
+   Severity: BLOCKER
+```
+A new migration that reuses a version already taken is a BLOCKER (`VERSION_CLASH`); one numbered below the head of its series is a WARNING (`VERSION_BELOW_HEAD`). The base is only a proxy for "applied": if the developer says the migration was merged but never ran anywhere, keep the finding and ask them to record a known exception (the severity rule above), so the next review treats it as intentional. Category label for the report: `DEPLOYMENT`.
 
 ---
 

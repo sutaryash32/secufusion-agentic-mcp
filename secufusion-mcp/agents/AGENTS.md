@@ -237,7 +237,7 @@ CREATE INDEX IF NOT EXISTS idx_{table}_{column} ON {table}({column});
 - Put migration scripts anywhere other than `src/main/resources/db/migration/`
 - Leave `CREATE INDEX` for "later" — include it in the same migration file
 
-### Pre-PR check verifies (automated in `run_pre_pr_checks`):
+### Pre-PR check verifies (`/sfn-review` PASS 0; `check_applied_migrations` enforces the immutability and version rules):
 - ✅ Migration script exists for `@Entity` change
 - ✅ Naming pattern: `^V\d+__[a-z][a-z0-9_]*\.sql$`
 - ✅ Version is correct next in sequence (from spec)
