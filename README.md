@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.14.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.14.0 adds a deterministic guard that an applied migration is never edited, renamed or deleted, and 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 105 tools. See [What's New in 4.14.0](#whats-new-in-4140), [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.15.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.15.0 brings the sfn-code-reviewer's quick check, rule catalog, adversarial verification, SARIF and HTML reports, CI templates, live-schema and dependency audits, release readiness, eval corpus and metrics, and 4.14.0 adds a deterministic guard that an applied migration is never edited, renamed or deleted, and 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 122 tools. See [What's New in 4.15.0](#whats-new-in-4150), [What's New in 4.14.0](#whats-new-in-4140), [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,32 +23,33 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.14.0](#whats-new-in-4140)
-15. [What's New in 4.13.0](#whats-new-in-4130)
-16. [What's New in 4.12.0](#whats-new-in-4120)
-17. [What's New in 4.11.0](#whats-new-in-4110)
-18. [What's New in 4.10.0](#whats-new-in-4100)
-19. [What's New in 4.9.0](#whats-new-in-490)
-20. [What's New in 4.8.0](#whats-new-in-480)
-21. [What's New in 4.7.0](#whats-new-in-470)
-22. [What's New in 4.6.0](#whats-new-in-460)
-23. [What's New in 4.5.0](#whats-new-in-450)
-24. [What's New in 4.4.0](#whats-new-in-440)
-25. [What's New in 4.3.0](#whats-new-in-430)
-26. [What's New in 4.2.0](#whats-new-in-420)
-27. [What's New in 4.1.0](#whats-new-in-410)
-28. [What's New in 4.0.0](#whats-new-in-400)
-29. [Upgrading from 3.x](#upgrading-from-3x)
-30. [Getting Started](#getting-started)
-31. [New Contributor Guide](#new-contributor-guide)
-32. [Contributing Knowledge](#contributing-knowledge)
-33. [Release Notes Philosophy](#release-notes-philosophy)
-34. [Tool Reference](#tool-reference)
-35. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-36. [Development](#development)
-37. [Status and Known Limitations](#status-and-known-limitations)
-38. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-39. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.15.0](#whats-new-in-4150)
+15. [What's New in 4.14.0](#whats-new-in-4140)
+16. [What's New in 4.13.0](#whats-new-in-4130)
+17. [What's New in 4.12.0](#whats-new-in-4120)
+18. [What's New in 4.11.0](#whats-new-in-4110)
+19. [What's New in 4.10.0](#whats-new-in-4100)
+20. [What's New in 4.9.0](#whats-new-in-490)
+21. [What's New in 4.8.0](#whats-new-in-480)
+22. [What's New in 4.7.0](#whats-new-in-470)
+23. [What's New in 4.6.0](#whats-new-in-460)
+24. [What's New in 4.5.0](#whats-new-in-450)
+25. [What's New in 4.4.0](#whats-new-in-440)
+26. [What's New in 4.3.0](#whats-new-in-430)
+27. [What's New in 4.2.0](#whats-new-in-420)
+28. [What's New in 4.1.0](#whats-new-in-410)
+29. [What's New in 4.0.0](#whats-new-in-400)
+30. [Upgrading from 3.x](#upgrading-from-3x)
+31. [Getting Started](#getting-started)
+32. [New Contributor Guide](#new-contributor-guide)
+33. [Contributing Knowledge](#contributing-knowledge)
+34. [Release Notes Philosophy](#release-notes-philosophy)
+35. [Tool Reference](#tool-reference)
+36. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+37. [Development](#development)
+38. [Status and Known Limitations](#status-and-known-limitations)
+39. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+40. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -439,6 +440,22 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.15.0
+
+A minor release that brings the useful parts of the sfn-code-reviewer into this MCP: 17 new tools (122 in all), an 81-rule catalog, a command line (`sfn-ci`) and ready-made pipeline templates. No breaking changes.
+
+- **Mechanical first.** `run_quick_check` runs the pattern half of the rule catalog with no model in about a second, on every push (`sfn-ci install-hook`, which fails open and never overwrites a hook that is not yours) and in the pipeline. `/sfn-review` now starts from it (STEP 1D): exact findings go in as FACT, pattern leads are read and confirmed or dropped.
+- **The rule catalog** (`get_rule_catalog`) adds the rules the review lacked: DB-008 to DB-011 (unsafe DDL, FK indexes, migration tests, idempotent backfills), SEC-004, 006, 010, 016, 017, 018 (reads that need a scope, security-code parity, SQL concatenation, flags default off, full-document writes to the identity provider, sign-in blocked before the app's check), CON-006 and CON-011, RUN-004 and RUN-005, DEP-001 to DEP-009, WEB-001 to WEB-011, TST-004 to TST-008. A rule is a question to answer from the code, not a verdict.
+- **Kafka topic table reconciled with the code.** The two tables disagreed. Checked against every `@KafkaListener` and `send` in the four services: this MCP's table was right, the sfn-code-reviewer's was stale (it lacks `sfn-policy-api`, says `sfn-tenants-api` consumes `policy-events` when that listener is commented out, and gives `extension-approval-decided` one consumer instead of two). Both tables now carry a verified date.
+- **Adversarial verification** (`verify_findings`, PASS 22) tries to refute each finding against the real code; `mode: cross` sends it to a different provider (`SFN_VERIFY_ENGINE`) and can only lower a severity. `merge_review_runs` gives consensus across runs.
+- **Delivery.** `finalize_review_findings` makes the result deterministic (stable ids, floors for confirmed critical rules, dated suppressions, noise cap, verdict, fixed / new / still open since the last review, gate). `findings_to_sarif` and `render_review_report` produce the SARIF and the self-contained HTML. Pipeline templates for Azure Pipelines and GitHub Actions are in `ci/`: the quick gate needs no secrets; the headless review is off until you turn it on, because it sends the diff to the provider you choose.
+- **Engines.** `SFN_ENGINE` (anthropic or openai) lets the review run where there is no editor (CI, a hook, the command line), and `SFN_VERIFY_ENGINE` selects the other provider for the cross check. Keys are read from the environment only. A review that cannot run is exit code 2, never green.
+- **Evidence beyond the repository.** `snapshot_db_schema` and `lookup_db_schema` bring the live schema (foreign keys with ON DELETE, real indexes) into DB-004 to DB-009; `audit_dependencies` adds the known-vulnerability lookup (OSV, opt-in because it sends package names and versions); `check_release_readiness` lists what operations must do for a release.
+- **Measuring the reviewer.** The eval corpus (12 cases) is scored by `run_quick_eval` for what a pattern can judge; the others are scored from a real review with `score_review_run` (`load_eval_cases`). `draft_eval_case_from_fix` turns a missed bug into a new case. `get_review_metrics` shows findings per week, top rules and the rejected rate, never per person.
+- The dead `scripts/sfn-pr-check` (a naive regex script no tool called) is removed; `sfn-ci pre-push` replaces it.
 
 ---
 
@@ -949,6 +966,23 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | `reason_about_intent` | Intent reasoning for a review with no task: the model investigates (competing hypotheses, product-aware reading of the diff, its own reads), every citation is verified, confidence comes from the evidence (unsupported claims capped at 40, contradictions cost 25, a close runner-up is ambiguity), and the questions are cut to what the protocol allows |
 | `record_draft_task_context` | The temporary task context for a review with no task (BE-, FE-, FS-, EXT-, INFRA-TASK-Dnnn): entries marked CONFIRMED (needs the developer's words), INFERRED (needs its evidence) or UNKNOWN, plus the knowledge captured at the end; preview by default; never touches the task registry |
 | `check_applied_migrations` | Guard that an applied migration is immutable: edited, renamed or deleted after it existed on the base (BLOCKER), a reused version (BLOCKER), a version below the head (WARNING); Flyway-style SQL, Rails, Django, Alembic, EF Core, Prisma, generic; no model |
+| `run_quick_check` | The mechanical half of the rule catalog, no model, about a second: applied migration edited, reused version, mapped column with no migration, committed credential, SQL by concatenation, mutating endpoint without `@PreAuthorize`, flag defaulting on, unsafe DDL, floating versions, unpinned Dockerfile, pipeline skipping tests, tests that cannot fail, web-ui rules. Exact findings `confirmed`, pattern leads `possible` |
+| `get_rule_catalog` | The 81 SecuFusion rules (security and tenancy, database, contracts and Kafka, runtime, tests, dependencies, web-ui, history) with severity and the question each asks, plus per-repository notes; workspace rules in `.secufusion/rules/` add to or override them |
+| `verify_findings` | Adversarial verification: a model tries to refute each finding against the real code (confirm, downgrade, reject); `mode: cross` uses a different provider and can only lower a severity |
+| `merge_review_runs` | Consensus across several runs of one review: keep what enough runs agree on, never discard a confirmed major of a critical rule, hide the rest as seen-once |
+| `finalize_review_findings` | Stable finding ids, severity floors for confirmed critical rules, dated suppressions, noise cap, verdict, fixed / new / still-open since the last review, and the CI gate |
+| `findings_to_sarif` | SARIF 2.1.0 for pipeline and IDE annotations, with the stable id as fingerprint |
+| `render_review_report` | One self-contained HTML report: verdict, walkthrough, test plan, findings, delta, blast radius, suggested reviewers |
+| `suggest_reviewers` | Who wrote the lines the change rewrites and who changed the files recently; names only |
+| `run_quick_eval` | Scores the quick check against the eval corpus (recall, precision, per rule); lists the cases that need a model |
+| `load_eval_cases` | The eval corpus as case specs for `score_review_run` |
+| `draft_eval_case_from_fix` | Turns a missed bug's fix commit into a regression case skeleton |
+| `snapshot_db_schema` | Read-only snapshot of the live PostgreSQL schema (metadata only); the connection string comes from an environment variable you name |
+| `lookup_db_schema` | Columns, foreign keys with ON DELETE, referencing tables and missing FK indexes for the tables a change touches |
+| `audit_dependencies` | Dependencies added, removed and re-versioned, major upgrades, and with `allow_network` the known vulnerabilities (OSV) of the exact versions |
+| `check_release_readiness` | What is in a release and what operations must do: migrations in order, env vars with no default, flags on by default, dependency and API surface changes |
+| `get_review_metrics` | Reviews, findings per week by severity, top rules, rejected rate, fixed on re-review; optional HTML dashboard; never per person |
+| `get_engine_status` | Which headless engines (Anthropic, OpenAI) and verification engine are configured; never prints a key |
 | `check_platform_facts` | A document's topic table, named paths and service list checked against the code in any language; contradictions carry file:line, what cannot be seen is UNVERIFIED |
 | `validate_finding_evidence` | Evidence gate, any language: the cited file exists inside the workspace, the line exists and the quoted code is there; unsupported findings are DROP; an optional proof test makes a finding PROVEN or REFUTED |
 | `check_tenant_flow` | Tenant-flow leads in Java, Kotlin, JavaScript, TypeScript, Python, C#, Go, Ruby, PHP and SQL: data access with no tenant predicate, lookups by id alone, tenant ids taken from a request with no guard; confidence from entity ownership and global scoping signals |

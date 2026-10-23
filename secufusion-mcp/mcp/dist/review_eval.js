@@ -15,6 +15,8 @@ export function matches(f, e) {
         return false;
     if (e.rule && (f.rule ?? "").toLowerCase() !== e.rule.toLowerCase())
         return false;
+    if (e.rule_any_of?.length && !e.rule_any_of.some((r) => r.toLowerCase() === (f.rule ?? "").toLowerCase()))
+        return false;
     if (e.min_severity && rank(f.severity) < rank(e.min_severity))
         return false;
     return true;

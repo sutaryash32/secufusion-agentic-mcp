@@ -1,0 +1,17 @@
+{
+  "repoKey": "sfn-events-api",
+  "description": "New @Scheduled job sends escalation e-mails and marks rows, with no claim/lock \u2014 every replica sends duplicates.",
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "RUN-001",
+        "minSeverity": "major"
+      }
+    ],
+    "verdictIn": [
+      "fix_first",
+      "needs_discussion"
+    ]
+  },
+  "quick_check": false
+}

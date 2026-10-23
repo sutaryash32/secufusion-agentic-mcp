@@ -1,0 +1,13 @@
+{
+  "repoKey": "sfn-tenants-api",
+  "description": "A pipeline step is changed so test failures no longer fail the build.",
+  "quick_check": true,
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "DEP-007",
+        "minSeverity": "major"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "repoKey": "sfn-events-api",
+  "description": "A new migration adds a NOT NULL column with no default to a table that already has rows.",
+  "quick_check": true,
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "DB-008",
+        "file": "src/main/resources/db/migration/V2__add_region.sql",
+        "minSeverity": "major"
+      }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+{ "name": "sfn-web-ui", "private": true, "type": "module",
+  "scripts": { "test:run": "vitest run", "lint": "eslint ." },
+  "dependencies": { "react": "^19.1.0", "@mui/material": "^7.3.4", "axios": "^1.7.0" },
+  "devDependencies": { "vite": "^7.0.0", "vitest": "^3.2.0" } }

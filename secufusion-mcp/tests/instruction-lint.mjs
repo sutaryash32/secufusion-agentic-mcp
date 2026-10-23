@@ -92,6 +92,26 @@ check("context discovery: the draft reference is provisional, never a work item,
 check("context discovery: the persona recovers the context before asking and marks only the developer's words CONFIRMED", /No task, no problem/.test(read("agents/reviewer.md")) && /discover_review_context/.test(read("agents/reviewer.md")));
 check("migrations: PASS 0 starts from the deterministic guard, treats an applied migration as immutable, and fires for any framework", /### PASS 0[\s\S]*?migration file of any other framework[\s\S]*?\*\*F — Applied migrations are immutable\*\*[\s\S]*?check_applied_migrations[\s\S]*?VERSION_CLASH[\s\S]*?### PASS 1/.test(review));
 check("agents: AGENTS.md no longer claims a pre-PR check that no tool implements", !/automated in `run_pre_pr_checks`/.test(agents) && /check_applied_migrations/.test(agents));
+check("delivery: /sfn-review starts from the quick check and the rule catalog, uses the live schema and dependency audit, and every tool it names exists", /## STEP 1D[\s\S]*?run_quick_check[\s\S]*?get_rule_catalog[\s\S]*?lookup_db_schema[\s\S]*?audit_dependencies[\s\S]*?## LANGUAGE-NEUTRAL REVIEW/.test(review));
+check("delivery: PASS 22 verifies adversarially after the evidence gate, and STEP 5 finalizes, records and reports the delta", /### PASS 22[\s\S]*?validate_finding_evidence[\s\S]*?Adversarial verification[\s\S]*?verify_findings[\s\S]*?### PASS 23/.test(review) && /## STEP 5[\s\S]*?finalize_review_findings[\s\S]*?Since the last review[\s\S]*?render_review_report[\s\S]*?findings_to_sarif/.test(review));
+check("delivery: the vulnerability lookup is opt-in and says what it sends", /allow_network=true[\s\S]{0,200}user agrees|ask once[\s\S]{0,160}allow_network=true/.test(review) && /osv\.dev/.test(review));
+check("kafka: the rule catalog's topic table and AGENTS.md agree on the topics, the producers and the consumers that matter", (() => {
+    const topics = (s) => [...s.matchAll(/^\| `([\w-]+)` \|/gm)].map((m) => m[1]).filter((n) => /^(quickstart-events|device-registration|device-deleted|extension-approval-decided|extension-policy-changed|policy-events)$/.test(n)).sort().join();
+    const cat = read("rules/shared/contracts.md");
+    const both = (re) => re.test(cat) && re.test(agents);
+    return topics(cat) === topics(agents) && both(/sfn-policy-api/) && /verified 2026-10-23/i.test(cat) && /Verified 2026-10-23/.test(agents) && /commented out/.test(cat) && /NO LIVE CONSUMER/.test(agents);
+})());
+check("rules: every rule id the quick check can emit exists in the catalog, so a finding can always be traced to its question", await (async () => {
+    const { runQuickCorpus } = await import(pathToFileURL(path.join(PKG, "mcp/dist/eval_corpus.js")).href);
+    const { loadCatalog } = await import(pathToFileURL(path.join(PKG, "mcp/dist/rule_catalog.js")).href);
+    const ids = new Set(loadCatalog().rules.map((r) => r.id));
+    const src = read("mcp/src/quick_check.ts");
+    const emitted = [...new Set([...src.matchAll(/ruleId: "([A-Z]{2,4}-\d{3})"/g)].map((m) => m[1]))];
+    const missing = emitted.filter((i) => !ids.has(i));
+    if (missing.length) console.log("   missing from the catalog: " + missing.join());
+    return emitted.length > 20 && missing.length === 0;
+})());
+check("ci: the pipeline templates pin the package version to this release and never echo a key", ["ci/azure/sfn-review.yml", "ci/azure/release-check.yml", "ci/github/sfn-review.yml"].every((f) => read(f).includes("secufusion-mcp@" + JSON.parse(read("package.json")).version)) && !/echo.*(API_KEY|SECRET)/i.test(read("ci/azure/sfn-review.yml") + read("ci/github/sfn-review.yml")));
 const spec = read("commands/sfn-spec.md");
 check("wiring: /sfn-spec asks whether the story matches reality (ledger, platform facts) and enumerates edges before the plan is final", /Does the story match reality\?[\s\S]*?build_claims_ledger[\s\S]*?check_platform_facts/.test(spec) && /\*\*Edges\.\*\*[\s\S]*?build_edge_matrix/.test(spec));
 for (const [name, re] of Object.entries(wired)) check(`wiring: ${name}`, re.test(review));

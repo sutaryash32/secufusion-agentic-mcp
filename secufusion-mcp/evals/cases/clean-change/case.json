@@ -1,0 +1,16 @@
+{
+  "repoKey": "sfn-tenants-api",
+  "description": "Pure refactor: extract a name-normalisation helper with a unit test. Must not produce blockers or majors.",
+  "expect": {
+    "mustNotFind": [
+      {
+        "minSeverity": "major"
+      }
+    ],
+    "verdictIn": [
+      "ready",
+      "needs_discussion"
+    ]
+  },
+  "quick_check": true
+}

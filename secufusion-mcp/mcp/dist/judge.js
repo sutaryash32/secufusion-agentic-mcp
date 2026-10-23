@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { z } from "zod";
+import { createEngine } from "./engine.js";
 /** Accepts an object or a JSON string, so every client can pass `judgment`. */
 export const judgmentParam = z
     .union([z.string(), z.record(z.any())])
@@ -85,21 +86,45 @@ export async function judge(server, root, spec) {
             };
         }
     }
-    const canSample = !!server?.server?.getClientCapabilities?.()?.sampling;
-    if (!canSample)
-        return needsJudgment(spec);
     const { system, user } = buildPrompt(spec);
+    const answer = async (text, source) => {
+        const verdict = spec.schema.parse(extractJson(text));
+        if (spec.persist !== false)
+            persist(root, spec, verdict, source);
+        return { status: "ok", verdict, source };
+    };
+    // A configured verification engine wins when a cross-model check was asked for.
+    if (spec.engineRole === "verify") {
+        const v = createEngine({ role: "verify" });
+        if (v.engine) {
+            try {
+                return await answer(await v.engine.complete({ system, user, maxTokens: 2500 }), "engine");
+            }
+            catch (e) {
+                return needsJudgment(spec, `verification engine failed: ${e?.message ?? e}`);
+            }
+        }
+    }
+    const canSample = !!server?.server?.getClientCapabilities?.()?.sampling;
+    if (!canSample) {
+        // No client model (CI, hook, command line): use the configured engine, if the user turned one on.
+        const p = createEngine({ role: "primary" });
+        if (!p.engine)
+            return needsJudgment(spec);
+        try {
+            return await answer(await p.engine.complete({ system, user, maxTokens: 2500 }), "engine");
+        }
+        catch (e) {
+            return needsJudgment(spec, `engine failed: ${e?.message ?? e}`);
+        }
+    }
     try {
         const res = await server.server.createMessage({
             systemPrompt: system,
             messages: [{ role: "user", content: { type: "text", text: user } }],
             maxTokens: 2500,
         });
-        const text = res?.content?.type === "text" ? res.content.text : "";
-        const verdict = spec.schema.parse(extractJson(text));
-        if (spec.persist !== false)
-            persist(root, spec, verdict, "sampling");
-        return { status: "ok", verdict, source: "sampling" };
+        return await answer(res?.content?.type === "text" ? res.content.text : "", "sampling");
     }
     catch (e) {
         return needsJudgment(spec, `sampling failed: ${e?.message ?? e}`);

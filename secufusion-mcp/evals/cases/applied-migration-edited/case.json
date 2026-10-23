@@ -1,0 +1,17 @@
+{
+  "repoKey": "sfn-events-api",
+  "description": "An already-applied migration (V2) is edited in place: environments that ran it never see the change.",
+  "quick_check": true,
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "DB-002",
+        "file": "src/main/resources/db/migration/V2__add_region.sql",
+        "minSeverity": "blocker"
+      }
+    ],
+    "verdictIn": [
+      "fix_first"
+    ]
+  }
+}

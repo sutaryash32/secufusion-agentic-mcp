@@ -10,7 +10,7 @@
  * Aggregating many runs shows which passes earn their cost and which only make noise.
  */
 export type Sev = "blocker" | "major" | "minor" | "nit";
-export interface Expected { id?: string; file?: string; line?: number; near?: number; category?: string; rule?: string; min_severity?: string }
+export interface Expected { id?: string; file?: string; line?: number; near?: number; category?: string; rule?: string; /** any one of these rules satisfies the expectation */ rule_any_of?: string[]; min_severity?: string }
 export interface CaseSpec { name: string; expected: Expected[]; must_not?: Expected[]; verdict_in?: string[] }
 export interface ActualFinding { severity: string; file?: string; line?: number; category?: string; rule?: string; pass?: string | number; title?: string }
 export interface RunIn { case: string; findings: ActualFinding[]; verdict?: string }
@@ -28,6 +28,7 @@ export function matches(f: ActualFinding, e: Expected): boolean {
     if (e.line !== undefined && (f.line === undefined || Math.abs(f.line - e.line) > (e.near ?? 15))) return false;
     if (e.category && (f.category ?? "").toLowerCase() !== e.category.toLowerCase()) return false;
     if (e.rule && (f.rule ?? "").toLowerCase() !== e.rule.toLowerCase()) return false;
+    if (e.rule_any_of?.length && !e.rule_any_of.some((r) => r.toLowerCase() === (f.rule ?? "").toLowerCase())) return false;
     if (e.min_severity && rank(f.severity) < rank(e.min_severity)) return false;
     return true;
 }

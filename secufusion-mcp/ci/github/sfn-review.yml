@@ -1,0 +1,38 @@
+# SecuFusion review gate for GitHub Actions. Copy to .github/workflows/sfn-review.yml.
+# The quick check needs no secrets. The headless review is OFF until you add the secret and set review: true;
+# it sends the diff to the provider you choose.
+name: SecuFusion review
+on:
+  pull_request:
+    branches: [develop, main]
+permissions:
+  contents: read
+  security-events: write     # to upload SARIF
+env:
+  SFN_PACKAGE: secufusion-mcp@4.15.0
+  SFN_REVIEW: 'false'        # 'true' to run the headless review
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install -g "$SFN_PACKAGE"
+      - name: Quick check (no model)
+        run: sfn-ci quick-check --base "origin/${{ github.base_ref }}" --fail-on blocker --sarif sfn/quick.sarif
+      - name: Headless review
+        if: env.SFN_REVIEW == 'true'
+        env:
+          SFN_ENGINE: anthropic
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # SFN_VERIFY_ENGINE: openai        # a different provider checks the findings
+          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: sfn-ci review --base "origin/${{ github.base_ref }}" --fail-on blocker --out-dir sfn
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('sfn/*.sarif') != ''
+        with: { sarif_file: sfn }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: sfn-review, path: sfn }
