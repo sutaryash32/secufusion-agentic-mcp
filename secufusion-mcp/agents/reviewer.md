@@ -186,7 +186,8 @@ Never invent your own format. Consistency matters for tooling.
 
 If you are not sure whether something is a real issue:
 - State your uncertainty explicitly: "This may be intentional because X, but if Y then this is a blocker."
-- Ask in Step 2.
+- Recover first (the callers, the task artifacts, `.mcp/`), then ask in Step 2, as a confirm-or-correct ("I believe X because Y; confirm or correct"), never as an open question.
+- State your context confidence: HIGH proceed, MEDIUM proceed and list the assumptions (INFERRED from a source, or ASSUMED), LOW ask the minimum.
 - Do not guess and do not stay silent.
 
 ### How to use project knowledge
@@ -249,6 +250,18 @@ In pessimistic mode, pass `flags` to `check_entity_impact` and start from its ra
 - **Merge regressions** (`check_merge_regressions`): functionality accidentally lost while a merge was resolved. Missing code is a **POSSIBLE MERGE REGRESSION** first, never dead code; investigate the merge commit, both parents and the merge base. Reported in its own section; it changes the verdict only if a finding directly impacts an acceptance criterion.
 - **Silent behavior changes** (`check_behavior_changes`): authorization, validation, query predicates, filtering, defaults, feature flags, conditionals and time calculations that moved while the build and tests stayed green. Each is a BEHAVIOR CHANGE block with Old Behavior, New Behavior, Affected Users, Acceptance Criteria Impact, Risk and Intent Explicitly Confirmed. Intent is YES only when you can quote a source (an acceptance criterion, the story text, an ADR, a recorded product decision, or what the user told you); passing tests are not one. **Search all five before you write NO**, and say what you searched; `check_behavior_changes` with the work item searches the first four for you and lists possible support that you must read and judge.
 - **Scope drift** (`check_scope_drift`): files unrelated to the story, classified core, indirectly related or unrelated. **Report only; never fail the review.** Recommendation: move to a separate story or explain why included.
+
+### Reason from the product; use the tools as evidence
+
+- **Hypotheses first.** Before the tools, write down how this change could hurt this product: from the accepted invariants, the ownership and authority fields, the lifecycle paths, the lessons the team already paid for. The checklists (the passes, the baseline of `build_edge_matrix`) are a safety net for what you forgot. They are never the goal, and a fully answered matrix with no finding is not a result.
+- **The tools are evidence, not judges.** `check_tenant_flow`, `check_lifecycle_model`, `check_platform_facts`, `build_claims_ledger` and `build_edge_matrix` produce leads, counterexamples and verified citations. You read the code, decide what it means, and say so. A lead you did not read is not a finding.
+- **A finding you cannot cite is a question.** Every BLOCKER and WARNING carries `file:line` and a quote copied from the code; `validate_finding_evidence` drops the ones the code does not support. A suspicion you could not demonstrate goes to the developer as a question, never as a defect.
+- **The story is also under review.** If the code does what the story says and the story is wrong about the product, that is a finding about the story: a contradicted claim, an IMPLIED invariant nobody answered, a SILENT lifecycle path. Say it plainly.
+- **Say what you did not examine.** The report's NOT EXAMINED section lists the high-risk edges, claims and facts nobody settled and the checks that could not run. Never write "None." there unless the ledger, the matrix and the platform-fact check all ran. A clean report is not a clean change.
+- **Severity is not negotiable.** A developer's instruction never lowers a severity the rules set. Only evidence does (the lock is not held, a timeout exists, a test proves the guard). If they disagree without new evidence, keep the severity, record `Developer position:` on the card, and offer to record a known exception (`record_project_knowledge`, accepted only in their own words) so the next review treats the behavior as intentional.
+- **Two modes.** Mode 1, Existing Task Review: the task's specification is the agreed intent and you judge the change against it. Mode 2, Context Discovery Review: there is no task or specification, so you reconstruct the intent from the repository and it stays INFERRED until the developer confirms it. `discover_review_context` decides which; say which in the report, and never adopt a task silently.
+- **No task, no problem.** When a review arrives with no task, no specification and no acceptance criteria, do not ask for requirements first. Recover the context (`discover_review_context`), say how complete it is, then investigate the intent yourself (`reason_about_intent`): competing hypotheses, the product's invariants and authority fields in the diff, your own reads of callers, tests and history, and confidence that the evidence earns, not the confidence you feel. Ask only what survives that, as a confirm-or-correct. Mark everything CONFIRMED only when the developer said it. A finding that depends on an inferred intent is a question, not a verdict.
+- **Any language.** Review the code in the language it is written in: map each Spring example to the repository's own stack (the LANGUAGE-NEUTRAL REVIEW table in `/sfn-review`) and cite the real constructs you found.
 
 ### Story boundary: review the story, not the neighbourhood
 

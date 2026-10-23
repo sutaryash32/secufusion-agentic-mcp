@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.12.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 90 tools. See [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.13.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, 4.13.0 adds fourteen reasoning tools that work in any language (a claims ledger for story, code and reality, an edge matrix, platform-fact checking, an evidence gate, tenant-flow analysis, lifecycle model checking, invariant checks, mutation review, eval scoring, pass routing, fix history), and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 104 tools. See [What's New in 4.13.0](#whats-new-in-4130), [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,30 +23,31 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.12.0](#whats-new-in-4120)
-15. [What's New in 4.11.0](#whats-new-in-4110)
-16. [What's New in 4.10.0](#whats-new-in-4100)
-17. [What's New in 4.9.0](#whats-new-in-490)
-18. [What's New in 4.8.0](#whats-new-in-480)
-19. [What's New in 4.7.0](#whats-new-in-470)
-20. [What's New in 4.6.0](#whats-new-in-460)
-21. [What's New in 4.5.0](#whats-new-in-450)
-22. [What's New in 4.4.0](#whats-new-in-440)
-23. [What's New in 4.3.0](#whats-new-in-430)
-24. [What's New in 4.2.0](#whats-new-in-420)
-25. [What's New in 4.1.0](#whats-new-in-410)
-26. [What's New in 4.0.0](#whats-new-in-400)
-27. [Upgrading from 3.x](#upgrading-from-3x)
-28. [Getting Started](#getting-started)
-29. [New Contributor Guide](#new-contributor-guide)
-30. [Contributing Knowledge](#contributing-knowledge)
-31. [Release Notes Philosophy](#release-notes-philosophy)
-32. [Tool Reference](#tool-reference)
-33. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-34. [Development](#development)
-35. [Status and Known Limitations](#status-and-known-limitations)
-36. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-37. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.13.0](#whats-new-in-4130)
+15. [What's New in 4.12.0](#whats-new-in-4120)
+16. [What's New in 4.11.0](#whats-new-in-4110)
+17. [What's New in 4.10.0](#whats-new-in-4100)
+18. [What's New in 4.9.0](#whats-new-in-490)
+19. [What's New in 4.8.0](#whats-new-in-480)
+20. [What's New in 4.7.0](#whats-new-in-470)
+21. [What's New in 4.6.0](#whats-new-in-460)
+22. [What's New in 4.5.0](#whats-new-in-450)
+23. [What's New in 4.4.0](#whats-new-in-440)
+24. [What's New in 4.3.0](#whats-new-in-430)
+25. [What's New in 4.2.0](#whats-new-in-420)
+26. [What's New in 4.1.0](#whats-new-in-410)
+27. [What's New in 4.0.0](#whats-new-in-400)
+28. [Upgrading from 3.x](#upgrading-from-3x)
+29. [Getting Started](#getting-started)
+30. [New Contributor Guide](#new-contributor-guide)
+31. [Contributing Knowledge](#contributing-knowledge)
+32. [Release Notes Philosophy](#release-notes-philosophy)
+33. [Tool Reference](#tool-reference)
+34. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+35. [Development](#development)
+36. [Status and Known Limitations](#status-and-known-limitations)
+37. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+38. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -437,6 +438,39 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.13.0
+
+A minor release: fourteen new tools (104 in all), no breaking changes. They make the reviewer sharper by replacing guesswork with mechanical evidence, and they work in **any language**: Java, Kotlin, TypeScript, JavaScript, Python, C#, Go, Ruby, PHP and SQL.
+
+**The story, the code and reality**
+- **`build_claims_ledger`**: every statement in the story becomes a claim (acceptance, reality, assumption, decision, non-functional), and the tool adds what the story does NOT say: IMPLIED claims (the accepted invariants and decisions in `.mcp/` that apply, each with its source) and SILENT claims (lifecycle paths that exist for the story's entities and that it never mentions). The reviewer reasons about each claim and cites code with a quote; the tool verifies every citation against the real files and gives each claim a status (VERIFIED, IMPLEMENTED_UNTESTED, CONTRADICTED, UNVERIFIABLE, UNVERIFIED, NO_EVIDENCE). It then maps the diff BACK to the claims: WRITTEN_NOT_BUILT and BUILT_NOT_WRITTEN.
+- **`build_edge_matrix`**: not a checklist. Cells come from the project's own memory (accepted invariants, decisions, lessons, known exceptions, each naming its source), from the code (lifecycle paths that never mention the flag, absent paths, authorization decisions elsewhere that read the same field, rules copied across services), from the reviewer's own hypotheses (`custom_cells`, each with a reason), and last from the generic per-type baseline. They are ranked by risk. With `reason_top` the model reasons from the product rule to the code path on the highest-risk cells (through the server's sampling, or the calling model), and every citation in its verdict is verified: a "holds" with no evidence in the code is deferred, not accepted. High-risk cells need written reasoning and evidence; baseline cells are answered in bulk.
+- **`check_platform_facts`**: the facts the review relies on (the topic table, the services, the files named in `AGENTS.md`) checked against the code in any language. A contradiction always carries `file:line`; what the scan cannot see is UNVERIFIED, never wrong.
+
+**Evidence instead of opinion**
+- **`validate_finding_evidence`**: every finding must cite code that exists. The file must be inside the workspace, the line must exist, and the quoted code must really be there (a quote found at another line is corrected). A finding whose citation is not in the code is dropped before the report. A finding can also carry a proof by test: a test that fails on the change makes it `PROVEN`, one that passes makes it `REFUTED`.
+- **`check_tenant_flow`**: data access with no tenant predicate, lookups by id alone, and tenant ids taken from a request with no guard, found by profile for nine languages. It learns which entities are tenant-owned from their definitions and lowers confidence when a global scoping mechanism (Hibernate filters, EF query filters, Prisma extensions, row-level security) exists.
+- **`check_lifecycle_model`**: a bounded model checker for lifecycle invariants. The reviewer models the entity's operations; the tool explores every order and, for concurrent actors, every interleaving of a check step and an act step, and returns the shortest sequence that breaks "exactly one active owner". Zombie states are found, not argued.
+- **`analyze_mutation_report`**: which changed lines would not be noticed if their logic were wrong. Reads PIT (Java, Kotlin), Stryker (JavaScript, TypeScript, C#), Infection (PHP) and a generic JSON for Python, Go, Rust and Ruby.
+- **`generate_invariant_checks`**: turns an invariant into a read-only violation query, the database DDL as a manual-migration draft (partial or filtered unique index, unique, NOT NULL, FK), and a test skeleton in the service's language. Nothing is executed.
+
+**Measuring and routing the reviewer**
+- **`score_review_run`**: scores real reviews against eval cases and shows recall, precision and a per-pass table with advice (KEEP, REVIEW_COST, DEMOTE), so passes are kept or cut on data.
+- **`route_review_passes`**: picks the passes a change needs from its paths and code signals (migrations, entities, data access, HTTP surface, security, messaging, schedulers, config, dependencies, UI, invariant flags). A documentation-only change runs four passes; a risky multi-language change runs all 28. Passes are grouped for parallel specialists, and every skipped pass is reported NOT APPLICABLE with the reason.
+- **`get_fix_history`**: the deterministic half of PASS 27: fix-like commits for a file or line range from git, plus the team's rejected patterns and decisions.
+
+**The instructions**
+- `/sfn-review` gains STEP 1C (routing) and a language-neutral table that maps each Spring example to Prisma, Django, EF Core, GORM, ActiveRecord and Eloquent; PASS 1, 15, 22, 24, 27 and the zombie-state lens call the new tools.
+- **Two review modes** for `/sfn-review`: **Mode 1, Existing Task Review** (a work item whose task folder holds a specification: judged against what was agreed) and **Mode 2, Context Discovery Review** (no task, specification or acceptance criteria). `discover_review_context` decides the mode deterministically from the work item you give, says why, and never adopts a task silently; a reference whose type conflicts with an existing folder is an identity conflict, not a choice. Mode 2 becomes Mode 1 when the developer confirms a task.
+- **Context discovery mode** (Mode 2) for `/sfn-review`: a review with no task id, requirements or acceptance criteria no longer starts with questions. `discover_review_context` inspects the repository, the task folders, decisions, review history and project knowledge and returns a context completeness report with a coverage score, the hints about the intent, and what the product's own memory says about this diff (the invariants that apply, the authority fields it writes, the lifecycle paths it touches). `reason_about_intent` then asks the model to investigate: competing hypotheses, product-aware reading of the diff, its own reads of callers, tests and history. Every citation is verified against the code, the confidence is set by the evidence and not by the claim, and the protocol cuts the questions to what is critical, not inferable and blocking. `record_draft_task_context` keeps a temporary task context (BE-, FE-, FS-, EXT- or INFRA-TASK-Dnnn) with every entry marked CONFIRMED, INFERRED or UNKNOWN. It refuses to store a guess as a confirmed fact, logs the confidence before and after the developer confirms so the progression can be measured, and the next review of the same work finds the draft again.
+- **Context sufficiency protocol** (Rule 0b in `AGENTS.md`): every command first takes inventory, recovers from the repository, and asks only a targeted confirm-or-correct question about what is critical, not inferable and blocking. Confidence is stated (HIGH, MEDIUM, LOW), and facts, recovered context and assumptions stay apart. It governs missing context, never missing decisions.
+- The report fixes found in a real 4.12.0 review: a `DIFF-QUALITY` label, a place for the product and privacy fit, severity set by evidence and not by request, and slots for records written and for a verdict gate that could not run.
+- PASS 4 no longer carries a remembered Kafka topic list that contradicted `AGENTS.md`; it uses `extract_event_topics`. The middle verdict is "APPROVED WITH CHANGES" everywhere.
+- `/sfn-code` Phase 3A applies SOLID and DRY in the file's own language and scans the code it wrote with `check_tenant_flow`.
+- `tests/instruction-lint.mjs` lints the instructions for contradictions and drift (pass numbering, report labels, topic facts, tool wiring, agent-file alignment), and the router's pass catalog is checked against the document.
 
 ---
 
@@ -898,6 +932,20 @@ The server exposes the tools below. Most workflow tools record state under `.sec
 | `calibrate_review` | Client-parity calibration with a blind protocol: seal your derived concerns, then reveal the client's comments; reports derived / partial / missed, blocking recall and extras |
 | `score_review_confidence` | HIGH / MEDIUM / LOW confidence from the evidence the review has, with hard caps (stale review, no cross-service scan, open decisions); separates "no findings" from "trustworthy" |
 | `normalize_line_endings` | Convert a file back to its own style (preview by default; **writes** only with `apply` and the user's words) |
+| `build_claims_ledger` | Story claims plus the claims the product implies (invariants, decisions) and the paths the story is silent about, judged against the code with verified citations; the diff mapped back to the claims (written not built, built not written) |
+| `build_edge_matrix` | Product-aware edge hypotheses ranked by risk: cells from project knowledge (invariants, decisions, lessons), code (lifecycle paths, authority consumers), your own hypotheses, then the generic baseline; `reason_top` has the model reason about the top cells and verifies its citations |
+| `discover_review_context` | Context completeness report for a review with no task: sources found and missing, a coverage score, the branch and commit hints about the intent (work type, references, ambiguity), task folders that may explain the diff (candidates, never adopted silently), draft contexts from earlier reviews, and a provisional reference |
+| `reason_about_intent` | Intent reasoning for a review with no task: the model investigates (competing hypotheses, product-aware reading of the diff, its own reads), every citation is verified, confidence comes from the evidence (unsupported claims capped at 40, contradictions cost 25, a close runner-up is ambiguity), and the questions are cut to what the protocol allows |
+| `record_draft_task_context` | The temporary task context for a review with no task (BE-, FE-, FS-, EXT-, INFRA-TASK-Dnnn): entries marked CONFIRMED (needs the developer's words), INFERRED (needs its evidence) or UNKNOWN, plus the knowledge captured at the end; preview by default; never touches the task registry |
+| `check_platform_facts` | A document's topic table, named paths and service list checked against the code in any language; contradictions carry file:line, what cannot be seen is UNVERIFIED |
+| `validate_finding_evidence` | Evidence gate, any language: the cited file exists inside the workspace, the line exists and the quoted code is there; unsupported findings are DROP; an optional proof test makes a finding PROVEN or REFUTED |
+| `check_tenant_flow` | Tenant-flow leads in Java, Kotlin, JavaScript, TypeScript, Python, C#, Go, Ruby, PHP and SQL: data access with no tenant predicate, lookups by id alone, tenant ids taken from a request with no guard; confidence from entity ownership and global scoping signals |
+| `check_lifecycle_model` | Bounded model checker: operations with guards and effects, invariants, sequential or concurrent (check-then-act interleavings, locks); returns the shortest sequence that breaks an invariant |
+| `generate_invariant_checks` | Read-only violation query, DDL (manual-migration draft) and a test skeleton for an invariant; postgres, mysql, sqlserver; tests in Java, Kotlin, TypeScript, Python, C#, Go, Ruby, PHP |
+| `analyze_mutation_report` | Surviving mutants on the changed lines from a PIT, Stryker, Infection or generic mutation report, guard-like mutators first |
+| `score_review_run` | Eval scorer: recall, precision and per-pass advice (KEEP, REVIEW_COST, DEMOTE) from eval cases and review runs |
+| `route_review_passes` | The passes this change needs (quick, standard, deep), the reason for each, the skipped passes, and groups for parallel specialists |
+| `get_fix_history` | Fix-like commits for a file or line range (git, no shell) plus rejected patterns and task decisions that mention it |
 
 **Project intelligence and releases**
 

@@ -55,6 +55,14 @@ After writing any test scenario:
 
 ---
 
+### Prove it before you hand off
+
+Reasoning about your own change is part of the job, not a step someone else does later.
+- Before you write a guard, a query on tenant-owned data or an ownership change, ask how another path could break the same rule (another role, tenant, retry, scheduled job, import, old data). Read the neighbouring code and copy its way of scoping by tenant.
+- After you write it, call `check_tenant_flow` on the files you wrote and fix every HIGH lead in a file the spec authorizes.
+- Before you hand off, call `build_claims_ledger` with the acceptance criteria as claims and, for each, the code that implements it and the test that proves it (each with a quote copied from the file). Fix every written-not-built and untested gap, and explain every changed region that no criterion accounts for: link it to a criterion, or remove it.
+- Say what you did not check. A handoff that lists only what passed hides what was not examined.
+
 ### WORK-ITEM IDENTITY IS METADATA (STRICT RULE)
 
 A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230` or `EPIC-1230` is identity, not decoration. It must stay
