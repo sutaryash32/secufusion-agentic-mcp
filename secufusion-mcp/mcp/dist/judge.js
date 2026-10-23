@@ -74,7 +74,8 @@ export async function judge(server, root, spec) {
         try {
             const raw = typeof spec.supplied === "string" ? extractJson(spec.supplied) : spec.supplied;
             const verdict = spec.schema.parse(raw);
-            persist(root, spec, verdict, "caller");
+            if (spec.persist !== false)
+                persist(root, spec, verdict, "caller");
             return { status: "ok", verdict, source: "caller" };
         }
         catch (e) {
@@ -96,7 +97,8 @@ export async function judge(server, root, spec) {
         });
         const text = res?.content?.type === "text" ? res.content.text : "";
         const verdict = spec.schema.parse(extractJson(text));
-        persist(root, spec, verdict, "sampling");
+        if (spec.persist !== false)
+            persist(root, spec, verdict, "sampling");
         return { status: "ok", verdict, source: "sampling" };
     }
     catch (e) {

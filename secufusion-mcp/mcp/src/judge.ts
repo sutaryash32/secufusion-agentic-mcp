@@ -29,6 +29,8 @@ export interface JudgmentSpec<T> {
     supplied?: unknown;
     /** Tool name + the argument hint the caller should re-invoke with. */
     reinvoke: string;
+    /** Default true. Pass false for READ-ONLY tools: the verdict is returned to the caller and nothing is written. */
+    persist?: boolean;
 }
 
 export type JudgmentOutcome<T> =
@@ -129,7 +131,7 @@ export async function judge<T>(server: any, root: string, spec: JudgmentSpec<T>)
         try {
             const raw = typeof spec.supplied === "string" ? extractJson(spec.supplied) : spec.supplied;
             const verdict = spec.schema.parse(raw);
-            persist(root, spec, verdict, "caller");
+            if (spec.persist !== false) persist(root, spec, verdict, "caller");
             return { status: "ok", verdict, source: "caller" };
         } catch (e: any) {
             return {
@@ -151,7 +153,7 @@ export async function judge<T>(server: any, root: string, spec: JudgmentSpec<T>)
         });
         const text = res?.content?.type === "text" ? res.content.text : "";
         const verdict = spec.schema.parse(extractJson(text));
-        persist(root, spec, verdict, "sampling");
+        if (spec.persist !== false) persist(root, spec, verdict, "sampling");
         return { status: "ok", verdict, source: "sampling" };
     } catch (e: any) {
         return needsJudgment(spec, `sampling failed: ${e?.message ?? e}`);

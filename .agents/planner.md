@@ -75,11 +75,20 @@ You must follow this deterministic pipeline:
 
 ---
 
+### Story versus reality, and the edges nobody listed (before the plan is final)
+
+Investigation ends with two questions the plan must answer. Both are reasoning, not forms.
+- **Does the story match reality?** Call `build_claims_ledger` with the story, `entities` and `flags`. It adds the claims the story does not make: the accepted invariants and decisions in `.mcp/` that apply (IMPLIED) and the lifecycle paths that exist and that the story never mentions (SILENT). Reason about each against the code you read. A claim the code contradicts is a CONFLICT to put to the user, not something to plan around. Call `check_platform_facts` when the plan relies on message topics or services written in `AGENTS.md`.
+- **What are the edges nobody thought of?** Write the edges you think are most dangerous for this product first, then call `build_edge_matrix` with the entry points, `entities`, `flags` and your hypotheses as `custom_cells`. Reason about the top-ranked cells (`reason_top`). Each one the plan does not handle becomes a test obligation, a plan step, a reasoned NOT_APPLICABLE, or a decision for the user. Do not optimise for filling the matrix.
+
+---
+
 ## Phase 0.5 — Clarification and Confirmed Specification
 (TRIGGER: after repository investigation is complete)
 
 If there are material ambiguities (security, destructive operations, authorization, tenancy, data ownership, retention) that cannot be safely resolved from repository evidence, YOU MUST ASK THE USER.
 
+0. **RECOVER FIRST** (Rule 0b in `AGENTS.md`): before you ask anything, recover what you can from the repository, the existing artifacts and project knowledge, and state what you believe. Ask only what is critical, not inferable, not discoverable and blocking, phrased as "I believe X because Y; confirm or correct". This governs missing context; a product decision is still the user's to make.
 1. **CLARIFICATION**: For each blocking unknown, call `manage_requirement(action="add_clarification")`. Group closely related questions when possible.
 2. **YIELD**: Present the clarification questions to the developer and STOP. Wait for explicit answers.
 3. **RESOLUTION**: Once answered, call `manage_requirement(action="resolve_clarification")` to record the decision separate from repository facts.

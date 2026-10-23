@@ -34,6 +34,24 @@ If DNA is not loaded (DNA_LOADED = false in `.agents/claude.md`), ABORT and tell
 
 ---
 
+### Rule 0b — Context Sufficiency (before ANY workflow, review, implementation, analysis, investigation, plan or document)
+
+Never ask the user for something you could have found. After DNA is loaded and before you act, assess whether your context is sufficient, in this order:
+
+1. **Inventory** what is already available, asking nothing yet: the request; repository state (current branch, staged and modified files); task artifacts, specifications, decisions and review history; project conventions and `.mcp/` knowledge; context discovered earlier; architecture evidence.
+2. **Objective.** What does the user want, what is the deliverable and the desired outcome, and how confident must the result be? If it is ambiguous, infer it from the evidence before asking.
+3. **Gap analysis.** Sort what you need into KNOWN, INFERRED and UNKNOWN. For every UNKNOWN ask: is it required, can it be inferred, can it be discovered, can the work continue without it?
+4. **Recover before you ask.** Inspect the repository, code relationships, existing artifacts, naming conventions, prior task history, architectural patterns and the change itself. Recover as much as you can.
+5. **Targeted clarification, only for what is critical, not inferable, not discoverable and blocking.** Never ask a broad question where a specific one will do. Bad: "What are you trying to do?" Good: "I believe the goal is X, because Y. Please confirm or correct."
+6. **Confidence.** HIGH: proceed. MEDIUM: proceed and document the assumptions. LOW: ask the minimum that raises it.
+7. **Execute**, and keep three things visibly apart in what you produce: confirmed facts, recovered context (INFERRED, with its source) and explicit assumptions (ASSUMED: nothing recorded).
+
+The golden rule: before any request for information ask what you know, what you can discover, what you can infer and what is actually missing, and ask only after the evidence is exhausted.
+
+This governs missing CONTEXT, never missing DECISIONS. A product choice, a scope boundary, a trade-off or an acceptance of risk belongs to the user: it is never inferred, and the existing decision gates (`ask_user_decision`, the stop after classification, DEVELOPER DECISION REQUIRED) stay in force.
+
+---
+
 ### Rule 1 — Philosophy Check (Phase -1, SILENT, runs AFTER DNA)
 
 For any `user_story`, `feature`, `chore`, or `refactor`:
@@ -117,6 +135,7 @@ Before creating any file, decide its type and use that type's single home. Never
 |---|---|---|
 | ADR / architecture decision, lessons learned, known exception, pattern, operational constraint | `.mcp/<category>/` (`adr`, `architecture`, `patterns`, `known-exceptions`, `lessons-learned`, `operational`) | `record_project_knowledge`; saved as `proposed`; only a person accepts it |
 | Spec, review notes, PR summary, ADO comment, investigation record, test-run notes | `.secufusion/tasks/<ref-folder>/` (`<ref-folder>` is the `folder` from `resolve_work_item_ref`) | MCP generators where they exist; otherwise hand-written with a `.draft` suffix |
+| Draft task context (a review with no task, no specification and no acceptance criteria) | `.secufusion/tasks/<ref>-draft-<title>/` (`<ref>` is provisional: BE-, FE-, FS-, EXT- or INFRA-TASK-Dnnn) | `record_draft_task_context` (`context.draft.json` and `context.draft.md`); never a work item, never in a branch, commit or PR |
 | Source, tests, migrations | The service repo, only those in the spec's "Expected file changes" | Normal edits |
 | Anything else in a repo (docs, config, CI, `.env`, `application.properties`) | **Not** without an explicit user instruction | Ask first |
 

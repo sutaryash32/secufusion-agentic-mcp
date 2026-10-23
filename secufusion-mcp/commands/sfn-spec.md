@@ -7,6 +7,8 @@ You are executing the **sfn-spec** command: the single *specification* phase of 
 
 Task / Ticket: **$ARGUMENTS**
 
+**Context first.** Before anything else, run the context sufficiency protocol (Rule 0b in `.agents/AGENTS.md`): inventory what is available (the request, the repository state, the task artifacts, the project knowledge), recover what is missing from the repository, and ask the user only a targeted confirm-or-correct question that is critical, not inferable and blocking. State your context confidence (HIGH, MEDIUM or LOW) and keep confirmed facts, recovered context and assumptions apart in what you produce.
+
 ```
 /sfn-init  →  /sfn-spec  →  /sfn-code  →  /sfn-review
  context       think          build        verify
@@ -49,7 +51,7 @@ Read `.agents/claude.md` and check `<MEMORY>`. If `DNA_LOADED` is `false` or mis
 
 ## Step 2 — Understand: intent and story integrity
 
-1. Ask the user whenever any of these is unclear: *What problem does this solve? Who is affected? What is the business risk if it is not delivered? Has the decision maker confirmed it is needed?* **YIELD** for answers.
+1. First recover what you can from the ticket, the repository, the existing task artifacts and `.mcp/` knowledge, and say what you believe. Then ask the user only what is still unclear and blocking, as a confirm-or-correct ("I believe X because Y; confirm or correct"), never as an open question: *What problem does this solve? Who is affected? What is the business risk if it is not delivered? Has the decision maker confirmed it is needed?* **YIELD** for answers.
 2. Call `philosophy_check` (full description including acceptance criteria gathered so far, `task_type`, `reported_by`, `client_confirmed`). Act on the verdict:
    - `PASS`: continue silently.
    - `ADVISORY`: note the concerns in the spec's risks; mention them briefly to the user; continue.
@@ -71,6 +73,7 @@ Read `.agents/claude.md` and check `<MEMORY>`. If `DNA_LOADED` is `false` or mis
    If you uncover a trap, decision or exception the project had not written down, offer to record it (`record_project_knowledge`) so the next engineer does not rediscover it.
 4. Record it: `manage_requirement action=update status=INVESTIGATING` with `facts`, `root_cause`, `inferences`, `assumptions`, `unknowns`, `conflicts`, `blockers`.
 5. **Show the evidence first**: present the FACTs with file references before any conclusion or recommendation.
+5b. **Does the story match reality?** Call `build_claims_ledger` with the story text, `entities` and `flags`. Besides the story's own claims it adds the product's IMPLIED claims (accepted invariants and decisions in `.mcp/`) and SILENT claims (lifecycle paths the story never mentions): each is a question the story must answer. Reason about every claim against the code you just read. A claim of the form "today the system does X" gets `supports` evidence or `contradicts` evidence (with a quote copied from the file); an assumption nobody checked stays UNVERIFIED. A `CONTRADICTED` claim is a CONFLICT: record it with `manage_requirement` (`conflicts`) and put it to the user as a decision, because the story is wrong about reality. Also call `check_platform_facts` when the work depends on message topics or services written in `AGENTS.md`: a stale fact must not become a plan.
 6. Call `classify_task`. **YIELD**: show the result and ask whether it looks right.
 
 ---
@@ -97,6 +100,7 @@ Read `.agents/planner.md` for the Planner Persona. Before writing ANY file, foll
    ordered implementation steps, test obligations, validation requirements, **risks and dependencies**, assumptions, unknowns. Every acceptance criterion needs at least one step and one test obligation.
    Honour every recorded user decision exactly; a CONFIRMED UI reference needs a frontend step per affected component plus a test. Keep the change surface minimal: no unrelated refactoring.
 2. `validate_implementation_plan`. Fix every `required_changes` item and re-run until `plan_gate` is `PASSED`.
+3. **Edges.** First write the edges you think are most dangerous for this product (from the invariants, the ownership and authority fields, the lifecycle paths, past lessons). Then list the planned entry points with their inputs, states, roles, external calls and messaging, and call `build_edge_matrix` with `story_text`, `entities`, `flags` and your hypotheses as `custom_cells`. It ranks product, code and your own cells above the generic baseline. Reason about the top cells (`reason_top`); every one the plan does not handle becomes a test obligation (and a step, if it needs code), a NOT_APPLICABLE with a real reason, or a decision for the user. An edge nobody looked at is a gap in the specification; a matrix filled in without finding anything is not a result.
 
 ---
 

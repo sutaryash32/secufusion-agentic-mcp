@@ -20,6 +20,9 @@ import { registerReviewTools } from "./tools_review.js";
 import { registerMaturityTools } from "./tools_maturity.js";
 import { registerReleaseTools } from "./tools_release.js";
 import { registerKnowledgeTools } from "./tools_knowledge.js";
+import { registerSharperTools } from "./tools_sharper.js";
+import { registerLedgerTools } from "./tools_ledger.js";
+import { registerContextTools } from "./tools_context.js";
 import { registerPrompts } from "./prompts.js";
 
 // the version the server reports is the package version, never a second hand-maintained number
@@ -44,6 +47,9 @@ registerReviewTools(server);
 registerMaturityTools(server);
 registerReleaseTools(server);
 registerKnowledgeTools(server);
+registerSharperTools(server);
+registerLedgerTools(server);
+registerContextTools(server);
 registerPrompts(server);
 
 const transport = new StdioServerTransport();

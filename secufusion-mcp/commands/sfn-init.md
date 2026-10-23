@@ -6,6 +6,8 @@ argument-hint: "(no args) — run from the repo root. Safe to re-run after MCP u
 You are executing the **sfn-init** bootstrap command.
 
 This command is safe to re-run at any time. It never blindly overwrites.
+
+**Context first.** Before anything else, run the context sufficiency protocol (Rule 0b in `.agents/AGENTS.md`): inventory what is available (the request, the repository state, the task artifacts, the project knowledge), recover what is missing from the repository, and ask the user only a targeted confirm-or-correct question that is critical, not inferable and blocking. State your context confidence (HIGH, MEDIUM or LOW) and keep confirmed facts, recovered context and assumptions apart in what you produce.
 On re-run it detects what changed and merges intelligently.
 
 ---
