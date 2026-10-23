@@ -1,0 +1,16 @@
+{
+  "repoKey": "sfn-iam-api",
+  "description": "A real-looking client secret is committed in a properties file.",
+  "quick_check": true,
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "SEC-008",
+        "minSeverity": "blocker"
+      }
+    ],
+    "verdictIn": [
+      "fix_first"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "repoKey": "sfn-tenants-api",
+  "description": "tenant.company_name renamed to display_name with a migration, but sfn-iam-api still maps company_name on the shared tenant table.",
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "DB-004",
+        "minSeverity": "major"
+      }
+    ],
+    "verdictIn": [
+      "fix_first"
+    ]
+  },
+  "quick_check": false
+}

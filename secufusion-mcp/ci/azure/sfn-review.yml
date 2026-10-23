@@ -1,0 +1,88 @@
+# SecuFusion review gate for Azure Pipelines (PR build validation). A reusable steps template.
+#
+#   steps:
+#     - checkout: self
+#       fetchDepth: 0                       # the checks compare with the target branch
+#     - template: ci/azure/sfn-review.yml@secufusion
+#       parameters: { repoKey: sfn-tenants-api }
+#
+# Two gates, so a pipeline is useful on day one:
+#   quick  - no model, no secrets, about a second: applied migrations, committed credentials, SQL built by
+#            concatenation, unauthenticated mutating endpoints, unsafe DDL, pipelines that skip tests ...
+#            Fails the build on a CONFIRMED blocker (parameter failOn).
+#   review - the headless review: an LLM reviews the diff against the rule catalog, every citation is checked
+#            against the real files, a second model (ideally another provider) tries to refute each finding.
+#            Needs ANTHROPIC_API_KEY or OPENAI_API_KEY in a variable group. OFF by default: it sends the diff
+#            to that provider.
+# Outputs: review.sarif (published as CodeAnalysisLogs, shown by the SARIF Viewer extension), review.html, review.json.
+# Exit codes: 1 = gate failed, 2 = the review could not run (start with onReviewError: warn while you roll out).
+
+parameters:
+  - name: repoKey
+    type: string
+  - name: package            # pin a version; a gate you did not pin can change under you
+    type: string
+    default: secufusion-mcp@4.15.1
+  - name: baseBranch
+    type: string
+    default: origin/develop
+  - name: failOn
+    type: string
+    default: blocker
+    values: [blocker, major, minor, none]
+  - name: review             # run the headless review (sends the diff to the configured provider)
+    type: boolean
+    default: false
+  - name: engine
+    type: string
+    default: anthropic
+    values: [anthropic, openai]
+  - name: verifyEngine       # the OTHER provider re-checks the findings; needs both keys
+    type: string
+    default: ''
+    values: ['', anthropic, openai]
+  - name: onReviewError      # warn while rolling out, fail once you trust it
+    type: string
+    default: fail
+    values: [fail, warn]
+  - name: variableGroup
+    type: string
+    default: sfn-review
+
+steps:
+  - task: NodeTool@0
+    displayName: Node 20
+    inputs: { versionSpec: 20.x }
+
+  - script: npm install -g ${{ parameters.package }}
+    displayName: Install SecuFusion review tools
+
+  - script: |
+      mkdir -p "$(Build.ArtifactStagingDirectory)/sfn"
+      sfn-ci quick-check --repo-key ${{ parameters.repoKey }} --base ${{ parameters.baseBranch }} \
+        --fail-on ${{ parameters.failOn }} --sarif "$(Build.ArtifactStagingDirectory)/sfn/quick.sarif"
+    displayName: SecuFusion quick check (no model)
+
+  - ${{ if eq(parameters.review, true) }}:
+      - script: |
+          set +e
+          sfn-ci review --repo-key ${{ parameters.repoKey }} --base ${{ parameters.baseBranch }} \
+            --fail-on ${{ parameters.failOn }} --out-dir "$(Build.ArtifactStagingDirectory)/sfn"
+          code=$?
+          if [ "$code" = "2" ] && [ "${{ parameters.onReviewError }}" = "warn" ]; then
+            echo "##vso[task.logissue type=warning]The review could not run; continuing (onReviewError=warn)."; code=0
+          fi
+          exit $code
+        displayName: SecuFusion review (headless)
+        env:
+          SFN_ENGINE: ${{ parameters.engine }}
+          SFN_VERIFY_ENGINE: ${{ parameters.verifyEngine }}
+          SFN_ANTHROPIC_KEY: $(ANTHROPIC_API_KEY)
+          SFN_OPENAI_KEY: $(OPENAI_API_KEY)
+
+  - task: PublishBuildArtifacts@1
+    displayName: Publish review results
+    condition: always()
+    inputs:
+      PathtoPublish: $(Build.ArtifactStagingDirectory)/sfn
+      ArtifactName: CodeAnalysisLogs

@@ -1,6 +1,6 @@
 {
   "name": "secufusion-mcp",
-  "version": "4.13.0",
+  "version": "4.15.1",
   "type": "module",
   "description": "Project-level spec driven AI workflow tooling for SecuFusion, MCP server - developer workflow tooling with guardrails",
   "main": "mcp/dist/server.js",
@@ -12,6 +12,9 @@
     "commands",
     "hooks",
     "release-notes",
+    "rules",
+    "evals",
+    "ci",
     "mcp/dist",
     "!mcp/dist/benchmark_*.js",
     "!mcp/dist/run_benchmarks.js",
@@ -23,7 +26,8 @@
     "README.md"
   ],
   "bin": {
-    "secufusion-mcp": "mcp/dist/server.js"
+    "secufusion-mcp": "mcp/dist/server.js",
+    "sfn-ci": "mcp/dist/cli.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -35,7 +39,7 @@
     "start": "node mcp/dist/server.js",
     "dev": "tsc --project mcp/tsconfig.json && node mcp/dist/server.js",
     "postinstall": "node -e \"try { require('fs').chmodSync('hooks/knowledge-drift.sh', 0o755) } catch(e) {}\"",
-    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node mcp/dist/benchmark_diff_quality.js && node mcp/dist/benchmark_work_item_identity.js && node mcp/dist/benchmark_release_notes.js && node mcp/dist/benchmark_project_knowledge.js && node mcp/dist/benchmark_knowledge_health.js && node mcp/dist/benchmark_merge_regression.js && node mcp/dist/benchmark_behavior_change.js && node mcp/dist/benchmark_scope_drift.js && node mcp/dist/benchmark_entity_impact.js && node mcp/dist/benchmark_invariant_enforcement.js && node mcp/dist/benchmark_review_staleness.js && node mcp/dist/benchmark_review_maturity.js && node mcp/dist/benchmark_calibration.js && node mcp/dist/benchmark_parity_lenses.js && node mcp/dist/benchmark_ado.js && node mcp/dist/benchmark_unseen.js && node mcp/dist/benchmark_parity.js && node mcp/dist/benchmark_sharper.js && node mcp/dist/benchmark_ledger.js && node mcp/dist/benchmark_context.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs && node tests/e2e-identity.mjs && node tests/e2e-release.mjs && node tests/e2e-knowledge.mjs && node tests/e2e-review-lanes.mjs && node tests/e2e-reasoning.mjs && node tests/e2e-context.mjs && node tests/docs-consistency.mjs && node tests/instruction-lint.mjs"
+    "test": "npm run build && node mcp/dist/benchmark_phase12.js && node mcp/dist/benchmark_diff_quality.js && node mcp/dist/benchmark_work_item_identity.js && node mcp/dist/benchmark_release_notes.js && node mcp/dist/benchmark_project_knowledge.js && node mcp/dist/benchmark_knowledge_health.js && node mcp/dist/benchmark_merge_regression.js && node mcp/dist/benchmark_behavior_change.js && node mcp/dist/benchmark_scope_drift.js && node mcp/dist/benchmark_entity_impact.js && node mcp/dist/benchmark_invariant_enforcement.js && node mcp/dist/benchmark_review_staleness.js && node mcp/dist/benchmark_review_maturity.js && node mcp/dist/benchmark_calibration.js && node mcp/dist/benchmark_parity_lenses.js && node mcp/dist/benchmark_ado.js && node mcp/dist/benchmark_unseen.js && node mcp/dist/benchmark_parity.js && node mcp/dist/benchmark_sharper.js && node mcp/dist/benchmark_ledger.js && node mcp/dist/benchmark_context.js && node mcp/dist/benchmark_migration.js && node mcp/dist/benchmark_delivery.js && node tests/e2e-lifecycle.mjs && node tests/e2e-explore.mjs && node tests/e2e-identity.mjs && node tests/e2e-release.mjs && node tests/e2e-knowledge.mjs && node tests/e2e-review-lanes.mjs && node tests/e2e-reasoning.mjs && node tests/e2e-context.mjs && node tests/e2e-delivery.mjs && node tests/docs-consistency.mjs && node tests/instruction-lint.mjs"
   },
   "keywords": [
     "mcp",

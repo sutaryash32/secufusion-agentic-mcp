@@ -1,0 +1,17 @@
+{
+  "repoKey": "sfn-iam-api",
+  "description": "A new POST endpoint has no @PreAuthorize and is not allowlisted: denied when enforced, open when not.",
+  "quick_check": true,
+  "expect": {
+    "mustFind": [
+      {
+        "ruleId": "SEC-001",
+        "file": "src/main/java/com/secufusion/iam/controller/GroupResetController.java",
+        "minSeverity": "blocker"
+      }
+    ],
+    "verdictIn": [
+      "fix_first"
+    ]
+  }
+}

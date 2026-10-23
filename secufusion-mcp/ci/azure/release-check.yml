@@ -1,0 +1,17 @@
+# Release readiness: what is in the release and what operations must do first. Deterministic, no secrets.
+#   steps:
+#     - checkout: self
+#       fetchDepth: 0
+#     - template: ci/azure/release-check.yml@secufusion
+steps:
+  - task: NodeTool@0
+    inputs: { versionSpec: 20.x }
+  - script: npm install -g secufusion-mcp@4.15.1
+    displayName: Install SecuFusion review tools
+  - script: |
+      mkdir -p "$(Build.ArtifactStagingDirectory)/release"
+      sfn-ci release-check | tee "$(Build.ArtifactStagingDirectory)/release/release-readiness.md"
+    displayName: Release readiness
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs: { PathtoPublish: '$(Build.ArtifactStagingDirectory)/release', ArtifactName: release-readiness }

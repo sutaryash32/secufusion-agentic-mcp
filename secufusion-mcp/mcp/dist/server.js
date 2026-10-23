@@ -23,6 +23,7 @@ import { registerKnowledgeTools } from "./tools_knowledge.js";
 import { registerSharperTools } from "./tools_sharper.js";
 import { registerLedgerTools } from "./tools_ledger.js";
 import { registerContextTools } from "./tools_context.js";
+import { registerDeliveryTools } from "./tools_delivery.js";
 import { registerPrompts } from "./prompts.js";
 // the version the server reports is the package version, never a second hand-maintained number
 const packageVersion = (() => {
@@ -51,6 +52,7 @@ registerKnowledgeTools(server);
 registerSharperTools(server);
 registerLedgerTools(server);
 registerContextTools(server);
+registerDeliveryTools(server);
 registerPrompts(server);
 const transport = new StdioServerTransport();
 await server.connect(transport);

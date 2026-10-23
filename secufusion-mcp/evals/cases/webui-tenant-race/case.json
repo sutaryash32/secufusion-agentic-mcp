@@ -1,0 +1,27 @@
+{
+  "repoKey": "sfn-web-ui",
+  "description": "Device list fetches in an effect with a missing tenant dependency and no cancellation, swallows errors, and reads currentUser.tenantId.",
+  "expect": {
+    "mustFind": [
+      {
+        "ruleIdAnyOf": [
+          "WEB-001",
+          "WEB-002"
+        ],
+        "minSeverity": "major"
+      },
+      {
+        "ruleIdAnyOf": [
+          "SEC-014",
+          "WEB-003"
+        ],
+        "minSeverity": "major"
+      }
+    ],
+    "verdictIn": [
+      "fix_first",
+      "needs_discussion"
+    ]
+  },
+  "quick_check": false
+}

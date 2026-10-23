@@ -10,6 +10,7 @@ import { parseMutationReport, reviewMutants, renderMutationReview, changedRanges
 import { scoreRuns, renderEval } from "./review_eval.js";
 import { routeReview, renderRoute } from "./review_router.js";
 import { getFixHistory, renderFixHistory } from "./fix_history.js";
+import { checkAppliedMigrations, renderMigrationReport } from "./migration_guard.js";
 
 const ok = (text: string) => ({ content: [{ type: "text", text }] });
 const fail = (e: any) => ({ isError: true, content: [{ type: "text", text: `Error: ${e?.message ?? e}` }] });
@@ -234,6 +235,23 @@ export function registerSharperTools(server: any): void {
       try {
         const r = getFixHistory(workspace_root, file, opts);
         return format === "json" ? json(r) : ok(renderFixHistory(r));
+      } catch (e: any) { return fail(e); }
+    }
+  );
+
+  server.tool(
+    "check_applied_migrations",
+    "Deterministic guard for the rule that an applied migration is history: compares the change with the base branch and reports a migration that was EDITED, RENAMED or DELETED after it existed there (BLOCKER: an environment that already ran it never sees the edit), a new migration that REUSES a version number already taken (BLOCKER), and one numbered BELOW the head of its series (WARNING). " +
+    "Works for Flyway-style versioned SQL (V<n>__name.sql; R__ repeatable migrations may change), Rails, Django, Alembic, EF Core (the model snapshot is ignored), Prisma and generic migrations/ folders; versions are compared within one series, never across services. Includes uncommitted and untracked files. No model, READ-ONLY, git run without a shell. Use it for PASS 0 and as the check a push hook can run.",
+    {
+      workspace_root: z.string().describe("The git repository root (or any folder inside it)"),
+      base: z.string().optional().describe("Git ref whose migrations count as applied (default: merge-base with origin/main, main, develop)"),
+      format: z.enum(["blocks", "json"]).optional(),
+    },
+    async ({ workspace_root, base, format }) => {
+      try {
+        const r = checkAppliedMigrations(workspace_root, { base });
+        return format === "json" ? json(r) : ok(renderMigrationReport(r));
       } catch (e: any) { return fail(e); }
     }
   );

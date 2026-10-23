@@ -237,7 +237,7 @@ CREATE INDEX IF NOT EXISTS idx_{table}_{column} ON {table}({column});
 - Put migration scripts anywhere other than `src/main/resources/db/migration/`
 - Leave `CREATE INDEX` for "later" — include it in the same migration file
 
-### Pre-PR check verifies (automated in `run_pre_pr_checks`):
+### Pre-PR check verifies (`/sfn-review` PASS 0; `check_applied_migrations` enforces the immutability and version rules):
 - ✅ Migration script exists for `@Entity` change
 - ✅ Naming pattern: `^V\d+__[a-z][a-z0-9_]*\.sql$`
 - ✅ Version is correct next in sequence (from spec)
@@ -313,6 +313,8 @@ Java Microservices (all behind gateway):
 
 **Kafka topics and their consumers:**
 
+_Verified 2026-10-23 against the code: every `@KafkaListener` and `KafkaTemplate.send` in each service's `src/main`. `policy-events` has its only `@KafkaListener` commented out (`PolicyKafkaConsumer` in `sfn-tenants-api`). Re-check with `check_platform_facts` before relying on a row._
+
 | Topic | Producer | Consumer | Notes |
 |---|---|---|---|
 | `device-registration` | `sfn-iam-api` | `sfn-events-api` | |
@@ -320,7 +322,7 @@ Java Microservices (all behind gateway):
 | `extension-approval-decided` | `sfn-events-api` | `sfn-policy-api`, `sfn-tenants-api` | Fan-out to 2 consumers |
 | `extension-policy-changed` | `sfn-policy-api`, `sfn-tenants-api` | `sfn-events-api` | Two producers |
 | `policy-events` | `sfn-policy-api`, `sfn-tenants-api` | **NO LIVE CONSUMER** | ⚠️ Dead topic risk |
-| `quickstart-events` | `sfn-events-api` | `sfn-events-api` | Self-loop |
+| `quickstart-events` | `sfn-events-api` | `sfn-events-api` | Self-loop in the backend; the browser extension is believed to produce too (not visible in backend code) |
 
 **⚠️ Architecture flags to know:**
 - `policy-events` topic has NO confirmed live consumer — producing to it is likely wasted work

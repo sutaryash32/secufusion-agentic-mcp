@@ -1,0 +1,4 @@
+steps:
+  - script: mvn -q test
+    displayName: test
+    continueOnError: true

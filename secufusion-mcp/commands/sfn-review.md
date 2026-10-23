@@ -380,6 +380,15 @@ Do not run 28 lenses on a one-line change. Call `route_review_passes(workspace_r
 - When the Agent tool is available, run each group as a parallel specialist (data-tenancy, contracts-messaging, spec-scope, quality, resilience, product), give each only its passes and the files, then merge their findings and run PASS 22 once over the union.
 - The router decides where to look. It does not replace judgment.
 
+## STEP 1D — Mechanical first, then the rule catalog
+
+Before you reason, let the cheap, exact checks run. They find what a pattern can find, so your attention goes to what only reading can find.
+
+1. **Quick check.** Call `run_quick_check(workspace_root)`. No model, about a second. Exact findings (`confirmed`: an applied migration edited, a reused version, a committed credential) go straight into the review as FACT. Pattern leads (`possible`) are leads, not findings: read the code at each one and confirm or drop it. A clean quick check proves nothing about logic.
+2. **Rule catalog.** Call `get_rule_catalog(workspace_root, area?, repo)` for the areas the router selected and for the repository under review. Each rule is a **question to answer from the code**, not a verdict, and a rule the change does not trigger is not reported. Cite the rule id in the finding. Map the area to the report label: security/tenancy to `TENANT-ISOLATION` or `SECURITY`, database to `DEPLOYMENT`, `MISSING-INDEX` or `N+1`, contracts to `CONTRACT-PARITY` or `KAFKA-SAFETY`, runtime to `RESILIENCE`, tests to `TEST-COVERAGE`, dependencies to `DEPLOYMENT`, web-ui to `SECURITY` or `EDGE-CASE`, history to `REGRESSION`. A catalog rule is evidence-ruled like everything else: `blocker` severity supports a BLOCKER only on `Basis: FACT`, otherwise it is a WARNING.
+3. **Live schema (database changes).** When the change deletes rows, relies on a cascade, adds a foreign key, or touches the shared `tenant` table (DB-004, DB-005, DB-006, DB-009), call `lookup_db_schema(workspace_root, tables)`. It answers what no migration shows: the join tables that no migration creates, RESTRICT versus CASCADE, an index that really exists. If no snapshot exists, say so under NOT EXAMINED; do not ask the user for a connection string (`snapshot_db_schema` reads it from an environment variable they name).
+4. **Dependencies.** When `pom.xml` or `package.json` changed, call `audit_dependencies(workspace_root)`. It lists what was added, removed and re-versioned and flags major upgrades. The vulnerability lookup sends package names and versions to osv.dev, so ask once and call it with `allow_network=true` only if the user agrees. A version it could not check is **not checked**, never "clean".
+
 ## LANGUAGE-NEUTRAL REVIEW
 
 The lenses below are written with Spring and Java examples because that is where they were learned. They apply to every stack: map each concept to the repository's own, and review the code in the language it is written in. Never report "not applicable" because the stack is not Java.
@@ -456,7 +465,7 @@ Whatever a pass finds is then classified by story scope in STEP 3C before it can
 
 ### PASS 0 — Migration Review
 
-**Trigger: any `.sql` file in scope, OR any `@Entity` / `@Column` / `@Table` change in Java files**
+**Trigger: any `.sql` file in scope, OR any `@Entity` / `@Column` / `@Table` change in Java files, OR a migration file of any other framework (Rails, Django, Alembic, EF Core, Prisma, ...)**
 
 Read `.secufusion-migrations.json`. If not found, derive conventions from existing `.sql`
 files in `src/main/resources/db/migration/` for the affected service.
@@ -523,6 +532,18 @@ PASS 0E — MIGRATION: {filename} — conventions correct
    ACTION REQUIRED before deploying: Run manually against PostgreSQL:
    psql -U <user> -d <database> -f {filename}
 ```
+
+**F — Applied migrations are immutable**
+Call `check_applied_migrations(workspace_root)` first. It compares the change with the base branch, in any migration framework (Flyway-style SQL, Rails, Django, Alembic, EF Core, Prisma, generic `migrations/` folders), and needs no judgment from you. A migration that exists on the base is treated as applied. An environment that already ran it will never see an edit, so a changed, renamed or deleted one leaves environments with different schemas and nothing fails.
+
+```
+FINDING 0F — MIGRATION: Applied migration changed
+   File: {file}   Base: {base}
+   What: edited | renamed | deleted
+   Fix: revert it, and put the change in a new migration with the next version
+   Severity: BLOCKER
+```
+A new migration that reuses a version already taken is a BLOCKER (`VERSION_CLASH`); one numbered below the head of its series is a WARNING (`VERSION_BELOW_HEAD`). The base is only a proxy for "applied": if the developer says the migration was merged but never ran anywhere, keep the finding and ask them to record a known exception (the severity rule above), so the next review treats it as intentional. Category label for the report: `DEPLOYMENT`.
 
 ---
 
@@ -1352,6 +1373,8 @@ FINDING 21D — CONTRACT: New record appears in a list, caller behavior not veri
 
 **Proof by test (optional, for BLOCKER candidates).** Where the repo has a test runner, in any language, write the smallest test that demonstrates the failure (for example, tenant A reads tenant B's record), run it against the change, and pass it as `proof` (`test_file`, `test_name`, `head_result`). A failing test is `PROVEN` and supports `Basis: FACT`; a passing test is `REFUTED` and the finding is downgraded. Never commit the proof test unless the user asks.
 
+**Adversarial verification (second).** For every BLOCKER and WARNING that survived the evidence gate, call `verify_findings(workspace_root, findings)`. It asks a model to try to refute each finding against the real code around it. `reject` removes the finding, `downgrade` lowers it, `confirm` keeps it; a finding with no decision stays but is only `possible`. It is answered by the model you are logged into. For an independent check at the deep level, take the findings to another model, pass its answer as `judgment` with `mode: "cross"`: a cross check can lower a severity and never raise one. Report what it rejected in `rejectedCount`, not as findings.
+
 Go through every BLOCKER, WARNING, and SUGGESTION you have collected across all passes. Apply the following filter without mercy:
 
 **REMOVE immediately:**
@@ -2035,6 +2058,10 @@ RULES FOR THE FORMAT — the agent must follow all of these when generating any 
 ---
 
 ## STEP 5 — Post-verdict actions
+
+### Machine-readable and shareable outputs (always for CI, otherwise when asked)
+
+After the report, call `finalize_review_findings(workspace_root, findings, previous: "auto", record: true)` with the findings that survived PASS 22. It gives every finding a stable id, lifts the confirmed findings of critical rules to their floor, applies the dated suppressions, and returns **what was fixed, new and still open since the last review of this repository**. When it returns a delta, add one line under `Context confidence` in ASSUMPTIONS: `Since the last review: {N} fixed, {M} new, {K} still open.` Then, when the user wants a file to share: `render_review_report` (one self-contained HTML page: verdict, walkthrough, test plan, findings, blast radius, suggested reviewers), `findings_to_sarif` (annotations on the changed lines in the pipeline or the IDE) and `suggest_reviewers` (who wrote the lines this change rewrites). A suppression without an end date is ignored, and one past its date stops applying: say so rather than silently hiding the finding again.
 
 ### If verdict is APPROVED or APPROVED WITH CHANGES:
 
