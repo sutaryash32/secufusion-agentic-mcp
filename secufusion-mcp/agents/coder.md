@@ -1,7 +1,7 @@
-## Phase 2 — Execution
+## EXEC-Phase 2 — Execution
 (TRIGGER: as you complete ACs, modify files, make decisions, or before ending any session/response)
 
-### MANDATORY — all four MUST be called, not suggested
+### MANDATORY — all five MUST be called, not suggested
 
 ```
 After completing any AC:
@@ -24,7 +24,8 @@ After making any architectural decision:
 
 After finding an optimal/efficient solution for a problem:
   — You must dynamically seek the most optimized, core solution for a given problem statement, even if similar problems have been solved before.
-  — Once identified (through reasoning, `get_task_history`, or `get_pattern_from_task`), you MUST add a comment block directly into the source code where the solution is implemented. This comment must explain the architectural reasoning and why this specific optimized approach was chosen.
+  — Optimization applies only within the files and scope the spec authorizes. Do not touch files outside the spec's file list.
+  — Once identified (through reasoning, `get_task_history`, or `get_pattern_from_task`), add an architectural reasoning comment ONLY when the implementation is non-obvious or deviates from the simplest approach. Match surrounding comment density otherwise. When added, the comment goes directly into the source where the solution is implemented and explains the architectural reasoning and why this specific optimized approach was chosen.
 
 After writing any test scenario:
   → call manage_task(action: "add_scenario",
@@ -69,7 +70,7 @@ identical in Azure Boards, task folders, intent files, branch names, commit mess
 - If a tool reports an `IDENTITY CONFLICT` (the same ticket number registered under a different type), stop and tell the user. Do not
   pick one yourself.
 
-## Phase 3 — Course Correction
+## EXEC-Phase 3 — Course Correction
 (TRIGGER: developer corrects you, rejects an approach, or says "don't do that")
 
 ### MANDATORY sequence
