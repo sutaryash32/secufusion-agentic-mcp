@@ -12,13 +12,13 @@ Do not attempt to load all instructions into memory. Based on the current SDLC p
 ---
 
 ## THE NON-NEGOTIABLE EXECUTION ORDER
-(Every task, every time â€” no exceptions, no shortcuts)
+(Every task, every time — no exceptions, no shortcuts)
 
-**DYNAMIC ENFORCEMENT**: Whether you are starting fresh, resuming, or answering mid-task â€” you must respect this exact sequence. Never skip ahead.
+**DYNAMIC ENFORCEMENT**: Whether you are starting fresh, resuming, or answering mid-task — you must respect this exact sequence. Never skip ahead.
 
 ---
 
-### Rule 0 â€” DNA First (Absolute Pre-requisite)
+### Rule 0 — DNA First (Absolute Pre-requisite)
 
 Before ANY other action, call `prime_session(work_item_id: <id>)`.
 
@@ -34,30 +34,30 @@ If DNA is not loaded (DNA_LOADED = false in `.agents/claude.md`), ABORT and tell
 
 ---
 
-### Rule 1 â€” Philosophy Check (Phase -1, SILENT, runs AFTER DNA)
+### Rule 1 — Philosophy Check (Phase -1, SILENT, runs AFTER DNA)
 
 For any `user_story`, `feature`, `chore`, or `refactor`:
 
-Call `philosophy_check` AFTER DNA is loaded â€” never before. The engine uses DNA to reason about real blast radius, not just keyword matching. It knows:
+Call `philosophy_check` AFTER DNA is loaded — never before. The engine uses DNA to reason about real blast radius, not just keyword matching. It knows:
 - Which DB entities your story touches and how many services depend on them
 - Whether you are touching a shared multi-tenant auth service
 - Whether the Chrome extension is in scope (requires store deployment)
 - Which Kafka topics fan out to how many consumers
 - Whether your description violates any golden rules
 
-**This check is completely invisible to the user.** You do not announce it. You do not show verdicts or "philosophy" terminology. You surface a concern to the user only if the architectural risk is high or the intent is missing â€” and you translate it into plain developer language.
+**This check is completely invisible to the user.** You do not announce it. You do not show verdicts or "philosophy" terminology. You surface a concern to the user only if the architectural risk is high or the intent is missing — and you translate it into plain developer language.
 
 For `bug` and `hotfix`: philosophy check **fully runs** — no skip. The agent acts as the reasoning engine against the Project DNA. Bugs inherently have a "WHY" (something is broken) and an implicit authority (the reporter), but the engine evaluates the **blast radius and architectural risk**. A high-risk bug fix (auth regression, data-loss, multi-tenant blast) will still be challenged if the rollback plan or scope isn't clear.
 
 **Verdicts:**
-- **Silent Pass** â†’ Bug is isolated or safe. Proceed immediately.
-- **Advisory** â†’ Note concerns in `decisions.json`. Tell the user briefly what to watch out for. Continue.
-- **Fail** â†’ STOP. Ask the user what is missing (no jargon). Wait for answers. Re-run philosophy_check.
-- **Blocked** â†’ STOP completely. Tell the user the risk and who must sign off. Do not plan. Do not code.
+- **Silent Pass** → Bug is isolated or safe. Proceed immediately.
+- **Advisory** → Note concerns in `decisions.json`. Tell the user briefly what to watch out for. Continue.
+- **Fail** → STOP. Ask the user what is missing (no jargon). Wait for answers. Re-run philosophy_check.
+- **Blocked** → STOP completely. Tell the user the risk and who must sign off. Do not plan. Do not code.
 
 ---
 
-### Rule 2 â€” Clarify Business Intent (WHY before HOW)
+### Rule 2 — Clarify Business Intent (WHY before HOW)
 
 After philosophy check passes, capture the WHY formally. Call `spec_create_intent` with the business goal, acceptance criteria, and services involved.
 
@@ -65,31 +65,31 @@ Do not initialize task tracking (`manage_task`) until the WHY is captured.
 
 ---
 
-### Rule 3 â€” ReAct (Reason, Observe, Act)
+### Rule 3 — ReAct (Reason, Observe, Act)
 
 Deeply reason about the problem using the DNA context you loaded. Understand what exists, what depends on what, and what is dangerous to touch. Formulate a high-level solution hypothesis grounded in the architecture.
 
 ---
 
-### Rule 4 â€” Classify
+### Rule 4 — Classify
 
 Call `classify_task`. This locks in architectural boundaries (`BACKEND_ONLY`, `FRONTEND_ONLY`, `FULL_STACK`, or `EXTENSION_ONLY`).
 
 ---
 
-### Rule 5 â€” STRICT YIELD
+### Rule 5 — STRICT YIELD
 
 After classifying, STOP. Output the result. Ask the user for the green signal. Do NOT chain tool calls.
 
 ---
 
-### Rule 6 â€” Plan Only After Approval
+### Rule 6 — Plan Only After Approval
 
 Produce the implementation plan only after the user approves the classification.
 
 ---
 
-### Rule 7 â€” Code is the Last Resort
+### Rule 7 — Code is the Last Resort
 
 Source code changes are the absolute final step. Only after the plan is approved.
 
@@ -97,15 +97,15 @@ Source code changes are the absolute final step. Only after the plan is approved
 
 ## What you are NOT allowed to do before DNA is loaded and philosophy passes:
 
-âŒ Read any source files
-âŒ Call `classify_task`
-âŒ Call `manage_task`
-âŒ Write any implementation plan
-âŒ Suggest technical approaches
-âŒ Say "let's start and see"
-âŒ Minimize a FAIL verdict
-âŒ Offer to proceed despite BLOCKED
-âŒ Mention "philosophy", "PHILOSOPHY_FAIL", "PHILOSOPHY_BLOCKED" to the user
+❌ Read any source files
+❌ Call `classify_task`
+❌ Call `manage_task`
+❌ Write any implementation plan
+❌ Suggest technical approaches
+❌ Say "let's start and see"
+❌ Minimize a FAIL verdict
+❌ Offer to proceed despite BLOCKED
+❌ Mention "philosophy", "PHILOSOPHY_FAIL", "PHILOSOPHY_BLOCKED" to the user
 
 ---
 
@@ -139,23 +139,23 @@ Before creating any file, decide its type and use that type's single home. Never
 Four questions every story must answer before implementation can begin:
 
 ```
-WHY  â†’ What specific problem does this solve?
+WHY  → What specific problem does this solve?
         If we can't state the problem, the solution is guesswork.
 
-WHO  â†’ Who confirmed this is needed?
+WHO  → Who confirmed this is needed?
         "Someone asked" is not confirmation.
         The decision maker must be on record.
 
-WHAT â†’ What exactly are we building?
+WHAT → What exactly are we building?
         Vague stories produce vague software.
         If you can't test it, you can't build it.
 
-RISK â†’ What breaks if we're wrong?
+RISK → What breaks if we're wrong?
         Irreversible changes need higher certainty.
         High risk + low certainty = guaranteed waste.
 ```
 
-These questions are assessed by `philosophy_check` using real architecture DNA. You never ask the user these questions directly â€” the tool scores them automatically.
+These questions are assessed by `philosophy_check` using real architecture DNA. You never ask the user these questions directly — the tool scores them automatically.
 
 ---
 
@@ -165,11 +165,11 @@ These questions are assessed by `philosophy_check` using real architecture DNA. 
 SecuFusion uses **MANUAL migration scripts**. This is the single most important thing to internalize about the DB layer:
 
 ```
-âŒ  NO Flyway on boot
-âŒ  NO automatic execution
-âŒ  NO spring.flyway.* config
-âœ…  Scripts applied MANUALLY by developer/DBA via psql or DB client
-âœ…  Scripts MUST run against PostgreSQL BEFORE deploying the code that depends on them
+❌  NO Flyway on boot
+❌  NO automatic execution
+❌  NO spring.flyway.* config
+✅  Scripts applied MANUALLY by developer/DBA via psql or DB client
+✅  Scripts MUST run against PostgreSQL BEFORE deploying the code that depends on them
 ```
 
 ### Source of truth: `.secufusion-migrations.json`
@@ -178,19 +178,19 @@ All migration rules, version numbers, gap lists, and naming conventions come fro
 **NEVER guess from memory.** Always read `mcp_guardrails` in that file for the authoritative state.
 
 Services with manual migration scripts (as of last scan):
-- `sfn-events-api` â†’ `src/main/resources/db/migration/` â€” see spec for next version
-- `sfn-iam-api`    â†’ `src/main/resources/db/migration/` â€” has version gaps, see spec
-- `sfn-tenants-api` â†’ `src/main/resources/db/migration/` â€” has version gaps, see spec
+- `sfn-events-api` → `src/main/resources/db/migration/` — see spec for next version
+- `sfn-iam-api`    → `src/main/resources/db/migration/` — has version gaps, see spec
+- `sfn-tenants-api` → `src/main/resources/db/migration/` — has version gaps, see spec
 
 Services WITHOUT migrations: `sfn-auth-api`, `sfn-eureka-api`, `sfn-gateway-api`, `sfn-policy-api`, `sfn-web-ui`, `snf-browser-extn`
 
 ### Before writing any migration script
 
 1. Read `.secufusion-migrations.json`
-2. Find your service's `current_state.next_suggested` â€” that is the filename base
-3. Check `organization.version_gaps` â€” do NOT reuse any gap number
+2. Find your service's `current_state.next_suggested` — that is the filename base
+3. Check `organization.version_gaps` — do NOT reuse any gap number
 4. Name file: exactly `{next_suggested}` with a meaningful snake_case description
-5. Place in: `src/main/resources/db/migration/` (SINGULAR â€” not `migrations`)
+5. Place in: `src/main/resources/db/migration/` (SINGULAR — not `migrations`)
 
 ### Migration content conventions (from spec)
 
@@ -198,7 +198,7 @@ Services WITHOUT migrations: `sfn-auth-api`, `sfn-eureka-api`, `sfn-gateway-api`
 -- =====================================================
 -- V{n}: Short description of the change
 -- WHY: Reason this change was needed (business context)
--- NOTE: Applied MANUALLY â€” not auto-run on startup
+-- NOTE: Applied MANUALLY — not auto-run on startup
 -- =====================================================
 
 -- Use IF NOT EXISTS for CREATE TABLE
@@ -216,21 +216,21 @@ CREATE INDEX IF NOT EXISTS idx_{table}_{column} ON {table}({column});
 - Assume any script runs automatically
 - Skip a migration for ANY `@Entity`/`@Column`/`@Table` change
 - Put migration scripts anywhere other than `src/main/resources/db/migration/`
-- Leave `CREATE INDEX` for "later" â€” include it in the same migration file
+- Leave `CREATE INDEX` for "later" — include it in the same migration file
 
 ### Pre-PR check verifies (automated in `run_pre_pr_checks`):
-- âœ… Migration script exists for `@Entity` change
-- âœ… Naming pattern: `^V\d+__[a-z][a-z0-9_]*\.sql$`
-- âœ… Version is correct next in sequence (from spec)
-- âœ… No gap version reuse (from spec)
-- âœ… Naming and version validated against `.secufusion-migrations.json`
+- ✅ Migration script exists for `@Entity` change
+- ✅ Naming pattern: `^V\d+__[a-z][a-z0-9_]*\.sql$`
+- ✅ Version is correct next in sequence (from spec)
+- ✅ No gap version reuse (from spec)
+- ✅ Naming and version validated against `.secufusion-migrations.json`
 
 ### PR review verifies (Pass 0 in `/sfn-review`):
-- âœ… Comment header present with V# and WHY
-- âœ… IF NOT EXISTS guards used
-- âœ… Constraint naming follows convention from spec
-- âœ… All `@Entity` changes have corresponding migration coverage
-- ðŸ”´ Manual application reminder included in PR description
+- ✅ Comment header present with V# and WHY
+- ✅ IF NOT EXISTS guards used
+- ✅ Constraint naming follows convention from spec
+- ✅ All `@Entity` changes have corresponding migration coverage
+- 🔴 Manual application reminder included in PR description
 
 
 ---

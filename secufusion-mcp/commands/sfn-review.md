@@ -102,7 +102,7 @@ A reviewer who walks down a list and ticks boxes finds only what the list author
 
 1. **Understand the change first.** What problem, for whom, by what mechanism? Say it in your own words before you judge anything (Step 1).
 2. **Model the blast radius.** What does this change touch: data, contracts, tenants, other services, deployments, operators? Use the DNA graph (`analyze_impact`, `calculate_blast_radius`, `investigate_entity`, `score_change_risk`) and the code, not guesses.
-3. **Form hypotheses: "how could this hurt the product?"** Write them as specific, falsifiable suspicions about *this* change (Step 1B), for example "the cache key omits the acting tenant, so a parent administrator could be served a child's data". Generate them from the change itself, from recorded lessons and exceptions, and from the lenses in PASS 0 to 18.
+3. **Form hypotheses: "how could this hurt the product?"** Write them as specific, falsifiable suspicions about *this* change (Step 1B), for example "the cache key omits the acting tenant, so a parent administrator could be served a child's data". Generate them from the change itself, from recorded lessons and exceptions, and from the lenses in PASS 0 to 27.
 4. **Investigate each hypothesis until it is confirmed or dismissed.** Read the callers, the sibling code, the migration history, the consumers of the topic. Follow the trail the evidence opens up, even where no pass tells you to. Run a tool when it can give you a fact; reason when it cannot.
 5. **Spend effort where the risk is.** A one-line log-message change does not need eighteen investigations; a new endpoint that touches tenant data deserves several deep ones. Let `score_change_risk` and your own reading decide the depth, and say what you chose not to examine and why.
 6. **Talk to the developer** (Step 2) when evidence runs out. Use their answers to sharpen or retire hypotheses.
@@ -308,7 +308,7 @@ H{n}: {specific suspicion about THIS change, naming the code and the harm}
    Risk if true: {who or what is harmed, how badly}
 ```
 
-Two hypotheses to hold in every review: when something you expected is **missing**, the first suspect is a merge regression (STEP 3D), not dead code; and when a change looks harmless, ask whether it **silently moved a behavior** (STEP 3E). Aim for the handful that matter, not a long list. Rank by risk. Draw hypotheses from the change first, then from the specification (does the code do more, less or something other than was agreed?), then from recorded lessons and exceptions (`get_project_knowledge`) and engineering experience, then from the lenses (PASS 0 to 18), which exist to jog your memory about classes of risk.
+Two hypotheses to hold in every review: when something you expected is **missing**, the first suspect is a merge regression (STEP 3D), not dead code; and when a change looks harmless, ask whether it **silently moved a behavior** (STEP 3E). Aim for the handful that matter, not a long list. Rank by risk. Draw hypotheses from the change first, then from the specification (does the code do more, less or something other than was agreed?), then from recorded lessons and exceptions (`get_project_knowledge`) and engineering experience, then from the lenses (PASS 0 to 27), which exist to jog your memory about classes of risk.
 
 Specification-driven hypotheses worth testing: a file changed that the spec never mentioned; an acceptance criterion with no code or no test; an assumption or unknown the spec carried that the code silently turned into behavior; a recorded user decision the code contradicts; scope that grew while coding; and the opposite, a spec claim (root cause, impacted service) the code does not support. Equally test whether **the specification itself** contradicts recorded product knowledge: a spec can be followed perfectly and still be wrong for the product, and that is a finding about the spec, raised as a question.
 Then investigate: most hypotheses die quickly when you read the code, and the survivors are your findings and your questions for Step 2.
@@ -362,10 +362,10 @@ If they say SKIP or do not answer: carry the open points forward as **UNVERIFIED
 
 ---
 
-## STEP 3 — Execute the review passes (PASS 0 to 10, then STEP 3B)
+## STEP 3 — Execute the review passes (PASS 0 to 27: PASS 0 to 10, then STEP 3B)
 
 Work through the passes as **lenses on the change**, guided by your hypotheses from Step 1B. Every lens must be applied to the files it applies to (a lens that does not apply reports
-`NOT APPLICABLE` and why), but applying a lens means *reasoning about what it shows*, not matching its bullet points. PASS 0 to 10 are the technical lenses; PASS 11 to 18 (STEP 3B, next) are the product-aware lenses.
+`NOT APPLICABLE` and why), but applying a lens means *reasoning about what it shows*, not matching its bullet points. PASS 0 to 10 are the technical lenses; PASS 11 to 27 (STEP 3B, next) are the product-aware lenses.
 Whatever a pass finds is then classified by story scope in STEP 3C before it can affect the verdict. The pass text defines what to look for and how to word a finding. It does not limit what you may notice.
 
 ---
@@ -489,191 +489,129 @@ Log the exemption to `decisions.json` via `manage_task(action: log_decision)`.
 
 ### PASS 2 — N+1 Detection
 
-**Trigger: any Java or TypeScript file in scope**
-
-Look for repository or DAO calls inside loops:
-- Java: `.findById()`, `.save()`, `.findAll()`, `.findBy*()` inside `for`, `forEach`, `while`, `stream().map()`
-- TypeScript: `repository.find()`, `prisma.*`, `db.query()` inside `for`, `forEach`, `.map()`
-
-Read the actual logic. Naive pattern matching is not enough. Consider:
-- Is the call inside a loop even if the loop is on a different line or in a lambda?
-- Could it be replaced with a batch operation?
-
-```
-FINDING 2A — N+1: DB call inside loop
-   File: {file}:{line}
-   Method: {method}
-   Call: {repository.method()}
-   Context: Inside {for/forEach/stream().map()} over {what collection}
-   Fix: Use {findAllById / saveAll / native batch query}
-   Severity: BLOCKER
-```
+For every loop, stream, or batch operation in the diff:
+- Identify every repository or DAO call inside the loop body
+- In SecuFusion context: check these known hot paths specifically:
+    UserService: any loop over users that calls groupsRepository or deviceRepository
+    GroupService: any loop over members that calls userRepository
+    EventsService: any loop over devices that calls policyRepository
+    TenantService: any loop over tenants that calls userRepository or groupsRepository
+- Use query_knowledge_graph or smart_search to find if a batch query
+  already exists for the entity being fetched inside the loop
+- If no batch query exists, check if the DNA graph shows a JOIN or
+  fetch-join that could replace the N calls
+- BLOCKER if a repository call (findById, findByTenantIdAnd*, save, findAll)
+  appears inside a for/forEach/stream().map() with no batch alternative
+- BLOCKER if the loop iterates over a tenant-scoped collection and makes
+  a per-item DB call — this is both an N+1 and a tenant isolation risk
+- WARNING if a batch alternative exists in the codebase but is not used here
+- Do NOT flag: calls inside a loop that operate on already-loaded in-memory
+  objects (no DB round trip), or single-iteration loops
 
 ---
 
 ### PASS 3 — Missing Index
 
-**Trigger: any SQL file with `CREATE TABLE` or `ALTER TABLE ADD COLUMN`,
-          OR any `@Query` with new WHERE / ORDER BY columns**
-
-For every new column that appears in a `WHERE`, `ORDER BY`, `JOIN ON`, or `HAVING` clause:
-- Is there a `CREATE INDEX` for it in the same migration file?
-- If not in migration, is there an existing index in an earlier migration?
-
-```
-FINDING 3A — INDEX: New query column without index
-   Column: {table}.{column}
-   Used in: {file}:{line} ({WHERE/ORDER BY/JOIN})
-   Migration: No CREATE INDEX found for this column
-   Fix: Add `CREATE INDEX IF NOT EXISTS idx_{table}_{column} ON {table}({column});`
-        in the same migration file
-   Severity: BLOCKER
-```
+For every new column added in a migration, and every new query or JPQL
+expression added in a repository in the diff:
+- Check if the column appears in a WHERE, ORDER BY, JOIN ON, or HAVING clause
+  in any repository method — use smart_search to find all usages
+- In SecuFusion context: check these known query patterns specifically:
+    fk_tenant_id appears in almost every query — it should already be indexed;
+    flag if a new composite query adds fk_tenant_id + a new column without
+    a composite index
+    defaultUser / is_admin / is_default flags are used in ownership and
+    group lookups — new queries on these flags need index coverage
+    device_id / hardware_uuid / mac_id appear in device fingerprint queries
+    user_id / fk_user_id appear in mapping tables (events_groups_device_user_map)
+- Use dna.json entity map to find the table name for the entity being queried
+- BLOCKER if a new migration adds a column that is immediately used in a
+  filtered or ordered query with no corresponding CREATE INDEX in the same
+  migration or a subsequent one in the diff
+- BLOCKER if a new repository method queries on a non-indexed column in a
+  table that the DNA graph shows has more than trivial row counts
+  (users, devices, groups, events tables)
+- WARNING if a composite query exists but only a single-column index covers it
+- Do NOT flag: primary key columns (already indexed), columns only used in
+  SELECT output (not in filter/sort/join), or indexes that already exist in
+  the migration history
 
 ---
 
 ### PASS 4 — Kafka Safety
 
-**Trigger: any Java file with `@KafkaListener` annotation**
-
-Inside every `@KafkaListener` method, check for:
-- Synchronous HTTP calls: `RestTemplate`, `WebClient`, `HttpClient`, `OkHttpClient`
-- Synchronous DB writes not offloaded to `@Async` or a dedicated thread pool
-- Blocking operations: `Thread.sleep()`, `CountDownLatch.await()`, `Future.get()`
-
-```
-FINDING 4A — KAFKA: Blocking operation inside listener
-   File: {file}:{line}
-   Method: {annotated method}
-   Problem: {synchronous HTTP call / blocking DB write / Thread.sleep}
-   Risk: Blocks Kafka consumer thread causing partition stall and consumer group lag
-   Fix: Offload to @Async service method or publish to internal queue
-   Severity: BLOCKER
-```
-
-Also check: is the listener missing `@Transactional`? Is it at risk of committing offset on exception?
+For every @KafkaListener method and every KafkaTemplate.send() call in the diff:
+- Identify the topic name and match it against the topic list in AGENTS.md
+- In SecuFusion context: known topics and their consumers:
+    device-events → sfn-events-api (DeviceEventConsumer)
+    group-sync-events → sfn-events-api (GroupSyncConsumer)
+    policy-update-events → sfn-events-api, Chrome extension via polling
+    iam-audit-events → sfn-audit-api
+  Any blocking call inside a consumer for these topics blocks the partition thread
+  and stalls ALL events for that tenant on that partition
+- For every consumer method: check if it contains any of these blocking patterns:
+    RestTemplate / WebClient.block() / Feign client call
+    JPA repository save/update (write) — reads are lower risk but still flag
+    Thread.sleep() or any synchronous wait
+    A nested KafkaTemplate.send() that is not fire-and-forget
+- For every producer: check if the send() result is handled:
+    Is the ListenableFuture / CompletableFuture result checked?
+    If the send fails, is the DB write also rolled back, or does the system
+    diverge (DB committed, event never published)?
+    In SecuFusion: DB write + Kafka publish must be atomic or have a
+    compensation strategy — silent publish failure is a BLOCKER
+- BLOCKER if a blocking call exists inside any @KafkaListener body
+- BLOCKER if KafkaTemplate.send() result is fire-and-forget with no error
+  handling AND the corresponding DB write already committed
+- BLOCKER if a new event payload field is added/removed without checking
+  all consumers listed in AGENTS.md for that topic
+- WARNING if a consumer has no dead-letter topic (DLT) configuration
+- WARNING if idempotency is not handled for a consumer that does a DB write
 
 ---
 
 ### PASS 5 — Architectural Patterns
 
-**Trigger: all files**
+For every new controller method, service method, and external call in the diff:
+- Apply SecuFusion-specific architectural rules from AGENTS.md and project spec
 
-This is where you think as an architect, not just pattern-match.
-Check every file against these rules (from `golden_rules` if loaded, else these defaults):
+AUTHORIZATION
+- Every controller endpoint must have @PreAuthorize — use smart_search to
+  confirm the annotation is present on the method, not just the class
+- In SecuFusion: the standard scopes are defined in AGENTS.md; a new endpoint
+  that creates/modifies a resource must use write scope, not read scope
+- BLOCKER if a new endpoint has no @PreAuthorize annotation
+- BLOCKER if the scope used does not match the operation type per AGENTS.md
 
-**5a — Single exit point**
-Every method should have one exit point. Early returns inside business logic create hidden paths.
-Guard clauses at the very top of a method (`if (param == null) throw`) are acceptable.
-Flag only when return statements are embedded in business logic branches.
+CALLER RESOLUTION
+- Controllers must resolve the caller through tenantContext.getCallerUser()
+  not through JwtUtil or direct header parsing (jwtpull-migration.md convention)
+- BLOCKER if a new controller method reads caller identity from JWT directly
 
-```
-FINDING 5A — STYLE: Multiple exit points in business logic
-   File: {file}:{line}
-   Method: {method}
-   Returns found: {count} at lines {lines}
-   Suggestion: Guard clauses at top, then one return at bottom
-   Severity: WARNING
-```
+TRANSACTION BOUNDARIES
+- Multi-step operations (write + group update + event publish) must be
+  in a single @Transactional method at the service layer
+- In SecuFusion: ownership transfer, user create, user delete, group member
+  replace are all multi-step — any new operation touching 2+ entities needs
+  @Transactional with explicit rollback rules
+- BLOCKER if a new multi-step operation has no @Transactional boundary
+- WARNING if @Transactional is missing readOnly=true on a pure query method
 
-**5b — Authorization enforcement**
-Every controller or handler method that is not explicitly public MUST have `@PreAuthorize` or equivalent.
+EXTERNAL CALL SAFETY
+- Any call to Keycloak, another microservice, or an external API must have:
+  a timeout configured, a fallback or error handler, and must not be inside
+  a @Transactional boundary that would hold a DB lock during the network call
+- BLOCKER if an external call (Keycloak admin API, Feign client) is made
+  inside a @Transactional method that also holds row-level DB locks
+- WARNING if an external call has no timeout or fallback
 
-```
-FINDING 5B — SECURITY: Missing authorization annotation
-   File: {file}:{line}
-   Method: {method}
-   Problem: No @PreAuthorize or security annotation found
-   Fix: Add @PreAuthorize("hasAuthority('...')") or explicitly document why this is public
-   Severity: BLOCKER
-```
-
-**5c — Read-only transactions**
-Service methods that only read data MUST use `@Transactional(readOnly = true)`.
-
-```
-FINDING 5C — PERF: Missing readOnly transaction
-   File: {file}:{line}
-   Method: {method}
-   Problem: Read-only method uses @Transactional without readOnly = true
-   Fix: Change to @Transactional(readOnly = true)
-   Severity: WARNING
-```
-
-**5d — Cross-service call safety**
-Every `RestTemplate` or `WebClient` call to another service MUST have:
-- Explicit connection timeout
-- Explicit read timeout
-- A fallback response (not just a rethrow)
-
-```
-FINDING 5D — RELIABILITY: Cross-service call without timeout or fallback
-   File: {file}:{line}
-   Call: {service}.{method}()
-   Missing: {connection timeout | read timeout | fallback}
-   Risk: A slow dependency hangs the thread pool
-   Severity: BLOCKER
-```
-
-**5e — Hardcoded environment values**
-No hardcoded IPs, hostnames, ports, environment-specific URLs, or credentials.
-
-```
-FINDING 5E — CONFIG: Hardcoded environment value
-   File: {file}:{line}
-   Value: "{what was found}"
-   Fix: Move to application.yml / environment variable / config service
-   Severity: BLOCKER
-```
-
-**5f — Debug artifacts**
-No `System.out.println`, `console.log`, `.printStackTrace()`, or commented-out code blocks in production code.
-
-```
-FINDING 5F — HYGIENE: Debug artifact in production code
-   File: {file}:{line}
-   Found: {System.out.println / console.log / printStackTrace}
-   Fix: Remove or replace with proper logger call
-   Severity: WARNING
-```
-
-**5g — Exception handling**
-No swallowed exceptions: empty `catch` blocks, `catch (e) { return null; }`, `catch (e) { /* ignore */ }`.
-Every exception must be logged, re-thrown, or converted to a meaningful error response.
-
-```
-FINDING 5G — RELIABILITY: Swallowed exception
-   File: {file}:{line}
-   Method: {method}
-   Pattern: catch block {does nothing | returns null | logs nothing}
-   Risk: Silent failure — errors disappear without trace
-   Severity: BLOCKER
-```
-
-**5h — TypeScript type safety**
-More than 2 uses of `: any` in a TypeScript file is a nitpick unless suppressed with `// @ts-nocheck`.
-`any` defeats type safety — prefer `unknown` or an explicit interface.
-
-```
-FINDING 5H — TYPE SAFETY: Excessive use of :any
-   File: {file}
-   Count: {n} occurrences of `: any`
-   Fix: Replace with explicit interfaces, generics, or `unknown` with type guards
-   Severity: WARNING
-```
-
-**5i — Comment quality**
-Comments must explain WHY — not WHAT. The code already shows what it does.
-Flag comments like `// Get the user`, `// Loop through list`, `// Return the value`, `// Initialize`.
-These add zero signal and create maintenance noise.
-
-```
-FINDING 5I — HYGIENE: Obvious comment (explains what, not why)
-   File: {file}:{line}
-   Comment: "{the comment text}"
-   Fix: Remove it or replace with WHY this step is necessary
-   Severity: WARNING
-```
+LOGGING & SECRETS
+- No sensitive fields (passwords, tokens, email addresses, tenant IDs in
+  plain text) in INFO or DEBUG log statements
+- No hardcoded environment values (URLs, credentials, port numbers) in
+  source code — must use @Value or environment config
+- WARNING if a log statement includes a User object, token, or credential field
+- BLOCKER if a URL or credential is hardcoded in source (not in config)
 
 ---
 
@@ -759,34 +697,39 @@ FINDING 8A — DRIFT: Implementation differs from recorded decision
 
 ### PASS 9 — Architectural Suggestions (non-blocking)
 
-**Trigger: always**
+After all blocking/warning passes complete, reason about improvements that are
+specific to the SecuFusion platform — not generic refactors.
 
-After all blocking and warning passes (including PASS 11 to 18), share genuine constructive observations. This pass is written up last. **Its output is never in scope** (STEP 3C rule 5): each item is an OUT-OF-SCOPE OBSERVATION (Class B) or a FUTURE CONSIDERATION (Class C), with a suggested follow-up story, and never a request to change this story.
-These are things the code does correctly but could be improved.
+Only suggest if the suggestion is grounded in SecuFusion's actual architecture:
 
-Think as a senior developer who cares about the long-term health of this codebase:
-- Could this be simpler without losing clarity?
-- Is there a library or utility already in this codebase that does this?
-- Will this approach hold up at 10x the current load? What is the breaking point?
-- Is the abstraction level appropriate — too much or too little?
-- Are there edge cases the developer may not have considered?
-- Could naming be more precise?
+API COMPLETENESS
+- Is an eligibility or candidate rule enforced only at the point of the
+  operation (e.g. transfer rejects off-domain users) with no dedicated
+  candidates API? Suggest a /eligible-{resource} endpoint that encodes
+  the rules so frontend and backend share one source of truth.
 
-Format each suggestion as:
+DOMAIN MODEL GAPS
+- Does the diff introduce a code-level invariant (e.g. exactly one defaultUser
+  per tenant) with no DB constraint backing it? Suggest the partial unique
+  index / constraint with exact table and column from dna.json.
 
-```
-SUGGESTION {n}: {short title}
-   File: {file}:{line or method}
-   Observation: {what you noticed — honest, specific, not harsh}
-   Alternative: {what you would do differently and why}
-   Trade-off: {what the alternative costs — time, complexity, risk}
-```
+CROSS-SERVICE CONSISTENCY
+- If a guard or rule is introduced in one service (e.g. sfn-iam-api), use
+  smart_search to check if the same entity exists in sibling services
+  (sfn-events-api, sfn-tenants-api). If the sibling has the same write path
+  without the guard, suggest aligning them.
 
-Rules for suggestions:
-- Maximum 5 suggestions per review
-- Only suggest things with meaningful impact on correctness, performance, or maintainability
-- Always state the trade-off — never present your alternative as cost-free
-- Do not suggest something requiring a major rewrite unless it prevents a future incident
+KEYCLOAK SYNC COMPLETENESS
+- If a DB-side role or group change is made without a corresponding Keycloak
+  change, and the feature implies a permission change the user should see
+  after next login, suggest the Keycloak sync step and note it is DB-only today.
+
+RULES:
+- Maximum 5 suggestions
+- Each suggestion must name: the exact SecuFusion entity, service, or
+  topic it applies to — no generic advice
+- Each must state the concrete benefit in one sentence tied to platform behaviour
+- These are always non-blocking advisory items
 
 ---
 
@@ -850,7 +793,7 @@ If the directory is not a git repository the tool says so and checks file state 
 
 ---
 
-## STEP 3B — Product-aware passes (PASS 11 to 18)
+## STEP 3B — Product-aware passes (PASS 11 to 27)
 
 PASS 0 to 10 ask "is this code right?". These passes ask "is this right **for the product**?".
 They apply to **every** review (they are not skipped because the change looks small), but each is a lens, not a checklist: investigate what the change really touches, follow the evidence beyond the listed items, and let it produce findings only where the change touches its subject; otherwise it reports `NOT APPLICABLE` with one line of why.
@@ -1081,25 +1024,470 @@ FINDING 17E — OBSERVABILITY: A failure here could not be diagnosed
 
 ### PASS 18 — Future Maintainability
 
-**Trigger: always.** Will this be hard to maintain in six months, by someone who was not here? Judge the change as the next engineer will meet it.
+For every new method, class, or configuration added in the diff:
+- Reason about maintainability only in the context of SecuFusion's actual
+  codebase structure — not generic code health
 
-Check:
-- **Intent is recoverable.** Can a newcomer tell *why* the code is this way? A non-obvious decision, workaround or exception with no comment, ADR, or `.mcp/` entry is the finding. Offer `record_project_knowledge` instead of only complaining.
-- **Hidden coupling.** Behavior that depends on a distant side effect, call order, a magic string or number, an implicit convention, a flag read in several places.
-- **Complexity.** Branching depth, long methods, flag arguments, duplicated logic that will drift. Would the next feature here need to touch many places?
-- **Naming and abstraction.** Names that lie or are vague; an abstraction with one use; or the opposite, copy-paste where an existing utility exists.
-- **Tests as documentation.** Do tests describe behavior and failure cases, or only the happy path? Are they brittle (tied to implementation), and will they fail loudly when behavior changes?
-- **Change cost.** Is a rule scattered across layers, so a future change touches many files?
-- **Temporary code.** TODOs with no owner or ticket, feature flags with no removal plan, commented-out code (PASS 5f).
-- **Consistency with the repository.** "When in Rome" (PASS 10) applies: follow the established way even where you would choose differently.
+INVARIANT DOCUMENTATION
+- If this PR introduces a new load-bearing invariant (a flag, a state machine,
+  a lock strategy), is it documented in a comment at the method or class level?
+  In SecuFusion: defaultUser, isAdmin, isDefault, platform-admin cascade are
+  underdocumented — a new invariant with no comment will confuse the next developer
+- WARNING if a new invariant is introduced with no explaining comment
 
-Severity: **maintainability alone never produces a BLOCKER.** WARNING when it is a concrete, evidenced hazard (an unrecorded exception, a hidden coupling a future change will trip over). Otherwise SUGGESTION (share them through PASS 9, within its limit of 5 per review). The exception: a change that breaks a recorded decision or repeats a recorded lesson is a finding on those grounds (PASS 12 and PASS 8).
+LOCK STRATEGY VISIBILITY
+- If row-level locking is introduced (PESSIMISTIC_WRITE, FOR UPDATE), is the
+  lock acquisition order documented? In SecuFusion: tenant lock → user lock
+  is the established order; a new method that acquires in a different order
+  is a deadlock risk even if it works today
+- BLOCKER if a new lock acquisition order conflicts with the established order
+  in AGENTS.md or existing service methods
+- WARNING if a new lock is introduced with no comment explaining why it is needed
+
+TEST GAP AWARENESS
+- Use smart_search to check if the new code path has a corresponding test class
+- In SecuFusion: known undertested areas are WebMvc controller tests and
+  full HTTP path tests for status code mapping — flag if a new endpoint
+  has service-level tests but no controller-level test
+- WARNING if a new endpoint or guard has service-level coverage but no
+  WebMvc / MockMvc test covering the HTTP response status mapping
+
+KNOWLEDGE CAPTURE
+- If the diff introduces a non-obvious design decision (a specific lock order,
+  a deliberate behaviour like "previous owner keeps groups"), call
+  record_project_knowledge to persist it — future reviewers and the AI agent
+  will have it in context
+- Advisory: suggest calling record_project_knowledge for any decision that
+  would otherwise only live in a PR comment
+
+RULES:
+- Maintainability alone never produces a BLOCKER
+- Only flag items that are specific to SecuFusion's structure, lock strategy,
+  or known knowledge gaps — not generic "method too long" observations
+
+---
+
+### PASS 19 — Spec & Product Cross-Examination
+
+**Trigger: whenever a specification exists (spec.json, spec.md, or a confirmed requirement from Step 0.2b). If no specification was found, report `NOT APPLICABLE — no specification loaded` and continue.**
+
+This pass is a deep semantic review of whether every acceptance criterion is actually satisfied by the code in the diff — not whether a file was touched, but whether the *intent* of each criterion is met. Pattern-matching keywords is not enough. You must reason about what each AC requires and whether the implementation satisfies it in the domain context.
+
+**How to run this pass:**
+
+1. Load the full acceptance criteria from:
+   - `.secufusion/intents/{WI-ID}.json` (WHY layer — business rationale and intent)
+   - `manage_task` `read_summary` for the work item
+   - `spec.json` and `spec.md` from the task folder (verbatim ACs)
+2. For each AC in turn:
+   - State the AC verbatim
+   - Identify the exact code location(s) in the diff that implement it — `file:method:line`
+   - Reason semantically: does the implementation satisfy the AC, partially satisfy it, invert it, or miss it entirely?
+   - Apply SecuFusion domain knowledge: multi-tenant isolation, MSSP hierarchy, IT Admin invariants (`defaultUser` flag), Portal Administrator scopes (`isAdmin='Y'`), Keycloak role boundaries
+3. Also check the PR description against the code: does the description claim a behavior the code does not actually produce?
+
+**Finding formats:**
 
 ```
-FINDING 18A — MAINTAINABILITY: Decision or exception not recoverable from the repository
-FINDING 18B — MAINTAINABILITY: Hidden coupling
-FINDING 18C — MAINTAINABILITY: Tests do not protect the behavior
+FINDING 19A — SPEC: AC has no implementation in the diff
+   AC: "{verbatim acceptance criterion}"
+   Evidence searched: {files, methods, test names checked}
+   Result: no code path found that implements this criterion
+   Severity: BLOCKER   Scope: A
+
+FINDING 19B — SPEC: AC is partially or invertedly satisfied
+   AC: "{verbatim acceptance criterion}"
+   Implemented: {file}:{line} — {what it does}
+   Gap: {the path or condition under which the AC is violated — e.g. guard exists in method A, missing in method B}
+   Severity: BLOCKER   Scope: A
+
+FINDING 19C — SPEC: Platform non-negotiable violated on happy path
+   AC satisfied: YES
+   Non-negotiable: {rule from AGENTS.md — e.g. tenantId filter, IT Admin invariant, Keycloak sync}
+   Violated at: {file}:{line}
+   Severity: BLOCKER   Scope: A
+
+FINDING 19D — SPEC: AC implemented but not tested
+   AC: "{verbatim acceptance criterion}"
+   Implemented: {file}:{method}
+   Test file: {expected} — no test method covers this criterion
+   Severity: WARNING   Scope: A
+
+FINDING 19E — SPEC: PR description diverges from the code
+   Claim: "{text from PR / commit message}"
+   Code: {file}:{line} — {what the code actually does}
+   Severity: WARNING   Scope: A
 ```
+
+**What to ignore in this pass:** style, naming, formatting — completeness and semantic correctness only.
+
+---
+
+### PASS 20 — Adversarial Edge-Case Simulation
+
+**Trigger: any diff that adds or modifies a public method, REST endpoint, repository call, event handler, or shared utility. Skip internal-only private helpers that are fully covered by the public callers you already simulated.**
+
+This is pure LLM-driven adversarial simulation. For every new or modified entry point, trace the code path for each failure scenario below and reason about the outcome — do not just list the scenario name and move on. Actually follow the execution path.
+
+**Scenarios to simulate for each entry point:**
+
+| Scenario | What to trace |
+|---|---|
+| **NULL / EMPTY INPUT** | What happens if `userId` is null, the list is `[]`, a string is blank or missing, a DTO field is absent? Does the guard fire on every code path, or only the main one? |
+| **MID-TRANSACTION FAILURE** | If step 1 saves to DB and step 2 throws — what is the committed DB state? Is there a compensating action or is the record orphaned? |
+| **CONCURRENT REQUESTS** | Two requests hit the same row at the same moment — does locking cover all write paths that touch this invariant, or only the new ones added in this diff? |
+| **DOWNSTREAM TIMEOUT** | An external call (Keycloak, Kafka publish, another service) does not respond — does the caller get a clear error, or is data silently left in an inconsistent state? |
+| **TENANT BOUNDARY PROBE** | Can a caller from tenant A craft a request that reads or writes tenant B's data? Is the tenant predicate applied before any cross-tenant identifier is resolved? |
+
+**Apply SecuFusion-specific knowledge when simulating:**
+- A Kafka `publish` that throws must not silently drop the event — check the catch block
+- A Keycloak call can fail independently of a DB write — both sides must be consistent after the failure or the rollback must be explicit
+- The `defaultUser` and `isAdmin` flags are load-bearing for platform administration — any partial write that leaves them in an inconsistent state is a BLOCKER
+- The `ResourceConflictException` → 409 path must surface a recoverable message, not a 500
+
+**Finding formats:**
+
+```
+FINDING 20A — EDGE CASE: Null / empty input reaches unguarded path
+   Entry point: {file}:{method}:{line}
+   Input: {the null / blank / empty value}
+   Path traced: {the execution steps, with file:line}
+   Outcome: {unhandled NPE / blank validation error / wrong 404 / silent no-op}
+   Severity: BLOCKER | WARNING   Scope: A
+
+FINDING 20B — EDGE CASE: Mid-transaction failure leaves inconsistent DB state
+   Entry point: {file}:{method}
+   Failing step: {file}:{line} — {what throws}
+   DB state after failure: {what was committed, what was not}
+   Missing: {rollback / compensating action / idempotency key}
+   Severity: BLOCKER   Scope: A
+
+FINDING 20C — EDGE CASE: Concurrent requests can violate an invariant
+   Entry point: {file}:{method}
+   Unprotected write: {file}:{line}
+   Race: {two callers both pass the check before either writes}
+   Invariant broken: {e.g. two defaultUsers, zero owners}
+   Missing: {lock / unique constraint / serializable transaction}
+   Severity: BLOCKER   Scope: A
+
+FINDING 20D — EDGE CASE: Downstream timeout causes silent corruption
+   Entry point: {file}:{method}
+   External call: {Keycloak / Kafka / service} at {file}:{line}
+   Timeout outcome: {DB committed, event not sent / Keycloak not updated, DB committed}
+   Missing: {timeout config / rollback / dead-letter / compensating action}
+   Severity: BLOCKER | WARNING   Scope: A
+
+FINDING 20E — EDGE CASE: Tenant boundary crossable under simulated input
+   Entry point: {file}:{method}:{line}
+   Input: {the crafted tenant A request}
+   Path: {how tenant B data is reachable}
+   Severity: BLOCKER   Scope: A
+```
+
+If a simulation produces no defect, dismiss it in one line in the REASONING TRACE. Never leave a scenario unlisted.
+
+---
+
+### PASS 21 — Cross-Stack Contract Parity
+
+**Trigger: only if the diff touches a REST response shape, HTTP status code, error envelope, Kafka event payload, or any field name a consumer depends on. If the diff is purely internal (private methods, no API surface change, no event emission change) → report `NOT APPLICABLE — no contract surface changed` and stop.**
+
+This pass finds every consumer of the changed contract and reasons through whether it still works. Do not stop at finding the consumers — actually ask whether each one breaks.
+
+**How to run this pass:**
+
+1. Identify every changed contract surface: endpoint response shape, status codes added or removed, error message strings, DTO field additions/removals/renames, Kafka payload fields
+2. Call `smart_search` and the DNA graph (`find_endpoint_consumers`, `investigate_entity`, `query_knowledge_graph`) to find every consumer:
+   - Frontend components reading the response
+   - Other microservices calling the endpoint
+   - Kafka consumers processing the event
+   - Chrome extension handlers
+3. For each consumer, LLM-reason through:
+   - Does it access a field that no longer exists or was renamed?
+   - Does it handle the new HTTP status codes (e.g. 409 added, consumer only handles 400/500)?
+   - Does it unwrap the response correctly (`ResponseDto<T>` wrapper vs raw object)?
+   - Does it handle new error message strings if it pattern-matches on them?
+   - Does it handle new records that now appear in a list it processes (e.g. `GET /users` now includes the IT Admin — what does each caller do with an extra row)?
+
+**Apply SecuFusion-specific knowledge:**
+- `ResponseDto<T>` is the standard envelope — flag any endpoint that breaks this contract
+- `sfn-events-api` consumes IAM group/user events via Kafka — payload shape changes break its listener silently
+- The Chrome extension communicates via the policy API contract — any `action` or `extensionPolicyType` field change must be verified against the extension message handler
+- The frontend `axiosConfig.js` wraps calls same-origin — a status code the interceptor does not handle becomes an unhandled rejection
+
+**Finding formats:**
+
+```
+FINDING 21A — CONTRACT: Consumer reads a field the backend no longer returns
+   Changed endpoint/event: {path or topic}
+   Consumer: {file}:{line} — reads {field}
+   Backend: field {removed | renamed to X} at {file}:{line}
+   Severity: BLOCKER   Scope: A
+
+FINDING 21B — CONTRACT: Status code changed, consumer error handler not updated
+   Endpoint: {path}
+   New status: {e.g. 409 added}
+   Consumer: {file}:{line} — only handles {e.g. 400, 500}
+   Result: unhandled rejection / wrong fallback shown to user
+   Severity: BLOCKER   Scope: A
+
+FINDING 21C — CONTRACT: Kafka payload shape changed, consumer not updated
+   Topic: {topic name}
+   Changed field: {field} at {producer file}:{line}
+   Consumer: {file}:{line} — still reads the old field name / type
+   Severity: BLOCKER   Scope: A
+
+FINDING 21D — CONTRACT: New record appears in a list, caller behavior not verified
+   Endpoint: {path}
+   New record type: {e.g. IT Admin now included in GET /users}
+   Consumer: {file}:{line} — {what it does with the list: count, dropdown, export}
+   Risk: {e.g. dropdown count off by one, export includes unexpected row}
+   Severity: WARNING   Scope: A
+```
+
+---
+
+### PASS 22 — Ruthless Noise Filter (Self-Check Before Output)
+
+**Trigger: always. This pass runs after all finding passes complete and before the report is generated. It filters findings from PASS 0 through PASS 27.**
+
+Go through every BLOCKER, WARNING, and SUGGESTION you have collected across all passes. Apply the following filter without mercy:
+
+**REMOVE immediately:**
+- Any comment about indentation, spacing, blank lines, bracket placement, or import ordering
+- Any comment that is cosmetic and cannot cause a runtime failure, security issue, data corruption, or incorrect product behavior
+- Any WARNING that is already covered by a test present in the diff (the test demonstrates the behavior is intentional)
+- Any comment that says something "looks wrong" or "seems unusual" without explaining the specific runtime failure that results if left as-is
+- Any finding raised against unchanged, pre-existing code that this diff does not touch (those are Class B observations, not findings)
+
+**KEEP only what passes all four gates:**
+
+| Gate | Requirement |
+|---|---|
+| **WHERE** | Specific `file:method:line` — not "in UserService" |
+| **WHAT** | The exact condition or input that triggers the problem |
+| **WHY** | The concrete failure — what breaks, for whom, under which scenario |
+| **CONTEXT** | In SecuFusion terms: does this affect tenant isolation, IT Admin invariants, Kafka delivery guarantee, Keycloak sync correctness, or platform-admin status? |
+
+Any surviving finding that cannot answer all four is either demoted to a SUGGESTION or dropped. This is not a style preference — it is an output quality gate.
+
+**Self-check block (write this silently; it feeds the REASONING TRACE):**
+
+```
+NOISE FILTER AUDIT
+   Findings before filter: {n} BLOCKERs, {n} WARNINGs, {n} SUGGESTIONs
+   Removed (cosmetic / style / linter-handled): {n}
+   Removed (covered by test in diff): {n}
+   Removed (pre-existing untouched code, reclassified Class B): {n}
+   Removed (no WHERE/WHAT/WHY/CONTEXT): {n}
+   Findings after filter: {n} BLOCKERs, {n} WARNINGs, {n} SUGGESTIONs
+```
+
+Do not remove a finding just because it is uncomfortable. Remove only what fails the four gates above.
+
+**SEVERITY FLOORS** — these findings have protected severity — Class A + Basis: FACT stays BLOCKER; INFERENCE-based or Class B/C findings are downgraded as set out below.
+
+Severity floors apply only to Class A findings — code that is directly added or modified in this diff. A floor finding in Class B or C code (untouched, pre-existing) is treated as WARNING, not BLOCKER, and is noted as: "Floor rule applies but finding is in unmodified code — treat as WARNING until confirmed by the developer."
+
+- Any finding where a tenant predicate is missing from a query → BLOCKER only if Basis: FACT (query is confirmed missing the predicate — not inferred). If Basis: INFERENCE → WARNING with floor note: "Verify before downgrading."
+- Any finding where caller identity comes from JWT directly instead of tenantContext → BLOCKER only if Basis: FACT (the exact JwtUtil call is visible in the diff).
+- Any finding where a Kafka publish result is unhandled after a committed DB write → BLOCKER only if Basis: FACT (both the DB write and the unhandled send are in the diff).
+- Any REGRESSION finding where Basis is FACT → always BLOCKER.
+- Any finding involving defaultUser or isAdmin flag corruption → BLOCKER only if Basis: FACT (the flag write is in the diff with no guard). If Basis: INFERENCE → WARNING.
+
+If PASS 22 would normally downgrade or remove a floor finding:
+- Class A + Basis: FACT → keep at BLOCKER, add note: "Severity floor applied — cannot be downgraded."
+- Class A + Basis: INFERENCE → downgrade to WARNING, add note: "Severity floor — verify before closing."
+- Class B or C → WARNING regardless of basis, add note: "Floor rule applies but finding is in unmodified code."
+
+**EXPIRING SUPPRESSIONS**
+If a finding matches an entry in `decisions.json` or `.secufusion/tasks/{WI}/decisions.json` that is marked "suppressed", "intentional", or "acknowledged":
+
+Check the entry for a suppression date field (`suppressed_on`, `acknowledged_on`, or `date`). If no date field exists, treat the suppression as valid but flag it: "Suppression has no expiry date recorded — treating as valid. Add suppressed_on to decisions.json to enable auto-expiry."
+
+If a date field exists:
+- Suppression is valid for 30 days from that date.
+- If today is within 30 days → remove the finding from output.
+- If today is past 30 days → re-surface with note: "Previously suppressed on {date}. Suppression expired — re-evaluate if still intentional."
+
+Severity floor findings cannot be suppressed:
+- If a suppression exists for a floor finding (Class A, Basis: FACT) → ignore the suppression, emit the finding with note: "Suppression ignored — severity floor applies."
+- If the floor finding is Class B or Basis: INFERENCE → suppression is honoured normally.
+
+---
+
+### PASS 23 — Blast-Radius & Side-Effect Awareness
+
+**Trigger: any diff that modifies a function, method, entity field, shared utility, or DTO used by more than one caller.**
+
+This pass establishes the full dependent graph of what changed, then reasons about each dependent — not just "these things depend on it" but "does each dependent still get what it expects after the change?"
+
+**How to run this pass:**
+
+1. For every function, method, entity field, or shared utility modified in the diff, call `calculate_blast_radius` and `analyze_impact` to get the dependent graph
+2. Then reason over the results — do not just list dependents:
+   - If this method's behaviour changed, does each dependent still get what it expects?
+   - If this DTO field was renamed, is every consumer updated?
+   - If this shared utility now behaves differently, do all callers handle the new behavior?
+
+**Apply SecuFusion-specific invariant knowledge:**
+
+| Invariant | What to check |
+|---|---|
+| `defaultUser` flag | Any write path that can set `defaultUser=false` on the current IT Admin without going through `transferOwnership` is a BLOCKER |
+| `isAdmin` / `isDefault` group flags | Any path that removes the IT Admin from the admin group outside a sanctioned transfer is a BLOCKER |
+| `tenant.email` | If `tenantEmail` moves or changes type, the domain-filter logic in `getEligibleOwners` / `UserService` breaks silently |
+| Kafka topics | If an event payload field is renamed or removed, every consumer of that topic needs a contract update — dead topic risk if producer is updated but no consumer is confirmed |
+| Shared utilities | A change in `sfn-iam-api`'s `UserService` that also exists verbatim in `sfn-tenants-api` or `sfn-events-api` must be cross-checked; copied rules drift |
+| `ParentChainAuthorizer` / `JwtTenantUserValidationFilter` | Any change to how `defaultUser` or `platformAdmin` is derived cascades to all five services' authorization decisions |
+
+**The Raghu Pattern — guard in A, bypass in B:**
+After adding a new guard or invariant in one method, actively search for every other write path that touches the same field or entity. A guard in `transferOwnership` protects nothing if `deleteUser`, `updateUser`, or a bulk operation bypasses it. This is the most common source of post-release incidents on this platform.
+
+**Finding formats:**
+
+```
+FINDING 23A — BLAST RADIUS: Dependent breaks silently with no error surfaced
+   Changed: {file}:{method/field}
+   Dependent: {file}:{line} — {what it assumes about the changed behavior}
+   After change: {what it receives now vs what it expects}
+   Failure mode: {silent wrong result / NPE / stale data / authorization bypass}
+   Severity: BLOCKER | WARNING   Scope: A
+
+FINDING 23B — BLAST RADIUS: New invariant guard missing on a sibling write path (Raghu pattern)
+   New guard: {file}:{method}:{line}
+   Unguarded path: {file}:{method}:{line} — still writes {field} without the guard
+   Scenario: {how a caller reaches the unguarded path to violate the invariant}
+   Severity: BLOCKER   Scope: A
+
+FINDING 23C — BLAST RADIUS: Cross-PR Kafka contract risk
+   Changed payload: {topic} — field {X} at {producer file}:{line}
+   Consumer update: in a separate PR / not yet merged
+   Risk: consumer processes old-format events until both deploy simultaneously
+   Severity: WARNING   Scope: A
+
+FINDING 23D — BLAST RADIUS: Shared utility modified in one service, sibling not updated
+   Utility: {method/class} in {service A} at {file}:{line}
+   Same utility in: {service B} at {file}:{line} — not updated
+   Behavioral divergence: {what each now does differently}
+   Severity: WARNING   Scope: A
+```
+
+---
+
+### PASS 24 — Nice-to-Have & Follow-Up Triage
+
+**Trigger: always. Runs on every PR.**
+
+When this pass runs, the agent reasons about improvements that are not blockers but would make the code more robust, clear, or maintainable. These are the items a senior reviewer would note as "you don't have to do this now, but you should know about it."
+
+For every PR, reason through:
+
+1. **DATABASE INTEGRITY ENFORCEMENT**
+   Is there a code-level invariant (e.g. exactly one defaultUser per tenant) that has no corresponding DB constraint? If the application layer has a bug, can the DB end up in an inconsistent state with no enforcement?
+   Output as NICE-TO-HAVE: partial unique index / constraint recommendation with exact table and column.
+
+2. **ERROR MESSAGE CLARITY**
+   Are there error messages that could mislead the developer or user about the actual cause? (e.g. "Not authorized" when the real cause is "source user is not the current IT Admin" — these look like auth failures but are domain validation failures). Output as NICE-TO-HAVE with suggested message.
+
+3. **ELIGIBILITY API COMPLETENESS**
+   Is eligibility filtering happening only on the frontend or only at the point of the operation, with no dedicated candidates API? If so, note it as NICE-TO-HAVE: a `/eligible-owners` or `/candidates` endpoint that encapsulates the eligibility rules (ACTIVE, same domain, exclude current IT Admin) so frontend and backend share a single source of truth.
+
+4. **ACCESSIBILITY & INTERNATIONALISATION**
+   For frontend PRs: are interactive dialog elements missing `aria-labelledby`, `aria-label`, or `role` attributes? Are progress indicators internationalised? Output as NICE-TO-HAVE with the exact element and the missing attribute.
+
+5. **RESILIENCE AFTER PARTIAL SUCCESS**
+   If an operation succeeds on the backend but the subsequent UI refresh fails, does the UI still reflect the correct state using the API response directly, or does it show stale data until the next full reload? Output as NICE-TO-HAVE with the specific component and the suggested fallback.
+
+6. **GUARD SYMMETRY**
+   If this PR guards against a scenario on the target (e.g. target must be ACTIVE), should the same guard also apply to the source for symmetry and clarity? Output as NICE-TO-HAVE with reasoning.
+
+**Output format for this pass:**
+
+Each item as:
+```
+[NICE-TO-HAVE] [category] — [exact location] — [what to add/change and why it makes the system more robust]
+```
+These never block merge. They are always advisory.
+
+---
+
+### PASS 25 — SOLID Violation Detection
+
+**Trigger: always. Findings from this pass go through the PASS 22 noise filter and the STEP 3C scope classification like every other pass.**
+
+For every new class and every modified method in the diff, apply the same five SOLID checks as `/sfn-code` Phase 3A CHECK 1 (SRP, OCP, LSP, ISP, DIP).
+
+In review mode, do NOT fix. Report as findings:
+- **BLOCKER** if an SRP violation causes two unrelated concerns to share a transaction boundary (e.g. audit logging inside `transferOwnership` means an audit failure rolls back the transfer).
+- **BLOCKER** if an OCP violation means adding a new tenant type or policy type requires modifying a method that was already tested and stable.
+- **WARNING** for ISP and LSP violations.
+- **SUGGESTION** for DIP violations where the concrete class is internal.
+
+Category label for the report: `SOLID-VIOLATION`. Use the standard card format: PROBLEM + IMPACT + FIX.
+
+---
+
+### PASS 26 — DRY & Simplification
+
+**Trigger: always. Findings from this pass go through the PASS 22 noise filter and the STEP 3C scope classification like every other pass.**
+
+When this pass runs:
+- Call `find_repeated_outcomes` for each new method's intent.
+- Call `smart_search` for duplicated patterns across the diff.
+- Scan the diff for: copy-pasted null guards, duplicated tenant ID extraction, repeated repository call sequences, identical error strings.
+- Check code placement: any method appended to EOF that belongs elsewhere.
+
+In SecuFusion context:
+- The `transferOwnership` guard pattern must not be reimplemented in `deleteUser`.
+- `tenantContext.getActingTenantId()` must not be called multiple times in the same method; extract it to a local variable at method entry.
+- Duplicated domain eligibility checks (email domain, ACTIVE status) must extract to a shared eligibility helper.
+
+Report as:
+- **WARNING** if duplication exists in an authorized file and was not extracted.
+- **WARNING** if a method was appended to EOF instead of its correct location.
+- **SUGGESTION** if extraction requires a file outside the diff scope.
+- **SUGGESTION** if a simpler implementation exists using an already-present utility.
+
+Category label for the report: `DRY-VIOLATION` or `PLACEMENT`. Use the standard card format: PROBLEM + IMPACT + FIX.
+
+---
+
+### PASS 27 — Fix-History Regression Check
+
+**Trigger: always. This pass runs after PASS 26 and before PASS 22 (the noise filter). PASS 22 also filters REGRESSION findings; they are not exempt.**
+
+For every BLOCKER and WARNING finding collected in PASS 0 through PASS 26:
+
+**STEP 1 — FIND PAST FIXES**
+- Take the file and method/line where the finding sits.
+- Run: `git log --follow --oneline --since=18.months.ago -- {file_path}` and filter for commits whose message contains: fix, guard, resolve, block, prevent, revert, hotfix, WI-, TASK-, BUG-. If no git access, fall back to `smart_search` with the file path and a keyword from the finding (e.g. "tenant", "defaultUser", "transfer").
+- Also search `.rejected-patterns.json` and `decisions.json` for any entry that matches the finding's category or entity.
+
+**STEP 2 — SURFACE THE HINT**
+If a past fix is found for the same category in the same area, add a FIX-HISTORY note to the finding card, after the FIX section:
+
+```
+FIX-HISTORY
+This pattern was fixed before in {commit hash / WI ID} on {date}.
+That fix: {one sentence — what was done then}.
+Risk: reverting or bypassing that fix was the root cause then.
+Check: confirm this change does not undo {specific method or guard from that commit}.
+```
+
+**STEP 3 — REGRESSION VERDICT**
+After scanning all findings:
+- If ANY finding has a FIX-HISTORY match, add this line to the BEFORE YOU MERGE section of the report:
+  `□ Regression risk: {N} finding(s) match past fixes. Verify the original fix is still intact before merging.`
+- If a finding is an EXACT repeat of a past fix with no new context, flag it as REGRESSION WARNING — do not auto-upgrade to BLOCKER. Add a DEVELOPER DECISION REQUIRED note: "This finding matches a past fix. Confirm this is not a regression before merging." Only upgrade to BLOCKER if the past fix is confirmed via Basis: FACT (e.g. the exact same guard is missing again in the same method).
+
+Apply SecuFusion-specific knowledge:
+- Tenant predicate missing (PASS 1) has been fixed multiple times; any recurrence is a high-confidence REGRESSION.
+- IT Admin deactivation guard — check git log for the commit that introduced `ensureItAdminActive` or equivalent; if found, any bypass is a REGRESSION.
+- Caller resolution via JWT direct read — check git log for the jwtpull-migration commit or the TenantContext caller resolution commit; if found, any reversion to JwtUtil direct read is a REGRESSION.
+- Kafka publish without result handling was flagged in past reviews; recurrence is a REGRESSION.
+
+Category label for the report: `REGRESSION`. Use the standard card format: PROBLEM + IMPACT + FIX + FIX-HISTORY.
 
 ---
 
@@ -1352,212 +1740,165 @@ RECOMMENDED FIX:
 
 ---
 
-## STEP 4 — Write the full review report
+## OUTPUT CONTRACT
 
-After all passes are complete, produce the final report in this exact format:
+This is not a suggestion. The report MUST be generated in the exact structure
+below. No deviations. If you are about to write a paragraph of prose findings,
+stop — use the card format instead. If you are about to write "BLOCKER —" on
+a single line, stop — use the ✗ card format instead.
 
-```
-══════════════════════════════════════════════════════════════
-  SECUFUSION PRODUCT-AWARE CODE REVIEW
-  Target: {work item | service | folder | file}
-  Files reviewed: {count}
-  Date: {today's date}
-══════════════════════════════════════════════════════════════
+Before writing a single character of the report output, re-read the REPORT
+FORMAT section completely. Then generate the report top to bottom in order:
+Header → Verdict Banner → Blockers → Warnings → Nice-to-Have → 
+Passed → Assumptions → Before You Merge → Footer Verdict Banner.
 
-## CONTEXT
-{2-3 sentences on what this change does and for whom, based on your reading of the code.}
-{If task folder found: "Goal from spec: {business_goal from spec.json}"}
-{If no task folder: "No task context loaded: reviewed against the code and recorded product knowledge only."}
+Every finding card must have exactly three required labeled subsections: PROBLEM, IMPACT, FIX — in that order, on separate lines, indented.
+PASS 27 findings may also include an optional fourth subsection:
+FIX-HISTORY — placed after FIX, only when a past fix match is found.
+A finding with no FIX line is incomplete and must not be emitted.
+A finding with no IMPACT line is incomplete and must not be emitted.
 
-## STORY SCOPE ASSESSMENT
-{The boundary you reviewed against (Step 0.2c): the story objective, the acceptance criteria (verbatim), the architectural decisions, the explicit product decisions, and the out-of-scope items.}
-{Which boundary you used: the specification, or "no specification: the diff was the boundary".}
-{Review topics that are in scope for this story, and the ones you set aside as adjacent. Findings are classified A, B or C against this.}
+The verdict banner must appear exactly twice — once after the header,
+once as the last thing before the re-run instruction.
 
-## PRODUCT KNOWLEDGE USED
-{One line per source actually loaded: .mcp entries (ids), project spec, migrations spec, DNA queries, persona files.}
-{The specification you reviewed against: work item, the gates passed (`spec_status`), the path of `spec.md`, the number of acceptance criteria. Or "No specification found".}
-{Engineering experience consulted, with its provenance and whether you relied on any of it. Or "none found".}
+Do not write prose summaries. Do not write paragraph-form findings.
+Do not use ════ borders. Do not include pass numbers in the output.
 
-## DECISION ALIGNMENT
-{From `check_decision_alignment`. One line per decision this change touches: `UD-1 (RECORDED|USER-ANSWERED|ACCEPTED): VIOLATES | PARTIALLY ALIGNS | ALIGNS | UNVERIFIED`, then the evidence (`file:line`) and which of the four questions it answers: contradicts, weakens, second source of truth, bypasses a guardrail. Example: `VIOLATES UD-1: deleteUser no longer rejects defaultUser (UserService.java:709)`. Decisions that were not touched are not listed. If the registry is empty, say so.}
+---
 
-## INVARIANT CATALOG
-{From `get_relevant_invariants`, grouped by domain: each invariant with CLASSIFICATION (CONFIRMED / PROPOSED / VIOLATED / NOT DEMONSTRATED), SOURCE, EVIDENCE, WRITE PATHS and ENFORCEMENT TYPE. A VIOLATED entry points to the finding that proves it. Invariants you inferred that are not in the catalog are PROPOSED, and said so.}
-{Sources that were missing, and what you fell back to. Never imply knowledge you did not have.}
+## REPORT FORMAT
 
-## REASONING TRACE
-{Your model of the change in 2-3 sentences, and its blast radius (what you queried or read to establish it).}
-{The hypotheses you investigated, ranked by risk. For each: H{n}, the suspicion, what you did to test it, and the outcome:
- CONFIRMED (-> see FINDING {id}) | DISMISSED (and what dismissed it, with file:line or entry id) | OPEN (-> a question, an UNVERIFIED item or a knowledge gap).}
-{What you chose NOT to examine, and why (risk-based depth).}
-{This section is the evidence that you reasoned about this change instead of running a list. Never omit it.}
+Generate the review report using this exact structure. Every section is required. Do not skip sections even if empty — write "None." for empty sections.
 
-## FINDINGS SUMMARY
-| Scope / severity | Count | Can change the verdict? |
-|---|---|---|
-| In scope (Class A): BLOCKER | {n} | Yes |
-| In scope (Class A): WARNING | {n} | Yes |
-| Out-of-scope observations (Class B) | {n} | No |
-| Future considerations (Class C) | {n} | No |
-| Merge regressions, separate lane (HIGH {n}, MEDIUM {n}, LOW {n}) | {n} | No, unless one directly impacts an acceptance criterion |
-| Behavior changes (intent confirmed {n}, not confirmed {n}) | {n} | Only unconfirmed MEDIUM/HIGH ones, as in-scope findings |
-| Scope drift (unrelated files), separate lane | {n} | No: reported only |
-| Developer decisions required | {n} | No |
-| Pessimistic review (when it ran): findings CRITICAL {n}, HIGH {n}, MEDIUM {n}, LOW {n}; confirmed invariants demonstrated {x} of {y} | {n} | Yes for in-scope CRITICAL/HIGH backed by facts; APPROVED needs every confirmed invariant demonstrated |
-| PASSED | {n} passes | n/a |
-| UNVERIFIED | {n} product items | No (see KNOWLEDGE GAPS) |
+HEADER─────────────────────────────────────────────
+SECUFUSION REVIEW — {TASK-ID}
+{service name} · {file count} files · {date}
+─────────────────────────────────────────────
+{one sentence: what this change does}
+─────────────────────────────────────────────
 
-## REVIEW DIMENSIONS
-| Dimension | Status | Passes |
-|---|---|---|
-| Code quality & repository consistency | PASSED / FINDINGS | 0-10 |
-| Product behavior & feature contracts | PASSED / FINDINGS / UNVERIFIED / N/A | 12 |
-| Architecture & service boundaries | ... | 13 |
-| Deployment model | ... | 14 |
-| Tenant hierarchy | ... | 1, 15 |
-| Privacy model | ... | 16 |
-| Operational resilience | ... | 4, 17 |
-| Future maintainability | ... | 9, 18 |
 
-## PRODUCT & PRIVACY FIT
-{The finalised PASS 11 block: the five answers, each with Source and Basis.}
+VERDICT BANNER — place immediately after header so developer knows the result instantly.
 
-## IN-SCOPE FINDINGS (Class A: these alone decide the verdict)
+If any BLOCKER exists:
 
-### BLOCKERS — must fix before opening PR
-{All Class A BLOCKER findings grouped by pass; each as the full finding block defined in its pass, with `Scope: A`.}
+✗ CHANGES REQUESTED
+{N} blocker(s) · {N} warning(s) · {N} suggestion(s)
+Start here → {single most critical fix in one line}
 
-### WARNINGS — should fix before merge
-{All Class A WARNING findings grouped by pass; full blocks.}
+If no BLOCKER but WARNINGs exist:
 
-{If there are none: "No in-scope findings."}
+△ APPROVED WITH COMMENTS
+0 blockers · {N} warning(s) · {N} suggestion(s)
 
-## OUT-OF-SCOPE OBSERVATIONS (Class B: do not affect the verdict)
-{Each as an OBSERVATION block (STEP 3C): where, what, why it is out of scope, the suggested follow-up story, urgency for triage, effect on this verdict: none.}
-{These are not requests to change this story. If there are none: "None."}
+If clean:
 
-## FUTURE CONSIDERATIONS (Class C: do not affect the verdict)
-{Each as a CONSIDERATION block. This is also where PASS 9's long-term suggestions go (up to 5 across B and C together).}
-{If there are none: "None."}
+✓ APPROVED
+No blockers · No warnings
 
-## PRODUCT-CENTRIC PESSIMISTIC REVIEW (only when the mode ran; say why it ran)
-{Omit with one line if the mode did not run: "Not run: the story does not concern ownership, roles, admin, tenancy, permissions or lifecycle."}
 
-### Change in business terms
-{The business problem, the entity, the state that changes, who can act, the systems affected, the assumptions that exist today.}
+SECTION 1 — BLOCKERS
 
-### ENTITY CONTRACTS
-{One short contract per affected entity: ownership, authority, lifecycle, consistency (source of truth), audit, dependencies, tenancy. `NOT ESTABLISHED` where you could not show it.}
+Header line:
 
-### FEATURE INVARIANTS
-| Invariant (what must always remain true) | Status | Source | Demonstrated |
-|---|---|---|---|
-| {e.g. a tenant always has an owner} | CONFIRMED / PROPOSED | {quoted source, or "reviewer's inference: asked in Step 2"} | YES (file:line or test) / NO (see PESSIMISTIC FINDING n) / NOT DEMONSTRATED (UNVERIFIED) |
+━━━ BLOCKERS ({N}) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Must fix before merge.
 
-### Lifecycle and state transitions
-{A table of the lifecycle operations (create, read, update, transfer, enable, disable, archive, delete, restore, import, migration, bulk, scheduled, retry) and what the change does for each; the states that exist before and after; any invalid, orphaned, duplicated or stuck state.}
+For each blocker use this card:
 
-### Ownership, authority and tenancy
-{Ownership before and after; whether ownership and authority can diverge; elevation paths; the tenancy matrix (self, child, parent, peer, platform, system) with ALLOWED / DENIED / UNVERIFIED and whether that is as intended.}
+✗ {CATEGORY} | {file}:{line}
+{method or code location — one line}
 
-### Authority drift report
-{Ownership vs authority: divergence, loss on transfer, escalation on transfer, identity vs capability, group membership vs ownership, each with file:line; decisions whose premise the AUTHORITY_COUPLING hits contradict.}
+ PROBLEM
+ {What is wrong. One to three sentences. Name the exact variable, flag, or code path.}
 
-### Concurrency and data integrity
-{The simultaneous-action pairs you evaluated and the invariants they could break; the audit fields and ownership history, and every write path that could erase or rewrite them.}
+ IMPACT
+ {What breaks, for whom, under what scenario. Always tie to SecuFusion context: tenant isolation / IT Admin invariant / Kafka / Keycloak / platform-admin.}
 
-### Cross-service and product consistency
-{From `check_entity_impact`: the services, caches, events, jobs, reports and exports that depend on this data and what each assumes. The sibling features compared and any unexplained inconsistency.}
+ FIX
+ {Concrete action. One to three sentences. Name the method, annotation, or query change needed.}
+Separate each card with a blank line. Do not number blockers.
 
-### UX and operations
-{Discoverability, recovery from mistakes, visibility of state and ownership; Support, Reporting, Audit and Administrator impact; existing data after release and any backfill.}
+SECTION 2 — WARNINGS
 
-### Field impact and reasoning chains
-{From `build_field_impact`: per field, the consumers by capability and the consequence you argued from them. Each finding carries its REASONING CHAIN.}
+Header line:
 
-### Support tickets
-{The tickets Support would receive and the code each traces to, or "nothing in the code explains it".}
+━━━ WARNINGS ({N}) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Should fix before merge.
 
-### Completeness check
-{The ten answers (YES / NO / UNKNOWN with the evidence); the number of UNKNOWNs feeds the confidence score.}
+Same card format as blockers but use △ instead of ✗. If none: write "None."
 
-### Zombie states, UI failure paths, historical data and copy divergence
-{The impossible states you tried to build and the sequences; what the user sees when each failure happens; what pre-existing rows do under the new rule; the copies that diverge. Or "examined, none found" with what you examined.}
+SECTION 3 — NICE TO HAVE
 
-### Hostile principal architect: top reasons to reject
-{The ranked reasons, each tied to a finding or an UNVERIFIED item.}
+Header line:
 
-### PESSIMISTIC FINDINGS
-{Each as a PESSIMISTIC FINDING block (Severity, Scope, Basis, Invariant, ROOT CAUSE, BUSINESS IMPACT, LONG-TERM IMPACT, REPRODUCTION, AFFECTED COMPONENTS, RECOMMENDED FIX). Those that are in scope, FACT-based, and CRITICAL or HIGH also appear in IN-SCOPE FINDINGS as blockers, referring back here.}
+━━━ NICE TO HAVE ({N}) ━━━━━━━━━━━━━━━━━━━━━━━
+Non-blocking. Consider for this or next iteration.
 
-### Approval conditions
-{Each of the eight, as HOLDS (evidence) / DOES NOT HOLD (finding) / UNVERIFIED: business invariants; lifecycle; authorization; tenancy; audit data; operational behavior; future-state behavior; platform assumptions.}
+For each item:
 
-## MERGE REGRESSION FINDINGS (a separate lane: not story, product or architecture findings)
-{The `check_merge_regressions` output (STEP 3D): each as a MERGE REGRESSION REVIEW block: file, observation, classification POSSIBLE MERGE REGRESSION, severity, evidence (parents, merge base, merge commit where it first disappeared), risk, action "Developer review required."}
-{State which merges were examined. If no merge commit was in range, say so and that rebase or squash losses cannot be seen.}
-{These do not change approval status unless one directly impacts an acceptance criterion; name that criterion and raise it in IN-SCOPE FINDINGS too. You never delete, restore or modify code, and never prefer a branch, on this evidence.}
-{If there are none: "No possible merge regressions found in the examined merges."}
+◦ {CATEGORY} | {file or area}
+{One to two sentences: what to add and the concrete benefit.}
 
-## BEHAVIOR CHANGES (silent behavior change review, STEP 3E)
-{Each change that alters behavior as a BEHAVIOR CHANGE block: File, Old Behavior, New Behavior, Affected Users, Acceptance Criteria Impact, Risk, Intent Explicitly Confirmed (with `Confirmed by:` when YES).}
-{Those with Intent NO and Risk MEDIUM or HIGH also appear in IN-SCOPE FINDINGS as FINDING 19A, referring back here. Candidates you dismissed are named, with the reason, in the REASONING TRACE.}
-{If there are none: "No behavior changes found."}
+If none: write "None."
 
-## SCOPE DRIFT (PR scope drift review, STEP 3F: report only, never fails the review)
-{The classification: CORE STORY FILES, INDIRECTLY RELATED FILES, UNRELATED FILES, each with its reason. Then one SCOPE DRIFT block per unrelated file: File, Reason, Recommendation "Move to separate story or explain why included."}
-{If none: "No scope drift detected." If there was no story to classify against, say so and that you could not assess drift.}
+SECTION 4 — PASSED
 
-## DEVELOPER DECISIONS REQUIRED (the role boundary: you detect, explain and report; you do not decide)
-{Each as a DEVELOPER DECISION REQUIRED block: Decision, Evidence, Rationale. These are things you were unsure about and will not guess. Never present one as a verdict.}
-{If there are none: "None."}
+Header line:
 
-## WHAT WAS DONE WELL
-{Genuine positives. Patterns correctly applied, good test coverage, thoughtful error handling, a product subtlety handled correctly.}
-{Never omit this section. Find something real.}
+━━━ PASSED ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## KNOWLEDGE GAPS
-{Every UNVERIFIED item: what could not be established and which recorded entry would settle it.}
-{For each, offer: "Record this with record_project_knowledge once you confirm it." Nothing is recorded without the developer's confirmation, and never as `accepted` on your own.}
-{If none: "No knowledge gaps."}
+For each passed area:
 
-## ASSUMPTIONS MADE
-{Every assumption you made because of missing context, unanswered questions or absent files; `accepted` exceptions you honoured, with their ids.}
+✓ {area name} — {one sentence why it passed}
 
-## MANUAL ACTIONS REQUIRED BEFORE MERGING
-{Migration scripts to run, exact psql commands, and their order relative to deployment}
-{Coordinated deployment steps (Kafka schema, version coexistence, new topics or permissions)}
-{Config values to set per environment}
-{If none: "No manual actions required."}
+Always include this section. Minimum 3 items if the change is non-trivial. This tells the developer what not to re-examine.
 
-══════════════════════════════════════════════════════════════
-## REVIEW CONFIDENCE
-{Call `score_review_confidence` with what this review actually established, then paste its `CONFIDENCE SCORE:` and `CONFIDENCE EXPLANATION:`. Inputs, each from your own work: invariants confirmed / inferred / not demonstrated / violated (from the catalog and 0.2d), whether the cross-service scan ran (`check_entity_impact`), test evidence (tests run and passed? only present? none?), whether you examined database constraints (`check_invariant_enforcement`), concurrency / lifecycle / authority coverage (STEP 3G), the number of UNVERIFIED items and of REQUIRES_DECISION items, whether the pessimistic trigger fired, and the count of findings. Pass `work_item_id` so the server also applies the staleness cap and saves the result.}
-{**"I found no issue" is not "this review can be trusted."** If confidence is not HIGH, say what is missing and what would raise it. Never write that a story is safe, complete or correct on a MEDIUM or LOW confidence review: write what was and was not established.}
+SECTION 5 — ASSUMPTIONS
 
-## FINAL VERDICT (based only on in-scope findings)
+Header line:
 
-{Choose exactly one. The verdict is decided by Class A findings alone; Class B and C never change it.}
+━━━ ASSUMPTIONS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-APPROVED
-   No in-scope blockers found. Change is ready for a PR.
-   {If in-scope warnings exist: "Recommend addressing warnings before merge."}
-   {If any UNVERIFIED items exist: "Approved on the evidence available. {n} product item(s) could not be verified: see KNOWLEDGE GAPS."}
-   {In pessimistic mode APPROVED requires all eight approval conditions to hold and every CONFIRMED invariant to be demonstrated. Passing tests, met acceptance criteria and a matching implementation are not enough. If any is open, the verdict is APPROVED WITH CHANGES at most, naming it.}
-   {If observations or considerations exist: "{n} out-of-scope observation(s) and {n} future consideration(s) are listed above; none affects this verdict."}
+For each assumption:
 
-APPROVED WITH CHANGES
-   No in-scope blockers. {n} in-scope warning(s) should be resolved before merging.
-   {One sentence per warning and its fix.}
+? {The assumption in one sentence.}
+Resolve by: {what needs to be confirmed and by whom.}
 
-CHANGES REQUESTED
-   {n} in-scope blocker(s) must be resolved before this PR can be opened.
-   Top priority: {the single most critical Class A BLOCKER finding in one sentence}
-   Re-run /sfn-review {$ARGUMENTS} after fixes.
+If none: write "None."
 
-══════════════════════════════════════════════════════════════
-```
+SECTION 6 — BEFORE YOU MERGE
+
+Header line:
+
+━━━ BEFORE YOU MERGE ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+List concrete manual steps:
+
+□ {action}
+
+If none: write "None."
+
+FOOTER
+Repeat the verdict banner exactly as it appeared at the top. Then add:
+
+Re-run after fixes: /sfn-review {TASK-ID}
+
+
+---
+
+RULES FOR THE FORMAT — the agent must follow all of these when generating any report:
+
+1. No ASCII art borders like ════ — use ━━━ section dividers only
+2. No pass numbers in the report (no "PASS 1", "PASS 2" etc) — the developer does not care which pass found it, they care what category it is
+3. Category labels must come from this list only: TENANT-ISOLATION · SECURITY · N+1 · MISSING-INDEX · KAFKA-SAFETY · REJECTED-PATTERN · DECISION-DRIFT · TEST-COVERAGE · CONTRACT-PARITY · INVARIANT-BYPASS · EDGE-CASE · SPEC-GAP · BLAST-RADIUS · CROSS-STACK · SOLID-VIOLATION · DRY-VIOLATION · PLACEMENT · REGRESSION
+4. Every finding card must have PROBLEM + IMPACT + FIX — no exceptions, no partial cards. PASS 27 findings may additionally include FIX-HISTORY after FIX.
+5. IMPACT must name a SecuFusion-specific consequence — never "this could cause issues" — always state what breaks, for whom, under what scenario
+6. The verdict banner appears TWICE: once at the top right after the header, once at the footer
+7. The PASSED section always comes before ASSUMPTIONS — it is not a reward, it tells the developer what does not need re-examination
+8. Never emit a finding that does not survive PASS 22 (Ruthless Noise Filter) — run that filter before generating this report
+9. The section order is fixed: Header → Verdict → Blockers → Warnings → Nice-to-Have → Passed → Assumptions → Before You Merge → Footer
+10. ado-comments.md and pr-comment.md are generated after the report using the same findings — do not duplicate the report content into those files, only format them for ADO inline comments
 
 ---
 

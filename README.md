@@ -6,7 +6,7 @@ It does not just answer questions about your code. It runs a **workflow** (under
 
 > **Agent remembers project → OLD.  Project teaches the agent → NEW.**
 
-> **Version 4.10.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, and 4.10.0 makes `/sfn-review` argue business consequences (pessimistic mode, feature and field models, decisions, invariants, confidence) and adds client-review calibration. 90 tools. See [What's New in 4.10.0](#whats-new-in-4100) and [Upgrading from 3.x](#upgrading-from-3x).
+> **Version 4.12.0** · Node ≥ 18 · project knowledge moves into the repository (`.mcp/`), `/sfn-explore` and `/sfn-plan` became `/sfn-spec` (4.0.0), 4.1.0 adds a knowledge health report, templates and a suggestion engine, 4.2.0 makes `/sfn-review` a standalone, product-aware, investigation-driven reviewer, 4.3.0 makes the release file written by `/sfn-init` say what the new MCP version brings, 4.4.0 makes `/sfn-review` spec-aware and experience-aware, 4.5.0 gives every document one home, 4.6.0 adds the design investigation record to the post-review documents, 4.7.0 turns the PR summary into an engineering change summary and makes the philosophy gate show its reasoning, 4.8.0 writes ADRs as design narratives and seeds Device vs Machine by default, 4.9.0 adds the merge-regression, silent-behavior-change and scope-drift lanes to every review, 4.10.0 makes `/sfn-review` argue business consequences and calibration, 4.11.0 adds PASS 19 to PASS 24 and a standardized report, and 4.12.0 adds code-quality enforcement to `/sfn-code` (SOLID, DRY, placement, formatting), three new review passes (SOLID, DRY and placement, fix-history regression) and severity floors. 90 tools. See [What's New in 4.12.0](#whats-new-in-4120), [What's New in 4.11.0](#whats-new-in-4110) and [Upgrading from 3.x](#upgrading-from-3x).
 
 ## Contents
 
@@ -23,28 +23,30 @@ It does not just answer questions about your code. It runs a **workflow** (under
 11. [Lessons Learned](#lessons-learned)
 12. [Architectural Decisions](#architectural-decisions)
 13. [Work-Item Identity](#work-item-identity)
-14. [What's New in 4.10.0](#whats-new-in-4100)
-14. [What's New in 4.9.0](#whats-new-in-490)
-15. [What's New in 4.8.0](#whats-new-in-480)
-16. [What's New in 4.7.0](#whats-new-in-470)
-17. [What's New in 4.6.0](#whats-new-in-460)
-18. [What's New in 4.5.0](#whats-new-in-450)
-19. [What's New in 4.4.0](#whats-new-in-440)
-20. [What's New in 4.3.0](#whats-new-in-430)
-21. [What's New in 4.2.0](#whats-new-in-420)
-22. [What's New in 4.1.0](#whats-new-in-410)
-23. [What's New in 4.0.0](#whats-new-in-400)
-24. [Upgrading from 3.x](#upgrading-from-3x)
-25. [Getting Started](#getting-started)
-26. [New Contributor Guide](#new-contributor-guide)
-27. [Contributing Knowledge](#contributing-knowledge)
-28. [Release Notes Philosophy](#release-notes-philosophy)
-29. [Tool Reference](#tool-reference)
-30. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
-31. [Development](#development)
-32. [Status and Known Limitations](#status-and-known-limitations)
-33. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
-34. [Long-Term Vision](#long-term-vision)
+14. [What's New in 4.12.0](#whats-new-in-4120)
+15. [What's New in 4.11.0](#whats-new-in-4110)
+16. [What's New in 4.10.0](#whats-new-in-4100)
+17. [What's New in 4.9.0](#whats-new-in-490)
+18. [What's New in 4.8.0](#whats-new-in-480)
+19. [What's New in 4.7.0](#whats-new-in-470)
+20. [What's New in 4.6.0](#whats-new-in-460)
+21. [What's New in 4.5.0](#whats-new-in-450)
+22. [What's New in 4.4.0](#whats-new-in-440)
+23. [What's New in 4.3.0](#whats-new-in-430)
+24. [What's New in 4.2.0](#whats-new-in-420)
+25. [What's New in 4.1.0](#whats-new-in-410)
+26. [What's New in 4.0.0](#whats-new-in-400)
+27. [Upgrading from 3.x](#upgrading-from-3x)
+28. [Getting Started](#getting-started)
+29. [New Contributor Guide](#new-contributor-guide)
+30. [Contributing Knowledge](#contributing-knowledge)
+31. [Release Notes Philosophy](#release-notes-philosophy)
+32. [Tool Reference](#tool-reference)
+33. [Repository Layout and Where State Lives](#repository-layout-and-where-state-lives)
+34. [Development](#development)
+35. [Status and Known Limitations](#status-and-known-limitations)
+36. [Roadmap: Next Evolution of the Project Intelligence Layer](#roadmap-next-evolution-of-the-project-intelligence-layer)
+37. [Long-Term Vision](#long-term-vision)
 
 ---
 
@@ -435,6 +437,47 @@ A ticket reference such as `BUG-1230`, `TASK-1230`, `STORY-1230`, `FEATURE-1230`
 - The type you give is preserved exactly. It is never replaced by a default ("task") and never overridden by the classification's `task_type`. If no type was given, none is invented.
 - `resolve_work_item_ref` returns the canonical reference, folder name, branch suffix, commit prefix and PR-title prefix, to be used verbatim.
 - Ticket numbers are unique, so registering a second type for the same number returns `IDENTITY CONFLICT` instead of silently changing it.
+
+---
+
+## What's New in 4.12.0
+
+A minor release with no new tools (90 in all) and no breaking changes. `/sfn-code` now enforces code quality while it writes, and `/sfn-review` checks the same things when it reads, plus a fix-history check and protected severities. `/sfn-review` now has 28 passes (PASS 0 to PASS 27).
+
+**`/sfn-code` writes better code (Phase 3A)**
+- **SOLID**: single responsibility, open/closed, Liskov, interface segregation and dependency inversion, each with its SecuFusion form. A violation in a file the spec authorizes is fixed in place; one that needs another file is recorded as a suggestion in the handoff.
+- **DRY**: search the estate (`find_repeated_outcomes`, `smart_search`) before writing a method, and extract duplicated guards, tenant-id extraction, repository sequences and error strings.
+- **Code placement**: new code goes where its kind belongs, never appended to the end of the file by default.
+- **Formatting**: indentation, imports and signatures copied from the nearest neighbour, then `check_diff_quality` after every file.
+
+**`/sfn-review` reads for the same things, and remembers**
+- **PASS 25, SOLID violation detection**: an SRP violation that shares a transaction boundary, or an OCP violation that edits a stable method, is a BLOCKER.
+- **PASS 26, DRY and simplification**: duplicated guards, repeated `getActingTenantId()` calls, code appended to the end of the file.
+- **PASS 27, fix-history regression check**: finds past fixes for the same file and area (`git log --follow`, rejected patterns, decisions) and adds a `FIX-HISTORY` note to the card. An exact repeat is a REGRESSION WARNING with a developer decision, and becomes a BLOCKER only on `Basis: FACT`.
+- **Severity floors and expiring suppressions in PASS 22**: a missing tenant predicate, a direct JWT caller read, an unhandled Kafka publish after a committed write, or `defaultUser` / `isAdmin` corruption stays a BLOCKER when it is Class A and `Basis: FACT`, and cannot be suppressed. A suppression expires 30 days after its recorded date.
+- New report categories: `SOLID-VIOLATION`, `DRY-VIOLATION`, `PLACEMENT`, `REGRESSION`.
+
+**Housekeeping**
+- The coder persona's contradictions with `/sfn-code` are resolved (optimization stays inside the spec, reasoning comments only for non-obvious code, per-AC progress updates, `EXEC-Phase` labels).
+- `agents/AGENTS.md` and its repo-level copy are repaired from mojibake and back in sync, and `coder.md` is aligned.
+
+---
+
+## What's New in 4.11.0
+
+A review-depth release: `/sfn-review` gains six passes (PASS 19 to PASS 24), six existing passes are rewritten around SecuFusion's services and invariants, and the report becomes a standardized card format. No new tools and no breaking changes.
+
+**Six new passes**
+- **PASS 19 (Spec & Product Cross-Examination)**: each acceptance criterion traced to `file:method:line` and judged met, partly met, inverted or missed; the PR description is checked against the code.
+- **PASS 20 (Adversarial Edge-Case Simulation)**: null or empty input, mid-transaction failure, concurrent requests, downstream timeout and a cross-tenant probe, traced through each entry point.
+- **PASS 21 (Cross-Stack Contract Parity)**: every consumer of a changed REST shape, status code or Kafka payload, and whether it still works.
+- **PASS 22 (Ruthless Noise Filter)**: removes cosmetic, test-covered and pre-existing-code findings before output.
+- **PASS 23 (Blast-Radius & Side-Effect Awareness)**: the dependent graph of a change and the platform invariants, including a guard added in one method but bypassed in another.
+- **PASS 24 (Nice-to-Have & Follow-Up Triage)**: advisory items that never block a merge.
+
+**SecuFusion grounding on existing passes**: PASS 2 (N+1 hot paths), PASS 3 (index patterns), PASS 4 (Kafka safety), PASS 5 (authorization, caller resolution, transactions, external calls), PASS 9 (platform-specific suggestions) and PASS 18 (invariants, lock order, test gaps).
+
+**Standardized report**: header, verdict banner, blockers, warnings, nice-to-have, passed, assumptions and before-you-merge, each finding as a PROBLEM / IMPACT / FIX card, with ADO and PR comment drafts.
 
 ---
 
