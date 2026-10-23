@@ -1,0 +1,49 @@
+# Runs the review. Never fails the step itself — the gate step decides (so artifacts always publish).
+parameters:
+  - name: repoKey
+    type: string
+  - name: engine
+    type: string
+  - name: auth
+    type: string
+  - name: level
+    type: string
+  - name: crossVerify
+    type: boolean
+    default: false
+  - name: liveDb
+    type: boolean
+    default: false
+  - name: osv
+    type: boolean
+    default: false
+
+steps:
+  - bash: |
+      set -uo pipefail
+      # An undefined pipeline variable arrives as the literal "$(NAME)" — treat it as unset.
+      for v in ANTHROPIC_API_KEY OPENAI_API_KEY AZURE_OPENAI_API_KEY SFN_REVIEW_DB_URL; do
+        [[ "${!v:-}" == \$\(* ]] && unset "$v"
+      done
+      if [[ "${{ parameters.auth }}" == "foundry" ]]; then export CLAUDE_CODE_USE_FOUNDRY=1; unset ANTHROPIC_API_KEY; fi
+
+      bash "$(REVIEWER)/scripts/run-review.sh" --ci \
+        --repo "$(ESTATE_ROOT)/${{ parameters.repoKey }}" \
+        --repo-key "${{ parameters.repoKey }}" \
+        --base "$(SFN_BASE)" --head HEAD \
+        --estate-root "$(ESTATE_ROOT)" \
+        --engine "${{ parameters.engine }}" \
+        --level "${{ parameters.level }}" \
+        --out "$(OUT)" ${{ iif(parameters.crossVerify, '--cross-verify', '') }} \
+        ${{ iif(parameters.liveDb, '--live-db', '') }} ${{ iif(parameters.osv, '--osv', '') }}
+      RC=$?
+      if [[ $RC -ne 0 ]]; then
+        echo "##vso[task.logissue type=warning]sfn-review: review run failed (exit $RC) — see engine.log in the sfn-review artifact."
+      fi
+      exit 0
+    displayName: sfn code review
+    env:
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+      OPENAI_API_KEY: $(OPENAI_API_KEY)
+      AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+      SFN_REVIEW_DB_URL: $(SFN_REVIEW_DB_URL)

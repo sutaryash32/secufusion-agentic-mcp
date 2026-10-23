@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sfn-code-reviewer/schemas/finding.schema.json",
+  "title": "Finding",
+  "description": "One review finding. `id` is assigned by scripts/validate-result.mjs, not by the model.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ruleId", "severity", "confidence", "category", "file", "line", "anchor", "title", "problem", "failureScenario", "suggestion"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-f0-9]{12}$" },
+    "ruleId": { "type": "string", "pattern": "^([A-Z]+-[0-9]{3}|GEN)$", "description": "Rule from rules/*.md, or GEN for a finding no rule covers." },
+    "severity": { "enum": ["blocker", "major", "minor", "nit"] },
+    "confidence": { "enum": ["confirmed", "possible"], "description": "confirmed = the failing path was traced end to end (or a test proves it)." },
+    "category": { "enum": ["db", "security", "contracts", "runtime", "webui", "tests", "deps", "general"] },
+    "repo": { "type": "string", "description": "Repo key; defaults to the reviewed repo. Set it for findings in a consumer repo." },
+    "file": { "type": "string", "minLength": 1, "description": "Path relative to the repo root, forward slashes." },
+    "line": { "type": "integer", "minimum": 1, "description": "Line in the NEW version of the file." },
+    "endLine": { "type": "integer", "minimum": 1 },
+    "anchor": { "type": "string", "minLength": 1, "description": "Stable symbol the finding is about (Class#method, table name, topic, component). Used for the finding id, so it must not change between runs." },
+    "title": { "type": "string", "minLength": 5, "maxLength": 140 },
+    "problem": { "type": "string", "minLength": 10 },
+    "failureScenario": { "type": "string", "minLength": 10, "description": "Concrete inputs/state -> wrong outcome." },
+    "suggestion": { "type": "string", "minLength": 5 },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "note"],
+        "properties": {
+          "repo": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "specialist": { "type": "string" },
+    "verification": { "type": "string", "description": "What the verify pass did to confirm it." },
+    "consensus": { "type": "string", "pattern": "^\\d+/\\d+$", "description": "Runs that reported it, e.g. 2/2 (consensus mode)." },
+    "ratedSeverity": { "enum": ["blocker", "major", "minor", "nit"], "description": "The model's rating before a severity floor raised it (finalize)." },
+    "crossVerification": { "type": "string", "description": "What the cross-model verifier (the other provider) concluded." }
+  }
+}

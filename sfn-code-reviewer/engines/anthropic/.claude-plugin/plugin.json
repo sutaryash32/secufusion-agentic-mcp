@@ -1,0 +1,8 @@
+{
+  "name": "sfn",
+  "version": "0.8.0",
+  "description": "SecuFusion code reviewer: specialist reviewers (db, security, contracts) + adversarial verify for the sfn-* repos. /sfn:review",
+  "author": {
+    "name": "SecuFusion platform team"
+  }
+}

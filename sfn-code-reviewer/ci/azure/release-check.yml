@@ -1,0 +1,60 @@
+# Release readiness across the estate — run manually before cutting a release.
+# Create a pipeline from this file in sfn-code-reviewer; run with parameters.
+trigger: none
+pr: none
+
+parameters:
+  - name: repos
+    type: object
+    default: [sfn-tenants-api, sfn-iam-api, sfn-events-api, sfn-web-ui]
+  - name: to
+    type: string
+    default: develop
+  - name: from              # empty = latest tag per repo
+    type: string
+    default: ''
+  - name: review            # also run a deep review of each repo's range (needs the model key)
+    type: boolean
+    default: false
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: sfn-code-reviewer
+
+steps:
+  - checkout: self
+    path: s/sfn-code-reviewer
+  - task: NodeTool@0
+    inputs:
+      versionSpec: 22.x
+  - bash: cd "$(Agent.BuildDirectory)/s/sfn-code-reviewer" && npm ci --no-audit --no-fund
+    displayName: Install
+  - ${{ if eq(parameters.review, true) }}:
+    - bash: |
+        cd "$(Agent.BuildDirectory)/s/sfn-code-reviewer"
+        npm install -g "@anthropic-ai/claude-code@$(node -e "console.log(require('./engines/anthropic/skills/review/config/review.json').anthropic.cliVersion)")"
+      displayName: Install Claude Code CLI
+  - ${{ each repo in parameters.repos }}:
+    - bash: |
+        git -c http.extraheader="AUTHORIZATION: bearer $(System.AccessToken)" clone --quiet --no-single-branch \
+          "$(System.CollectionUri)$(System.TeamProject)/_git/${{ repo }}" "$(Agent.BuildDirectory)/s/${{ repo }}"
+        git -C "$(Agent.BuildDirectory)/s/${{ repo }}" fetch --tags --quiet
+      displayName: Clone ${{ repo }}
+  - bash: |
+      set -euo pipefail
+      ARGS=()
+      for r in ${{ join(' ', parameters.repos) }}; do ARGS+=(--repo "$(Agent.BuildDirectory)/s/$r"); done
+      [[ -n "${{ parameters.from }}" ]] && ARGS+=(--from "${{ parameters.from }}")
+      node "$(Agent.BuildDirectory)/s/sfn-code-reviewer/scripts/release-check.mjs" "${ARGS[@]}" \
+        --to "origin/${{ parameters.to }}" --out "$(Build.ArtifactStagingDirectory)/release" \
+        ${{ iif(parameters.review, '--review', '') }}
+    displayName: Release readiness
+    env:
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)/release
+      artifact: release-readiness

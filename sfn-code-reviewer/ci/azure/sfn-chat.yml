@@ -1,0 +1,52 @@
+# sfn-code-reviewer — answers `@sfn` mentions in active PRs of the sfn repos.
+# Create a pipeline from this file in sfn-code-reviewer. Runs every 10 minutes on weekdays.
+# The build service needs Read on the sfn repos and "Contribute to pull requests" (to reply and to set a
+# finding thread to Won't fix). Uses the same `sfn-code-reviewer` variable group (ANTHROPIC_API_KEY).
+trigger: none
+pr: none
+schedules:
+  - cron: "*/10 6-20 * * 1-5"     # UTC; adjust to your working hours
+    displayName: answer @sfn mentions
+    branches:
+      include: [main]
+    always: true                  # run even without new commits — the input is PR comments
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: sfn-code-reviewer
+
+steps:
+  - checkout: self
+    path: s/sfn-code-reviewer
+    fetchDepth: 1
+  - task: NodeTool@0
+    inputs:
+      versionSpec: 22.x
+  - bash: |
+      set -euo pipefail
+      cd "$(Agent.BuildDirectory)/s/sfn-code-reviewer"
+      npm ci --no-audit --no-fund
+      npm install -g "@anthropic-ai/claude-code@$(node -e "console.log(require('./engines/anthropic/skills/review/config/review.json').anthropic.cliVersion)")"
+    displayName: Install
+  - bash: bash "$(Agent.BuildDirectory)/s/sfn-code-reviewer/scripts/checkout-estate.sh" "$(Agent.BuildDirectory)/s" sfn-code-reviewer
+    displayName: Clone the sfn repos
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+  - bash: |
+      set -uo pipefail
+      [[ "${ANTHROPIC_API_KEY:-}" == \$\(* ]] && unset ANTHROPIC_API_KEY
+      ARGS=()
+      for r in $(node -e "Object.keys(require('$(Agent.BuildDirectory)/s/sfn-code-reviewer/engines/anthropic/skills/review/config/repos.json').repos).forEach(k=>console.log(k))"); do
+        d="$(Agent.BuildDirectory)/s/$r"
+        if [[ -d "$d/.git" ]]; then
+          git -C "$d" config http.extraheader "AUTHORIZATION: bearer $(System.AccessToken)"   # fetch PR commits
+          ARGS+=(--repo "$d")
+        fi
+      done
+      node "$(Agent.BuildDirectory)/s/sfn-code-reviewer/scripts/pr-chat.mjs" "${ARGS[@]}" --max 15
+    displayName: Answer @sfn mentions
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)

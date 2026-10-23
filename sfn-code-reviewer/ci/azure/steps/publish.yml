@@ -1,0 +1,83 @@
+# Artifacts (always), PR comments (PR builds), then the gate (decides the build result).
+parameters:
+  - name: failOn
+    type: string
+  - name: onReviewError
+    type: string
+  - name: postComments
+    type: boolean
+  - name: writeDescription
+    type: string
+    default: none
+  - name: createBugs
+    type: string
+    default: none
+  - name: bugIteration
+    type: string
+    default: backlog
+
+steps:
+  - task: PublishPipelineArtifact@1
+    displayName: Publish review report
+    condition: always()
+    inputs:
+      targetPath: $(OUT)
+      artifact: sfn-review
+    continueOnError: true
+
+  # The SARIF SAST Scans Tab extension renders this artifact name in the build's "Scans" tab.
+  - bash: |
+      mkdir -p "$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs"
+      [[ -f "$(OUT)/sfn-review.sarif" ]] && cp "$(OUT)/sfn-review.sarif" "$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs/"
+      true
+    displayName: Stage SARIF
+    condition: always()
+  - task: PublishPipelineArtifact@1
+    displayName: Publish SARIF
+    condition: always()
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)/CodeAnalysisLogs
+      artifact: CodeAnalysisLogs
+    continueOnError: true
+
+  - ${{ if eq(parameters.postComments, true) }}:
+    - bash: |
+        if [[ -f "$(OUT)/review-result.json" ]]; then
+          node "$(REVIEWER)/scripts/post-ado-pr.mjs" --in "$(OUT)/review-result.json"
+        else
+          echo "No review result to post."
+        fi
+      displayName: Post review to PR
+      condition: and(always(), eq(variables['Build.Reason'], 'PullRequest'))
+      continueOnError: true      # a comment API hiccup must not hide the gate result
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - ${{ if ne(parameters.writeDescription, 'none') }}:
+    - bash: |
+        [[ -f "$(OUT)/review-result.json" ]] && node "$(REVIEWER)/scripts/pr-description.mjs" \
+          --in "$(OUT)/review-result.json" --mode "${{ parameters.writeDescription }}" --confirm || true
+      displayName: Write PR description (${{ parameters.writeDescription }})
+      condition: and(always(), eq(variables['Build.Reason'], 'PullRequest'))
+      continueOnError: true
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - ${{ if ne(parameters.createBugs, 'none') }}:
+    - bash: |
+        if [[ -f "$(OUT)/review-result.json" ]]; then
+          node "$(REVIEWER)/scripts/create-ado-bugs.mjs" --in "$(OUT)/review-result.json" \
+            --repo "$(ESTATE_ROOT)/$(SFN_REPO_KEY)" --min-severity "${{ parameters.createBugs }}" \
+            --iteration "${{ parameters.bugIteration }}" --confirm
+        fi
+      displayName: File Azure Boards bugs (${{ parameters.createBugs }}+)
+      condition: always()
+      continueOnError: true
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - bash: |
+      node "$(REVIEWER)/scripts/gate.mjs" --in "$(OUT)/review-result.json" \
+        --fail-on "${{ parameters.failOn }}" --on-review-error "${{ parameters.onReviewError }}"
+    displayName: sfn review gate
+    condition: always()

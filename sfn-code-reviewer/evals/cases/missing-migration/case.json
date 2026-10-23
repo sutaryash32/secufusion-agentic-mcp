@@ -1,0 +1,8 @@
+{
+  "repoKey": "sfn-events-api",
+  "description": "Entity gains a mapped column with no migration (ddl-auto none) -> runtime failure.",
+  "expect": {
+    "mustFind": [{ "ruleId": "DB-001", "file": "src/main/java/com/secufusion/events/entity/Device.java", "minSeverity": "major" }],
+    "verdictIn": ["fix_first"]
+  }
+}

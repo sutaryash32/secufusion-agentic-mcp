@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sfn-code-reviewer/schemas/review-result.schema.json",
+  "title": "ReviewResult",
+  "description": "What the orchestrator emits as its final answer. `engine`, `scope` and `suppressed` are filled in by scripts/validate-result.mjs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "blastRadius", "findings", "rejectedCount", "verdict", "verdictReason"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "summary": { "type": "string", "minLength": 10, "description": "Plain-language description of what the change does (2-5 sentences)." },
+    "blastRadius": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoints": { "type": "array", "items": { "type": "string" } },
+        "kafkaTopics": { "type": "array", "items": { "type": "string" } },
+        "tables": { "type": "array", "items": { "type": "string" } },
+        "scheduledJobs": { "type": "array", "items": { "type": "string" } },
+        "uiRoutes": { "type": "array", "items": { "type": "string" } },
+        "otherRepos": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "walkthrough": {
+      "type": "array",
+      "description": "What changed, grouped by area (max 8), for a reviewer who hasn't read the diff.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["area", "change"],
+        "properties": {
+          "area": { "type": "string", "minLength": 2, "maxLength": 80 },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "change": { "type": "string", "minLength": 5, "maxLength": 400 }
+        }
+      }
+    },
+    "testPlan": { "type": "array", "description": "Concrete manual/automated checks before merge (max 6).", "items": { "type": "string", "minLength": 5, "maxLength": 300 } },
+    "findings": { "type": "array", "items": { "$ref": "finding.schema.json" } },
+    "rejectedCount": { "type": "integer", "minimum": 0, "description": "Candidate findings the verify pass rejected." },
+    "specialistsRun": { "type": "array", "items": { "type": "string" } },
+    "verdict": { "enum": ["ready", "fix_first", "needs_discussion"] },
+    "verdictReason": { "type": "string", "minLength": 5 },
+    "engine": { "type": "object" },
+    "scope": { "type": "object" },
+    "suppressed": { "type": "array", "items": { "type": "object" } },
+    "crossVerify": { "type": "object", "description": "Cross-model verification summary (scripts/cross-verify.mjs)." },
+    "consensus": { "type": "object", "description": "Consensus mode: runs, kept, findings seen in only one run." },
+    "trimmed": { "type": "array", "items": { "type": "object" }, "description": "Lower-priority findings hidden by the noise cap (finalize)." },
+    "blastLinks": { "type": "array", "items": { "type": "object" }, "description": "Deterministic links from touched surface to affected repos (finalize)." },
+    "delta": { "type": "object", "description": "Changes since the previous review of the same repo (finalize --previous)." }
+  }
+}

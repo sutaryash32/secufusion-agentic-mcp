@@ -1,0 +1,15 @@
+# Accepted risks and known false positives. A finding matching an entry is dropped from the
+# PR comments and the gate, and listed under "Suppressed" in the report.
+#
+# Match by `id` (exact finding id from a report) OR by `ruleId` + `path` glob (+ optional `anchor`).
+# `reason` and `expires` (YYYY-MM-DD) are required — suppressions are not forever.
+#
+# Example:
+# - ruleId: DB-003
+#   repo: sfn-tenants-api
+#   path: "src/main/resources/db/migration/V42__*.sql"
+#   reason: "Historic duplicate V42, applied in every env; renumbering would break ops."
+#   expires: 2027-06-30
+#   owner: platform-team
+
+suppressions: []

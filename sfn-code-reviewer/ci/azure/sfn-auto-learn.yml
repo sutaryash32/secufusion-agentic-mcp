@@ -1,0 +1,64 @@
+# Weekly learning loop: bugs closed last week → history eval cases → would the reviewer have caught them?
+# Create a pipeline from this file in sfn-code-reviewer. New cases and the report are published as the
+# `auto-learn` artifact — review and commit the cases (this job never pushes).
+# Needs: the `sfn-code-reviewer` variable group (ANTHROPIC_API_KEY, for --run), Read on the sfn repos and
+# Read on work items for the build service.
+trigger: none
+pr: none
+schedules:
+  - cron: "0 5 * * 1"            # Mondays 05:00 UTC
+    displayName: weekly auto-learn
+    branches:
+      include: [main]
+    always: true
+
+parameters:
+  - name: days
+    type: number
+    default: 7
+  - name: run                    # also run each new case against the model (costs ~ $1-2 per case)
+    type: boolean
+    default: true
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: sfn-code-reviewer
+
+steps:
+  - checkout: self
+    path: s/sfn-code-reviewer
+  - task: NodeTool@0
+    inputs:
+      versionSpec: 22.x
+  - bash: |
+      set -euo pipefail
+      cd "$(Agent.BuildDirectory)/s/sfn-code-reviewer"
+      npm ci --no-audit --no-fund
+      npm install -g "@anthropic-ai/claude-code@$(node -e "console.log(require('./engines/anthropic/skills/review/config/review.json').anthropic.cliVersion)")"
+    displayName: Install
+  - bash: bash "$(Agent.BuildDirectory)/s/sfn-code-reviewer/scripts/checkout-estate.sh" "$(Agent.BuildDirectory)/s" sfn-code-reviewer
+    displayName: Clone the sfn repos (full history — blame needs it)
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      SFN_ESTATE_FULL: "1"
+  - bash: |
+      set -uo pipefail
+      [[ "${ANTHROPIC_API_KEY:-}" == \$\(* ]] && unset ANTHROPIC_API_KEY
+      cd "$(Agent.BuildDirectory)/s/sfn-code-reviewer"
+      node evals/auto-learn.mjs --estate "$(Agent.BuildDirectory)/s" --days ${{ parameters.days }} \
+        ${{ iif(parameters.run, '--run', '') }}
+      # publish only what's new: cases/drafts not in git yet, plus this run's report
+      A="$(Build.ArtifactStagingDirectory)/auto-learn"; mkdir -p "$A"
+      git status --porcelain --untracked-files=all evals/cases evals/drafts | awk '{print $2}' | while read -r f; do mkdir -p "$A/$(dirname "$f")"; cp "$f" "$A/$f"; done
+      cp evals/results/auto-learn-* "$A/" 2>/dev/null || true
+    displayName: Learn from last week's bugs
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)/auto-learn
+      artifact: auto-learn

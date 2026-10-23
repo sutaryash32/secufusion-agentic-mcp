@@ -1,0 +1,20 @@
+{
+  "name": "sfn-code-reviewer",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Multi-agent code reviewer for the SecuFusion (sfn-*) repos. Runs locally (Claude Code login) and in Azure Pipelines (API key).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build-anthropic.mjs",
+    "build:check": "node scripts/build-anthropic.mjs --check",
+    "review": "bash scripts/run-review.sh",
+    "evals": "bash evals/run-evals.sh",
+    "test": "node --test scripts/__tests__/*.test.mjs engines/openai/__tests__/*.test.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0"
+  }
+}

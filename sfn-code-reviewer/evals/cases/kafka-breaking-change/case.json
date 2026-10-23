@@ -1,0 +1,8 @@
+{
+  "repoKey": "sfn-iam-api",
+  "description": "device-registration payload field renamed deviceId -> deviceUuid; sfn-events-api consumer still reads deviceId.",
+  "expect": {
+    "mustFind": [{ "ruleId": "CON-004", "minSeverity": "major" }],
+    "verdictIn": ["fix_first"]
+  }
+}

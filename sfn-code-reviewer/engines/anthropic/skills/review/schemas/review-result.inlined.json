@@ -1,0 +1,322 @@
+{
+  "title": "ReviewResult",
+  "description": "What the orchestrator emits as its final answer. `engine`, `scope` and `suppressed` are filled in by scripts/validate-result.mjs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "blastRadius",
+    "findings",
+    "rejectedCount",
+    "verdict",
+    "verdictReason"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Plain-language description of what the change does (2-5 sentences)."
+    },
+    "blastRadius": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kafkaTopics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scheduledJobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "uiRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "otherRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "walkthrough": {
+      "type": "array",
+      "description": "What changed, grouped by area (max 8), for a reviewer who hasn't read the diff.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "area",
+          "change"
+        ],
+        "properties": {
+          "area": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "change": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 400
+          }
+        }
+      }
+    },
+    "testPlan": {
+      "type": "array",
+      "description": "Concrete manual/automated checks before merge (max 6).",
+      "items": {
+        "type": "string",
+        "minLength": 5,
+        "maxLength": 300
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "rejectedCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Candidate findings the verify pass rejected."
+    },
+    "specialistsRun": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verdict": {
+      "enum": [
+        "ready",
+        "fix_first",
+        "needs_discussion"
+      ]
+    },
+    "verdictReason": {
+      "type": "string",
+      "minLength": 5
+    },
+    "engine": {
+      "type": "object"
+    },
+    "scope": {
+      "type": "object"
+    },
+    "suppressed": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "crossVerify": {
+      "type": "object",
+      "description": "Cross-model verification summary (scripts/cross-verify.mjs)."
+    },
+    "consensus": {
+      "type": "object",
+      "description": "Consensus mode: runs, kept, findings seen in only one run."
+    },
+    "trimmed": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Lower-priority findings hidden by the noise cap (finalize)."
+    },
+    "blastLinks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Deterministic links from touched surface to affected repos (finalize)."
+    },
+    "delta": {
+      "type": "object",
+      "description": "Changes since the previous review of the same repo (finalize --previous)."
+    }
+  },
+  "$defs": {
+    "finding": {
+      "title": "Finding",
+      "description": "One review finding. `id` is assigned by scripts/validate-result.mjs, not by the model.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "severity",
+        "confidence",
+        "category",
+        "file",
+        "line",
+        "anchor",
+        "title",
+        "problem",
+        "failureScenario",
+        "suggestion"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{12}$"
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^([A-Z]+-[0-9]{3}|GEN)$",
+          "description": "Rule from rules/*.md, or GEN for a finding no rule covers."
+        },
+        "severity": {
+          "enum": [
+            "blocker",
+            "major",
+            "minor",
+            "nit"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "possible"
+          ],
+          "description": "confirmed = the failing path was traced end to end (or a test proves it)."
+        },
+        "category": {
+          "enum": [
+            "db",
+            "security",
+            "contracts",
+            "runtime",
+            "webui",
+            "tests",
+            "deps",
+            "general"
+          ]
+        },
+        "repo": {
+          "type": "string",
+          "description": "Repo key; defaults to the reviewed repo. Set it for findings in a consumer repo."
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path relative to the repo root, forward slashes."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Line in the NEW version of the file."
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable symbol the finding is about (Class#method, table name, topic, component). Used for the finding id, so it must not change between runs."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 140
+        },
+        "problem": {
+          "type": "string",
+          "minLength": 10
+        },
+        "failureScenario": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Concrete inputs/state -> wrong outcome."
+        },
+        "suggestion": {
+          "type": "string",
+          "minLength": 5
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "file",
+              "note"
+            ],
+            "properties": {
+              "repo": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "specialist": {
+          "type": "string"
+        },
+        "verification": {
+          "type": "string",
+          "description": "What the verify pass did to confirm it."
+        },
+        "consensus": {
+          "type": "string",
+          "pattern": "^\\d+/\\d+$",
+          "description": "Runs that reported it, e.g. 2/2 (consensus mode)."
+        },
+        "ratedSeverity": {
+          "enum": [
+            "blocker",
+            "major",
+            "minor",
+            "nit"
+          ],
+          "description": "The model's rating before a severity floor raised it (finalize)."
+        },
+        "crossVerification": {
+          "type": "string",
+          "description": "What the cross-model verifier (the other provider) concluded."
+        }
+      }
+    }
+  }
+}

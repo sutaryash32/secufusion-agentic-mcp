@@ -1,0 +1,213 @@
+{
+  "estate": {
+    "adoOrganization": "secufusion",
+    "adoProject": "SFCloud-MSSP",
+    "defaultBranch": "develop"
+  },
+  "defaults": {
+    "java-spring": {
+      "migrations": "src/main/resources/db/migration",
+      "test": "mvn -q test"
+    },
+    "react-vite": {
+      "test": "npm run test:run",
+      "lint": "npm run lint"
+    }
+  },
+  "repos": {
+    "sfn-tenants-api": {
+      "stack": "java-spring",
+      "package": "com.secufusion.tenant",
+      "migrations": "src/main/resources/db/migration",
+      "test": "mvn -q test",
+      "deletes": "hard",
+      "apiPrefix": "/api/tenants",
+      "kafka": {
+        "produces": [
+          "policy-events",
+          "extension-policy-changed"
+        ],
+        "consumes": [
+          "policy-events",
+          "extension-approval-decided"
+        ]
+      }
+    },
+    "sfn-iam-api": {
+      "stack": "java-spring",
+      "package": "com.secufusion.iam",
+      "migrations": "src/main/resources/db/migration",
+      "test": "mvn -q test",
+      "deletes": "mixed",
+      "apiPrefix": "/api/iam",
+      "kafka": {
+        "produces": [
+          "device-registration"
+        ],
+        "consumes": [
+          "device-deleted"
+        ]
+      }
+    },
+    "sfn-events-api": {
+      "stack": "java-spring",
+      "package": "com.secufusion.events",
+      "migrations": "src/main/resources/db/migration",
+      "test": "mvn -q test",
+      "deletes": "soft",
+      "apiPrefix": "/api/events",
+      "kafka": {
+        "produces": [
+          "quickstart-events",
+          "device-deleted",
+          "extension-approval-decided"
+        ],
+        "consumes": [
+          "quickstart-events",
+          "device-registration",
+          "extension-policy-changed"
+        ]
+      }
+    },
+    "sfn-web-ui": {
+      "stack": "react-vite",
+      "test": "npm run test:run",
+      "lint": "npm run lint",
+      "calls": [
+        "sfn-tenants-api",
+        "sfn-iam-api",
+        "sfn-events-api"
+      ]
+    }
+  },
+  "riskRules": [
+    {
+      "id": "migration",
+      "match": "db/migration/.*\\.sql$",
+      "weight": 3,
+      "specialists": [
+        "db"
+      ]
+    },
+    {
+      "id": "entity",
+      "match": "/entity/.*\\.java$",
+      "weight": 2,
+      "specialists": [
+        "db",
+        "contracts"
+      ]
+    },
+    {
+      "id": "repository",
+      "match": "/repository/.*\\.java$",
+      "weight": 2,
+      "specialists": [
+        "db",
+        "security"
+      ]
+    },
+    {
+      "id": "security-core",
+      "match": "(/security/|SecurityConfig|JwtAuthentication|TenantAccess|ParentChainAuthorizer|MutatingEndpointAllowlist)",
+      "weight": 4,
+      "specialists": [
+        "security"
+      ]
+    },
+    {
+      "id": "controller",
+      "match": "/controller/.*\\.java$",
+      "weight": 2,
+      "specialists": [
+        "security",
+        "contracts"
+      ]
+    },
+    {
+      "id": "dto",
+      "match": "/dto/.*\\.java$",
+      "weight": 2,
+      "specialists": [
+        "contracts"
+      ]
+    },
+    {
+      "id": "kafka",
+      "match": "(/kafka/|Kafka|Producer\\.java$|Consumer\\.java$)",
+      "weight": 3,
+      "specialists": [
+        "contracts",
+        "runtime"
+      ]
+    },
+    {
+      "id": "scheduler",
+      "match": "(/scheduler/|Scheduler\\.java$|/config/AsyncConfig)",
+      "weight": 2,
+      "specialists": [
+        "runtime",
+        "db"
+      ]
+    },
+    {
+      "id": "identity-provider",
+      "match": "(Keycloak|keycloak|IdentityProvider|IdpConfig|AuthProvider|Realm[A-Z]|Oidc|Saml|Entra|AzureAd)",
+      "weight": 3,
+      "specialists": [
+        "security"
+      ]
+    },
+    {
+      "id": "config-props",
+      "match": "application[^/]*\\.(properties|ya?ml)$",
+      "weight": 1,
+      "specialists": [
+        "security"
+      ]
+    },
+    {
+      "id": "ui-http",
+      "match": "^src/(utils/(axiosConfig|apiEndpoints)\\.js|services/)",
+      "weight": 2,
+      "specialists": [
+        "contracts",
+        "webui"
+      ]
+    },
+    {
+      "id": "ui-component",
+      "match": "^src/(modules|components|pages|layouts|hooks|contexts)/.*\\.(jsx?|tsx?)$",
+      "weight": 1,
+      "specialists": [
+        "webui"
+      ]
+    },
+    {
+      "id": "ui-auth",
+      "match": "(PermissionGate|ProtectedRoute|usePermissions|useEffectiveTenantId|routes/|keycloak|store/slices/auth)",
+      "weight": 3,
+      "specialists": [
+        "security"
+      ]
+    },
+    {
+      "id": "build-deploy",
+      "match": "(pom\\.xml$|package(-lock)?\\.json$|Dockerfile$|azure-pipelines[^/]*\\.ya?ml$)",
+      "weight": 1,
+      "specialists": [
+        "deps"
+      ]
+    }
+  ],
+  "sizeRisk": [
+    {
+      "over": 500,
+      "weight": 1
+    },
+    {
+      "over": 1500,
+      "weight": 2
+    }
+  ]
+}

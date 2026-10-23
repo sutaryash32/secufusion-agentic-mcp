@@ -1,0 +1,48 @@
+{
+  "type": "history",
+  "repoKey": "sfn-tenants-api",
+  "estate": "/Users/venkatewswarareddy/IdeaProjects/secufusion",
+  "base": "6b776771bdae58ef551be729622121607c3a917f",
+  "head": "1bf6b42719e57c96a0896bf3b0775e07dd7a0de6",
+  "description": "Missed bug #1288: introduced by PR !1072 (\"Merged PR 1072: Stop new tenant realms requiring firstName/lastName\"), later fixed by 52c907dd1d \"Merged PR 1423: WI 1288: stop Keycloak profile form for Entra sign-ins on new SSO tenants\". The reviewer should flag the code the fix changed, at major or worse.",
+  "source": {
+    "fixes": [
+      "52c907dd1d2c1f8cd627d443289f8a80f7797581"
+    ],
+    "fixSubjects": [
+      "Merged PR 1423: WI 1288: stop Keycloak profile form for Entra sign-ins on new SSO tenants"
+    ],
+    "introducedBy": "2d00e0e12e542b78d0e1355f99f0bdca9e79bc18",
+    "pr": 1072,
+    "bug": 1288
+  },
+  "expect": {
+    "mustFind": [
+      {
+        "anyOf": [
+          {
+            "file": "src/main/java/com/secufusion/tenant/util/KeycloakAdminUtil.java",
+            "nearLines": [
+              15,
+              16
+            ],
+            "minSeverity": "major"
+          },
+          {
+            "file": "src/main/java/com/secufusion/tenant/util/KeycloakAdminUtil.java",
+            "nearLines": [
+              495,
+              535
+            ],
+            "minSeverity": "major"
+          }
+        ]
+      }
+    ],
+    "verdictIn": [
+      "fix_first",
+      "needs_discussion"
+    ]
+  },
+  "knownGap": "The bug was in the master realm's first-broker-login flow, which PR !1072 did not change (a missing change, not a defect in the diff). Three runs: the reviewer raised the UPConfig write-back and missing backfill; verify rejected both with valid reasons (client/server versions match; the later fix didn't backfill either). It did put 'log in through Entra as a user with only a display name' in the test plan. Kept to detect regressions in the opposite direction and to re-test when the reviewer gains flow-level context."
+}
