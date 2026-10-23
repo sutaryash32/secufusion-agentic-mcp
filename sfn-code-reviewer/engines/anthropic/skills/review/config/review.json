@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "engine": "anthropic",
+  "anthropic": {
+    "cliVersion": "2.1.306",
+    "minCliVersion": "2.1.280",
+    "models": {
+      "orchestrator": "claude-opus-5-5",
+      "specialist": "claude-sonnet-5-5",
+      "verify": "claude-opus-5-5"
+    },
+    "verifyBudgetUsd": 2
+  },
+  "openai": {
+    "baseUrl": "https://api.openai.com/v1",
+    "models": {
+      "orchestrator": "gpt-5",
+      "specialist": "gpt-5",
+      "verify": "gpt-5"
+    },
+    "reasoningEffort": "medium",
+    "maxCompletionTokens": 16000,
+    "maxTurnsPerAgent": 40,
+    "maxTotalTokens": 3000000
+  },
+  "consensus": {
+    "enabled": false,
+    "levels": [
+      "deep"
+    ],
+    "runs": 2,
+    "minAgree": 2
+  },
+  "verify": {
+    "mode": "same"
+  },
+  "levels": {
+    "quick": {
+      "verify": false,
+      "generalPass": true
+    },
+    "standard": {
+      "verify": true,
+      "generalPass": true
+    },
+    "deep": {
+      "verify": true,
+      "generalPass": true
+    }
+  },
+  "autoLevel": {
+    "quickMaxScore": 2,
+    "deepMinScore": 7
+  },
+  "limits": {
+    "maxBudgetUsd": 5,
+    "timeoutMinutes": 25,
+    "maxCommentsPosted": 25,
+    "maxMinor": 5,
+    "maxNit": 3,
+    "nitsAtQuick": false
+  },
+  "severityFloors": {
+    "SEC-001": "major",
+    "SEC-002": "major",
+    "SEC-003": "major",
+    "SEC-005": "major",
+    "SEC-006": "major",
+    "SEC-008": "major",
+    "SEC-010": "major",
+    "SEC-017": "major",
+    "SEC-018": "major",
+    "DB-001": "major",
+    "DB-002": "major",
+    "DB-004": "major",
+    "DB-006": "major",
+    "DB-007": "major",
+    "DB-012": "major",
+    "CON-001": "major",
+    "CON-004": "major"
+  },
+  "gate": {
+    "failOn": "blocker",
+    "blockOnPossible": false,
+    "onReviewError": "fail"
+  },
+  "skipWhenOnly": [
+    "**/*.md",
+    "docs/**",
+    "specs/**",
+    "plans/**",
+    "**/package-lock.json",
+    ".gitignore"
+  ],
+  "integrations": {
+    "history": {
+      "enabled": true,
+      "fixPattern": "\\b(fix|fixes|fixed|bug|bugfix|hotfix|revert|regression)\\b|BUG-\\d+|WI \\d+",
+      "maxAgeDays": 365,
+      "maxFiles": 40
+    },
+    "reviewers": {
+      "enabled": true,
+      "max": 3,
+      "sinceDays": 180,
+      "maxFiles": 40
+    },
+    "liveDb": {
+      "enabled": false,
+      "urlEnv": "SFN_REVIEW_DB_URL",
+      "schemas": [
+        "public"
+      ],
+      "stacks": [
+        "java-spring"
+      ]
+    },
+    "osv": {
+      "enabled": false,
+      "baseUrl": "https://api.osv.dev"
+    },
+    "boards": {
+      "workItemType": "Bug",
+      "areaPath": "SFCloud-MSSP",
+      "team": "SFCloud-MSSP Team",
+      "iteration": "backlog",
+      "minSeverity": "blocker",
+      "confirmedOnly": true,
+      "maxPerRun": 10
+    }
+  }
+}

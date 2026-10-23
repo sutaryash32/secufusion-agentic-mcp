@@ -1,0 +1,136 @@
+# sfn-code-reviewer — runtime configuration.
+# Edit here, then `npm run build` (the plugin reads the generated JSON copy).
+
+schemaVersion: 1
+
+# Which engine runs the review: anthropic | openai (openai = phase 2, not built yet).
+# Overridable per run: run-review.sh --engine <x>, or the pipeline parameter `engine`.
+engine: anthropic
+
+anthropic:
+  # Auth is picked at run time, not here:
+  #   local, no key      -> your Claude Code login (subscription / OAuth)
+  #   ANTHROPIC_API_KEY  -> API key (required in CI)
+  #   CLAUDE_CODE_USE_FOUNDRY=1 -> Claude via Microsoft Foundry (Azure credentials)
+  cliVersion: 2.1.306          # pinned in CI
+  minCliVersion: 2.1.280       # Opus/Sonnet 5.5 are rejected by older CLIs (checked before every run)
+  models:
+    orchestrator: claude-opus-5-5
+    specialist: claude-sonnet-5-5
+    verify: claude-opus-5-5
+  verifyBudgetUsd: 2           # per batch when Claude is the cross-model verifier (API-key runs)
+
+openai:
+  # Auth: OPENAI_API_KEY, or AZURE_OPENAI_API_KEY with baseUrl
+  #   https://<resource>.openai.azure.com/openai/v1   (Azure OpenAI v1 API; models = deployment names)
+  # OPENAI_BASE_URL overrides baseUrl per run.
+  baseUrl: https://api.openai.com/v1
+  models:                      # confirm against the models your account / Azure deployments offer
+    orchestrator: gpt-5        # writes the summary only (verdict is computed in code)
+    specialist: gpt-5
+    verify: gpt-5
+  reasoningEffort: medium      # low | medium | high; null to omit for non-reasoning models
+  maxCompletionTokens: 16000   # per call
+  maxTurnsPerAgent: 40
+  maxTotalTokens: 3000000      # whole review; the run fails closed when exceeded
+
+# Review depth. `auto` picks a level from the deterministic risk score.
+# Consensus for high-risk changes: run the engine `runs` times in parallel (cost × runs) and keep a
+# finding when >= minAgree runs report it, or any run reports a CONFIRMED blocker/major of a critical
+# rule (the rules listed under severityFloors).
+consensus:
+  enabled: false               # turn on once cost per deep review is acceptable; or --consensus N per run
+  levels: [deep]
+  runs: 2
+  minAgree: 2
+
+# Verification. `same`: the engine's own verify pass only. `cross`: additionally, the OTHER provider
+# re-checks every finding and may reject or downgrade it (never raise). Needs both providers' credentials;
+# when the other provider isn't available the run continues with `same` and says so.
+verify:
+  mode: same                   # same | cross   (run-review.sh --cross-verify forces cross)
+
+levels:
+  quick:    { verify: false, generalPass: true }
+  standard: { verify: true,  generalPass: true }
+  deep:     { verify: true,  generalPass: true }
+autoLevel:
+  quickMaxScore: 2             # score <= 2  -> quick
+  deepMinScore: 7              # score >= 7  -> deep, otherwise standard
+
+limits:
+  maxBudgetUsd: 5              # hard stop per review (API-key runs only)
+  timeoutMinutes: 25
+  maxCommentsPosted: 25        # PR inline threads per run; the rest stay in the report
+  maxMinor: 5                  # per review; blockers and majors are never trimmed
+  maxNit: 3
+  nitsAtQuick: false
+
+# Rules whose findings may never be rated below this severity — a destructive or cross-tenant
+# problem rated "nit" hides it (backtest !965). Applied in finalize; the original rating is kept.
+severityFloors:
+  SEC-001: major
+  SEC-002: major
+  SEC-003: major
+  SEC-005: major
+  SEC-006: major
+  SEC-008: major
+  SEC-010: major
+  SEC-017: major
+  SEC-018: major
+  DB-001: major
+  DB-002: major
+  DB-004: major
+  DB-006: major
+  DB-007: major
+  DB-012: major
+  CON-001: major
+  CON-004: major
+
+gate:
+  failOn: blocker              # blocker | major | minor | none
+  blockOnPossible: false       # unconfirmed findings never fail the build
+  onReviewError: fail          # fail | warn — what CI does when the review itself breaks
+
+# A change that touches ONLY these paths is not reviewed.
+skipWhenOnly:
+  - "**/*.md"
+  - "docs/**"
+  - "specs/**"
+  - "plans/**"
+  - "**/package-lock.json"
+  - ".gitignore"
+
+# ---------------------------------------------------------------- phase 4 integrations
+# Everything that leaves the machine or writes somewhere is OFF by default.
+integrations:
+  history:                     # regression hints from git blame (local git only)
+    enabled: true
+    fixPattern: "\\b(fix|fixes|fixed|bug|bugfix|hotfix|revert|regression)\\b|BUG-\\d+|WI \\d+"
+    maxAgeDays: 365
+    maxFiles: 40               # changed files blamed per review (largest first)
+
+  reviewers:                   # suggested reviewers from git blame/log (names only; local git)
+    enabled: true
+    max: 3
+    sinceDays: 180
+    maxFiles: 40
+
+  liveDb:                      # read-only schema snapshot (metadata only, never rows)
+    enabled: false
+    urlEnv: SFN_REVIEW_DB_URL  # postgres://<read-only user>@host:5432/db — use a role with no write grants
+    schemas: [public]
+    stacks: [java-spring]      # only for these repo stacks
+
+  osv:                         # known-vulnerability lookup on api.osv.dev (no key)
+    enabled: false             # sends ONLY names + versions of added/changed dependencies
+    baseUrl: https://api.osv.dev
+
+  boards:                      # Azure Boards bugs from findings (scripts/create-ado-bugs.mjs)
+    workItemType: Bug
+    areaPath: SFCloud-MSSP
+    team: SFCloud-MSSP Team    # for iteration "current"
+    iteration: backlog         # backlog | current | <full iteration path>
+    minSeverity: blocker
+    confirmedOnly: true
+    maxPerRun: 10

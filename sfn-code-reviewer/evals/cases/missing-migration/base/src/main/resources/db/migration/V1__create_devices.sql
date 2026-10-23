@@ -1,0 +1,6 @@
+CREATE TABLE devices (
+  id VARCHAR(36) PRIMARY KEY,
+  tenant_id VARCHAR(36) NOT NULL,
+  device_name VARCHAR(255),
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'
+);

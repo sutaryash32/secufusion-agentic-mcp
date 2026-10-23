@@ -1,0 +1,10 @@
+node_modules/
+.env
+.sfn-review/
+.sfn-release/
+sfn-metrics.html
+evals/.work/
+evals/results/
+*.log
+.DS_Store
+evals/.work-run*/

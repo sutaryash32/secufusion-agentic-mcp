@@ -1,0 +1,109 @@
+# sfn-code-reviewer — reusable Azure Pipelines template (PR build validation).
+#
+# Consumer (each sfn-* repo), see example-consumer.yml:
+#   resources: { repositories: [ { repository: reviewer, type: git, name: SFCloud-MSSP/sfn-code-reviewer, ref: refs/tags/v0.8.0 } ] }
+#   extends: { template: ci/azure/sfn-review.yml@reviewer, parameters: { repoKey: sfn-tenants-api } }
+#
+# Secrets: variable group `sfn-code-reviewer` with ANTHROPIC_API_KEY (secret).
+# Permissions: the build service needs "Contribute to pull requests" on the repo (for comments) and
+# Read on the other sfn repos (for the estate clone).
+
+parameters:
+  - name: repoKey            # key in config/repos.yml; any name works (unknown repos get shared rules)
+    type: string
+  - name: engine
+    type: string
+    default: anthropic
+    values: [anthropic, openai]
+  - name: auth               # api-key: ANTHROPIC_API_KEY · foundry: Claude via Microsoft Foundry
+    type: string
+    default: api-key
+    values: [api-key, foundry]
+  - name: level
+    type: string
+    default: auto
+    values: [auto, quick, standard, deep]
+  - name: failOn
+    type: string
+    default: blocker
+    values: [blocker, major, minor, none]
+  - name: onReviewError      # rollout tip: start with warn, switch to fail once trusted
+    type: string
+    default: fail
+    values: [fail, warn]
+  - name: crossVerify        # the other provider re-checks findings; needs both providers' keys
+    type: boolean
+    default: false
+  - name: liveDb             # read-only schema snapshot; needs SFN_REVIEW_DB_URL (read-only role) in the group
+    type: boolean
+    default: false
+  - name: osv                # vulnerability lookup for changed deps on api.osv.dev (sends names+versions)
+    type: boolean
+    default: false
+  - name: createBugs         # file Azure Boards bugs for confirmed findings at/above this severity
+    type: string             # setting it is the consent — no preview in CI. Best on develop/scheduled runs.
+    default: none
+    values: [none, blocker, major]
+  - name: bugIteration
+    type: string
+    default: backlog         # backlog | current | <iteration path>
+  - name: writeDescription   # none | empty-only (fill only empty descriptions) | append (below the author's text)
+    type: string
+    default: none
+    values: [none, empty-only, append]
+  - name: postComments
+    type: boolean
+    default: true
+  - name: variableGroup
+    type: string
+    default: sfn-code-reviewer
+  - name: reviewerAlias      # the `repository:` alias the consumer declared for this repo
+    type: string
+    default: reviewer
+  - name: timeoutInMinutes
+    type: number
+    default: 30
+  - name: vmImage
+    type: string
+    default: ubuntu-latest
+
+jobs:
+  - job: sfn_review
+    displayName: sfn code review (${{ parameters.repoKey }})
+    timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
+    pool:
+      vmImage: ${{ parameters.vmImage }}
+    variables:
+      - group: ${{ parameters.variableGroup }}
+      - name: ESTATE_ROOT
+        value: $(Agent.BuildDirectory)/s
+      - name: REVIEWER
+        value: $(Agent.BuildDirectory)/s/sfn-code-reviewer
+      - name: OUT
+        value: $(Build.ArtifactStagingDirectory)/sfn-review
+      - name: SFN_REPO_KEY
+        value: ${{ parameters.repoKey }}
+    steps:
+      - template: steps/setup.yml
+        parameters:
+          repoKey: ${{ parameters.repoKey }}
+          reviewerAlias: ${{ parameters.reviewerAlias }}
+
+      - template: steps/review.yml
+        parameters:
+          repoKey: ${{ parameters.repoKey }}
+          engine: ${{ parameters.engine }}
+          auth: ${{ parameters.auth }}
+          level: ${{ parameters.level }}
+          crossVerify: ${{ parameters.crossVerify }}
+          liveDb: ${{ parameters.liveDb }}
+          osv: ${{ parameters.osv }}
+
+      - template: steps/publish.yml
+        parameters:
+          failOn: ${{ parameters.failOn }}
+          onReviewError: ${{ parameters.onReviewError }}
+          postComments: ${{ parameters.postComments }}
+          writeDescription: ${{ parameters.writeDescription }}
+          createBugs: ${{ parameters.createBugs }}
+          bugIteration: ${{ parameters.bugIteration }}

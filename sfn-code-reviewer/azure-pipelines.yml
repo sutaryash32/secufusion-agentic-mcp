@@ -1,0 +1,22 @@
+# CI for sfn-code-reviewer itself: the generated plugin must match its sources, and the
+# deterministic scripts must pass their tests. Evals (which call the model) run on demand.
+trigger:
+  branches:
+    include: [main]
+pr:
+  branches:
+    include: [main]
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: 22.x
+  - bash: npm ci --no-audit --no-fund
+    displayName: Install
+  - bash: npm run build:check
+    displayName: Generated plugin is up to date
+  - bash: npm test
+    displayName: Unit tests

@@ -1,0 +1,11 @@
+{
+  "name": "sfn-code-reviewer",
+  "owner": { "name": "SecuFusion platform team" },
+  "plugins": [
+    {
+      "name": "sfn",
+      "source": "./engines/anthropic",
+      "description": "SecuFusion code reviewer — /sfn:review runs db, security and contracts specialists plus an adversarial verify pass on sfn-* repos."
+    }
+  ]
+}

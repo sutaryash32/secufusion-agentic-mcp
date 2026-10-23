@@ -1,0 +1,47 @@
+# Checkout (PR repo + reviewer + rest of the estate), Node, reviewer deps, pinned Claude Code CLI.
+parameters:
+  - name: repoKey
+    type: string
+  - name: reviewerAlias
+    type: string
+
+steps:
+  - checkout: self
+    path: s/${{ parameters.repoKey }}
+    fetchDepth: 0              # need the merge base with the target branch
+    persistCredentials: true
+
+  - checkout: ${{ parameters.reviewerAlias }}
+    path: s/sfn-code-reviewer
+    fetchDepth: 1
+
+  - task: NodeTool@0
+    displayName: Node 22
+    inputs:
+      versionSpec: 22.x
+
+  - bash: |
+      set -euo pipefail
+      cd "$(REVIEWER)"
+      npm ci --no-audit --no-fund
+      CLI_VERSION="$(node -e "console.log(require('./engines/anthropic/skills/review/config/review.json').anthropic.cliVersion)")"
+      npm install -g "@anthropic-ai/claude-code@${CLI_VERSION}" --no-audit --no-fund
+      claude --version
+    displayName: Install reviewer + Claude Code CLI
+
+  - bash: |
+      set -euo pipefail
+      cd "$(ESTATE_ROOT)/${{ parameters.repoKey }}"
+      if [[ -n "${SYSTEM_PULLREQUEST_TARGETBRANCH:-}" ]]; then
+        TARGET="${SYSTEM_PULLREQUEST_TARGETBRANCH#refs/heads/}"
+        git fetch --quiet origin "+refs/heads/${TARGET}:refs/remotes/origin/${TARGET}"
+        echo "##vso[task.setvariable variable=SFN_BASE]origin/${TARGET}"
+      else
+        echo "##vso[task.setvariable variable=SFN_BASE]origin/develop"
+      fi
+    displayName: Resolve review base
+
+  - bash: bash "$(REVIEWER)/scripts/checkout-estate.sh" "$(ESTATE_ROOT)" "${{ parameters.repoKey }}"
+    displayName: Clone the rest of the estate (from repos.yml)
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)

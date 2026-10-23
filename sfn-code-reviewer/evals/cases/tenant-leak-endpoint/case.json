@@ -1,0 +1,11 @@
+{
+  "repoKey": "sfn-iam-api",
+  "description": "New endpoints take tenantId from the request body with no TenantAccessGuard check, and a repository query has no tenant predicate.",
+  "expect": {
+    "mustFind": [
+      { "ruleIdAnyOf": ["SEC-002", "SEC-003"], "file": "src/main/java/com/secufusion/iam/controller/GroupExportController.java", "minSeverity": "blocker" },
+      { "ruleIdAnyOf": ["SEC-003"], "minSeverity": "major" }
+    ],
+    "verdictIn": ["fix_first"]
+  }
+}

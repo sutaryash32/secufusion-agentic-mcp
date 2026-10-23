@@ -1,0 +1,25 @@
+# Copy into an sfn-* repo as azure-pipelines-sfn-review.yml, then add it as a Build Validation
+# policy on `develop` (Repos → Branches → develop → Branch policies → Build validation).
+trigger: none
+pr: none          # runs from the branch policy, not from a trigger
+
+resources:
+  repositories:
+    - repository: reviewer
+      type: git
+      name: SFCloud-MSSP/sfn-code-reviewer
+      ref: refs/tags/v0.8.0          # pin a version; bump deliberately
+
+extends:
+  template: ci/azure/sfn-review.yml@reviewer
+  parameters:
+    repoKey: sfn-tenants-api         # this repo's key in config/repos.yml
+    failOn: blocker
+    onReviewError: warn              # start lenient; switch to `fail` once the team trusts it
+    # engine: openai                 # needs OPENAI_API_KEY or AZURE_OPENAI_API_KEY in the variable group
+    # auth: foundry                  # Claude via Microsoft Foundry instead of ANTHROPIC_API_KEY
+    # level: auto
+    # crossVerify: true              # Claude reviews, OpenAI double-checks (or vice versa); needs both keys
+    # liveDb: true                   # read-only schema snapshot; SFN_REVIEW_DB_URL in the variable group
+    # osv: true                      # vulnerability lookup for changed dependencies (api.osv.dev)
+    # createBugs: blocker            # file Boards bugs for confirmed blockers (use on develop, not PRs)
